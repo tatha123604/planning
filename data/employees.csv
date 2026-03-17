@@ -1,0 +1,11 @@
+id,name,role,hire_date,retirement_date,promotion_role,promotion_ready_date
+1,Ashok Singh,Motorman,2005-06-01,2035-06-01,LPP,2027-01-01
+2,Bhavya Iyer,LPP,2010-03-15,2030-03-15,LPM,2026-11-01
+3,Chandan Rao,LPM,2012-12-20,2029-12-20,,
+4,Deepa Patel,ALP,2018-09-10,2043-09-10,Motorman,2028-06-01
+5,Farhan Ali,LPS,2016-02-01,2031-02-01,LPP,2027-09-15
+6,Garima Nair,ALP,2019-05-22,2044-05-22,Motorman,2029-12-01
+7,Hari Om,Motorman,2004-01-05,2026-12-31,LPP,2026-07-01
+8,Indu Chauhan,LPP,2009-08-12,2028-08-12,LPM,2026-05-15
+9,Jay Kishan,ALP,2020-11-01,2045-11-01,Motorman,2030-03-01
+10,Kiran Das,LPS,2015-04-18,2030-04-18,LPP,2027-04-01

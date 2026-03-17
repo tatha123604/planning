@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HR Planner</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="dot"></div>
+        <span>HR Planner</span>
+      </div>
+      <nav class="side-links">
+        <a class="active" href="/">Dashboard</a>
+        <a href="#">Requirements</a>
+        <a href="#">Employees</a>
+        <a href="#">Uploads</a>
+        <a href="#">Reports</a>
+      </nav>
+      <div class="hierarchy">Hierarchy: LPM &gt; Motorman &gt; LPP &gt; LPG &gt; LPS (Shunter) &gt; ALP</div>
+    </aside>
+
+    <main class="content">
+      <header>
+        <div>
+          <h1>Dashboard</h1>
+          <p>Plan staffing, recruiting backfills, and promotions by seniority.</p>
+        </div>
+        <form class="inline" method="get" action="/">
+          <label>As of <input type="date" name="as_of" value="{{ as_of.isoformat() }}" /></label>
+          <label>Horizon (months) <input type="number" name="horizon_months" value="{{ horizon_months }}" min="1" max="60" /></label>
+          <label>Lead time (days) <input type="number" name="lead_time_days" value="{{ lead_time_days }}" min="0" max="365" /></label>
+          <button type="submit">Recompute</button>
+        </form>
+      </header>
+
+      <section class="grid">
+        <div class="card">
+          <h2>Headcount vs Requirement</h2>
+          <table>
+            <thead>
+              <tr><th>Role</th><th>Have</th><th>Need</th><th>Delta</th></tr>
+            </thead>
+            <tbody>
+              {% for req in requirements %}
+              {% set have = counts.get(req.role, 0) %}
+              {% set delta = have - req.needed %}
+              <tr class="{{ 'ok' if delta >= 0 else 'warn' }}">
+                <td>{{ req.role }}</td>
+                <td>{{ have }}</td>
+                <td>{{ req.needed }}</td>
+                <td>{{ delta }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card">
+          <h2>Recruiting Actions</h2>
+          {% if recruit_plan %}
+            {% for role, steps in recruit_plan.items() %}
+              <h3>{{ role }}</h3>
+              <ul>
+                {% for step in steps %}<li>{{ step }}</li>{% endfor %}
+              </ul>
+            {% endfor %}
+          {% else %}
+            <p>No hiring needed within horizon.</p>
+          {% endif %}
+        </div>
+
+        <div class="card">
+          <h2>Promotions</h2>
+          {% if promotion_plan %}
+            <ul>
+              {% for move in promotion_plan %}<li>{{ move }}</li>{% endfor %}
+            </ul>
+          {% else %}
+            <p>No promotions in window.</p>
+          {% endif %}
+        </div>
+
+        <div class="card">
+          <h2>Upcoming Retirements</h2>
+          {% if retiring %}
+            {% for role, people in retiring.items() %}
+              <h3>{{ role }}</h3>
+              <ul>
+                {% for p in people %}
+                  <li>{{ p.name }} ({{ p.retirement_date }})</li>
+                {% endfor %}
+              </ul>
+            {% endfor %}
+          {% else %}
+            <p>None within horizon.</p>
+          {% endif %}
+        </div>
+      </section>
+
+      <section class="grid">
+        <div class="card">
+          <h2>Update Requirement</h2>
+          <form method="post" action="/requirements">
+            <label>Role
+              <select name="role" required>
+                {% for role in role_order %}<option value="{{ role }}">{{ role }}</option>{% endfor %}
+              </select>
+            </label>
+            <label>Needed <input type="number" name="needed" required min="0" /></label>
+            <button type="submit">Save</button>
+          </form>
+        </div>
+
+        <div class="card">
+          <h2>Add Employee</h2>
+          <form method="post" action="/employees">
+            <label>Name <input name="name" required /></label>
+            <label>Role
+              <select name="role" required>
+                {% for role in role_order %}<option value="{{ role }}">{{ role }}</option>{% endfor %}
+              </select>
+            </label>
+            <label>Hire date <input type="date" name="hire_date" required /></label>
+            <label>Retirement date <input type="date" name="retirement_date" required /></label>
+            <label>Promotion role
+              <select name="promotion_role">
+                <option value=""></option>
+                {% for role in role_order %}<option value="{{ role }}">{{ role }}</option>{% endfor %}
+              </select>
+            </label>
+            <label>Promotion ready date <input type="date" name="promotion_ready_date" /></label>
+            <button type="submit">Add</button>
+          </form>
+        </div>
+
+        <div class="card">
+          <h2>Upload Employees (.xlsx)</h2>
+          <form method="post" action="/upload" enctype="multipart/form-data">
+            <label>Excel file
+              <input type="file" name="file" accept=".xlsx,.xlsm" required />
+            </label>
+            <p class="hint">Columns required: name, role, hire_date, retirement_date. Optional: promotion_role, promotion_ready_date. Dates in YYYY-MM-DD or Excel date format.</p>
+            <button type="submit">Upload</button>
+          </form>
+        </div>
+
+        <div class="card">
+          <h2>Upload Seniority (.xlsx)</h2>
+          <form method="post" action="/upload-seniority" enctype="multipart/form-data">
+            <label>Excel file
+              <input type="file" name="file" accept=".xlsx,.xlsm" required />
+            </label>
+            <p class="hint">Columns: name, role, seniority_rank (or seniority). Optional: promotion_role, promotion_ready_date. Rows update existing employees; names/roles must match the roster.</p>
+            <button type="submit">Upload</button>
+          </form>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Roster</h2>
+        <table>
+          <thead>
+            <tr><th>Name</th><th>Role</th><th>Retirement</th><th>Seniority</th><th>Promotion track</th></tr>
+          </thead>
+          <tbody>
+            {% for e in employees %}
+            <tr>
+              <td>{{ e.name }}</td>
+              <td>{{ e.role }}</td>
+              <td>{{ e.retirement_date }}</td>
+              <td>{% if e.seniority_rank %}{{ e.seniority_rank }}{% else %}-{% endif %}</td>
+              <td>{% if e.promotion_role %}? {{ e.promotion_role }} ({{ e.promotion_ready_date }}){% else %}-{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+    </main>
+  </div>
+</body>
+</html>
