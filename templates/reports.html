@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reports | HR Planner</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="dot"></div>
+        <span>HR Planner</span>
+      </div>
+      <nav class="side-links">
+        <a class="{{ 'active' if active_page == 'dashboard' else '' }}" href="/">Dashboard</a>
+        <a class="{{ 'active' if active_page == 'employees' else '' }}" href="/employees">Employees</a>
+        <a class="{{ 'active' if active_page == 'uploads' else '' }}" href="/uploads">Uploads</a>
+        <a class="{{ 'active' if active_page == 'requirements' else '' }}" href="/requirements">Requirements</a>
+        <a class="{{ 'active' if active_page == 'reports' else '' }}" href="/reports">Reports</a>
+      </nav>
+      <div class="hierarchy">Hierarchy: LPM &gt; Motorman &gt; LPP &gt; LPG &gt; LPS (Shunter) &gt; ALP</div>
+    </aside>
+
+    <main class="content">
+      <header>
+        <div>
+          <h1>Reports</h1>
+          <p>Cumulative retirements by designation within a selected window.</p>
+        </div>
+        <form class="inline" method="get" action="/reports">
+          <label>From <input type="date" name="start_date" value="{{ start_date.isoformat() }}" /></label>
+          <label>To <input type="date" name="end_date" value="{{ end_date.isoformat() }}" /></label>
+          <button type="submit">Recalculate</button>
+          <a class="ghost" href="{{ dashboard_link }}">Apply dates to Dashboard</a>
+        </form>
+      </header>
+
+      <section class="card">
+        <h2>Retirements by Role</h2>
+        <table>
+          <thead>
+            <tr><th>Role</th><th>Retirements</th></tr>
+          </thead>
+          <tbody>
+            {% for role, count in retirements.items() %}
+            <tr>
+              <td><a href="/reports?start_date={{ start_date.isoformat() }}&end_date={{ end_date.isoformat() }}&role={{ role }}">{{ role }}</a></td>
+              <td>{{ count }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+
+      <section class="card">
+        <h2>Retirement Details{% if role_filter %} — {{ role_filter }}{% endif %}</h2>
+        {% if role_filter %}
+          <p><a class="ghost small" href="/reports?start_date={{ start_date.isoformat() }}&end_date={{ end_date.isoformat() }}">Clear role filter</a></p>
+        {% endif %}
+        <div class="table-wrap">
+          <table class="employee-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Role</th>
+                <th>CLI</th>
+                <th>Gradation</th>
+                <th>Retirement Date</th>
+                <th>Working At</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for e in retiring_list %}
+              <tr>
+                <td>{{ e.name }}</td>
+                <td>{{ e.role }}</td>
+                <td>{{ e.cli or '' }}</td>
+                <td>{{ e.gradation or '' }}</td>
+                <td>{{ e.retirement_date | dmy }}</td>
+                <td>{{ e.working_at or '' }}</td>
+                <td>{{ e.status or '' }}</td>
+                <td><a class="ghost small" href="/employees/{{ e.id }}">Edit</a></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script>
+    (() => {
+      const brand = document.querySelector('.brand');
+      if (!brand) return;
+      brand.style.cursor = 'pointer';
+      brand.setAttribute('title', 'Click to hide/show navigation');
+      brand.setAttribute('tabindex', '0');
+      const toggle = () => document.body.classList.toggle('nav-hidden');
+      brand.addEventListener('click', toggle);
+      brand.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          toggle();
+        }
+      });
+      document.body.classList.remove('nav-hidden');
+    })();
+  </script>
+</body>
+</html>

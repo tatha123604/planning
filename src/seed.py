@@ -45,6 +45,14 @@ def seed_employees(session: Session) -> None:
                         retirement_date=_parse_date(row["retirement_date"]),
                         promotion_role=promo_role,
                         promotion_ready_date=_parse_date(row.get("promotion_ready_date", "")),
+                        category=row.get("category") or None,
+                        pf_no=row.get("pf_no") or None,
+                        hrms=row.get("hrms") or None,
+                        dob=_parse_date(row.get("dob", "")),
+                        doa=_parse_date(row.get("doa", "")),
+                        do_report=_parse_date(row.get("do_report", "")),
+                        status=row.get("status") or None,
+                        working_at=row.get("working_at") or None,
                     )
                 )
     session.commit()

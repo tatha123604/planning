@@ -16,6 +16,23 @@ def init_db() -> None:
         names = {c[1] for c in cols}
         if "seniority_rank" not in names:
             conn.execute(text("ALTER TABLE employee ADD COLUMN seniority_rank INTEGER;"))
+        for col, ddl in [
+            ("category", "TEXT"),
+            ("pf_no", "TEXT"),
+            ("hrms", "TEXT"),
+            ("dob", "DATE"),
+            ("doa", "DATE"),
+            ("do_report", "DATE"),
+            ("status", "TEXT"),
+            ("working_at", "TEXT"),
+            ("gradation", "TEXT"),
+            ("cli", "TEXT"),
+            ("pme_due", "DATE"),
+            ("technical_due", "DATE"),
+            ("transportation_due", "DATE"),
+        ]:
+            if col not in names:
+                conn.execute(text(f"ALTER TABLE employee ADD COLUMN {col} {ddl};"))
 
 
 def get_session() -> Session:

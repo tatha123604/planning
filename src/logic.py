@@ -20,10 +20,25 @@ def role_sort_key(role: str) -> int:
 def normalize_role(role: str | None) -> str | None:
     if role is None:
         return None
-    role = role.strip()
-    if role in {"Shunter", "LPS(Shunter)"}:
-        return "LPS"
-    return role
+    role_clean = role.strip()
+    upper = role_clean.upper()
+    canonical = {
+        "SHUNTER": "LPS",
+        "LPS(SHUNTER)": "LPS",
+        "MOTORMAN": "Motorman",
+        "MOTOR MAN": "Motorman",
+        "M/MAN": "Motorman",
+        "MMAN": "Motorman",
+        "LPM": "LPM",
+        "LPP": "LPP",
+        "LPP(LOCO)": "LPP",
+        "LPP/LOCO": "LPP",
+        "LPS": "LPS",
+        "ALP": "ALP",
+        "SR.ALP": "ALP",
+        "LPG": "LPG",
+    }
+    return canonical.get(upper, role_clean)
 
 
 def is_superior(current_role: str | None, target_role: str | None) -> bool:
@@ -55,6 +70,14 @@ def apply_promotions(employees: Iterable[Employee], as_of: date) -> List[Employe
                 promotion_role=None,
                 promotion_ready_date=None,
                 seniority_rank=e.seniority_rank,
+                category=e.category,
+                pf_no=e.pf_no,
+                hrms=e.hrms,
+                dob=e.dob,
+                doa=e.doa,
+                do_report=e.do_report,
+                status=e.status,
+                working_at=e.working_at,
             )
             promoted.append(clone)
         else:
@@ -82,6 +105,7 @@ def build_recruit_plan(requirements: Dict[str, int], employees: List[Employee], 
     plan: Dict[str, List[str]] = {}
     current_counts = headcount_by_role(employees)
     retiring = project_retirements(employees, as_of, horizon_months)
+    fmt = lambda d: d.strftime("%d-%m-%Y")
 
     for role, required in sorted(requirements.items(), key=lambda kv: role_sort_key(kv[0])):
         current = current_counts.get(role, 0)
@@ -93,7 +117,7 @@ def build_recruit_plan(requirements: Dict[str, int], employees: List[Employee], 
         for r in retiring.get(role, []):
             target_date = r.retirement_date - timedelta(days=lead_time_days)
             steps.append(
-                f"Hire 1 by {target_date.isoformat()} to backfill {r.name} retiring on {r.retirement_date.isoformat()}."
+                f"Hire 1 by {fmt(target_date)} to backfill {r.name} retiring on {fmt(r.retirement_date)}."
             )
 
         if steps:
@@ -104,6 +128,7 @@ def build_recruit_plan(requirements: Dict[str, int], employees: List[Employee], 
 def build_promotion_plan(employees: Iterable[Employee], as_of: date, horizon_months: int) -> List[str]:
     horizon_end = as_of + timedelta(days=30 * horizon_months)
     moves: List[str] = []
+    fmt = lambda d: d.strftime("%d-%m-%Y")
     def sort_key(e: Employee):
         rank = e.seniority_rank if e.seniority_rank is not None else 10**9
         ready = e.promotion_ready_date if e.promotion_ready_date else date.max
@@ -118,7 +143,7 @@ def build_promotion_plan(employees: Iterable[Employee], as_of: date, horizon_mon
         ):
             rank_txt = f" (rank {e.seniority_rank})" if e.seniority_rank is not None else ""
             moves.append(
-                f"Promote {e.name} ({e.role}{rank_txt}) to {e.promotion_role} on {e.promotion_ready_date.isoformat()}"
+                f"Promote {e.name} ({e.role}{rank_txt}) to {e.promotion_role} on {fmt(e.promotion_ready_date)}"
             )
     return moves
 

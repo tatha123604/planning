@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>HR Planner</title>
+  <title>Requirements | HR Planner</title>
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
@@ -26,9 +26,15 @@
     <main class="content">
       <header>
         <div>
-          <h1>Dashboard</h1>
-          <p>Plan staffing, recruiting backfills, and promotions by seniority.</p>
+          <h1>Requirements</h1>
+          <p>Recalculate staffing and see the key panels.</p>
         </div>
+        <form class="inline" method="get" action="/requirements">
+          <label>As of <input type="date" name="as_of" value="{{ as_of.isoformat() }}" /></label>
+          <label>Horizon (months) <input type="number" name="horizon_months" value="{{ horizon_months }}" min="1" max="60" /></label>
+          <label>Lead time (days) <input type="number" name="lead_time_days" value="{{ lead_time_days }}" min="0" max="365" /></label>
+          <button type="submit">Recompute</button>
+        </form>
       </header>
 
       <section class="grid">
@@ -113,7 +119,6 @@
           toggle();
         }
       });
-      // ensure start visible
       document.body.classList.remove('nav-hidden');
     })();
   </script>
