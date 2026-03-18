@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HR Planner</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="dot"></div>
+        <span>HR Planner</span>
+      </div>
+      <nav class="side-links">
+        <a class="{{ 'active' if active_page == 'dashboard' else '' }}" href="/">Dashboard</a>
+        <a class="{{ 'active' if active_page == 'employees' else '' }}" href="/employees">Employees</a>
+        <a class="{{ 'active' if active_page == 'uploads' else '' }}" href="/uploads">Uploads</a>
+        <a class="{{ 'active' if active_page == 'requirements' else '' }}" href="/requirements">Requirements</a>
+        <a class="{{ 'active' if active_page == 'reports' else '' }}" href="/reports">Reports</a>
+      </nav>
+      <div class="hierarchy">Hierarchy: LPM &gt; Motorman &gt; LPP &gt; LPG &gt; LPS (Shunter) &gt; ALP</div>
+    </aside>
+
+    <main class="content">
+      <header>
+        <div>
+          <h1>Dashboard</h1>
+          <p>Plan staffing, recruiting backfills, and promotions by seniority (single-date view).</p>
+        </div>
+      </header>
+
+      <section class="grid">
+        <div class="card">
+          <h2>Headcount vs Requirement</h2>
+          <p class="hint">Target date: {{ target_date | dmy }}</p>
+          <table>
+            <thead>
+              <tr><th>Role</th><th>Man on Role</th><th>No. of Retirements</th><th>Deficiency</th></tr>
+            </thead>
+            <tbody>
+              {% for req in requirements %}
+              {% set have = counts.get(req.role, 0) %}
+              {% set retiring = retire_counts.get(req.role, 0) %}
+              {% set deficiency = have - retiring %}
+              <tr class="{{ 'ok' if deficiency > 0 else 'warn' }}">
+                <td>{{ req.role }}</td>
+                <td>{{ have }}</td>
+                <td>{{ retiring }}</td>
+                <td>{{ deficiency }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card">
+          <h2>Recruiting Actions</h2>
+          {% if recruit_plan %}
+            {% for role, steps in recruit_plan.items() %}
+              <h3>{{ role }}</h3>
+              <ul>
+                {% for step in steps %}<li>{{ step }}</li>{% endfor %}
+              </ul>
+            {% endfor %}
+          {% else %}
+            <p>No hiring needed within horizon.</p>
+          {% endif %}
+        </div>
+
+        <div class="card">
+          <h2>Promotions</h2>
+          {% if promotion_plan %}
+            <ul>
+              {% for move in promotion_plan %}<li>{{ move }}</li>{% endfor %}
+            </ul>
+          {% else %}
+            <p>No promotions in window.</p>
+          {% endif %}
+        </div>
+
+        <div class="card">
+          <h2>Upcoming Retirements</h2>
+          {% if retiring %}
+            {% for role, people in retiring.items() %}
+              <h3>{{ role }}</h3>
+              <ul>
+                {% for p in people %}
+                  <li>{{ p.name }} ({{ p.retirement_date | dmy if p.retirement_date else '' }})</li>
+                {% endfor %}
+              </ul>
+            {% endfor %}
+          {% else %}
+            <p>None within horizon.</p>
+          {% endif %}
+        </div>
+      </section>
+    </main>
+  </div>
+  <script>
+    (() => {
+      const brand = document.querySelector('.brand');
+      if (!brand) return;
+      brand.style.cursor = 'pointer';
+      brand.setAttribute('title', 'Click to hide/show navigation');
+      brand.setAttribute('tabindex', '0');
+      const toggle = () => document.body.classList.toggle('nav-hidden');
+      brand.addEventListener('click', toggle);
+      brand.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          toggle();
+        }
+      });
+      // ensure start visible
+      document.body.classList.remove('nav-hidden');
+    })();
+  </script>
+</body>
+</html>

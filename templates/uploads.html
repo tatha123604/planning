@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Uploads | HR Planner</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="dot"></div>
+        <span>HR Planner</span>
+      </div>
+      <nav class="side-links">
+        <a class="{{ 'active' if active_page == 'dashboard' else '' }}" href="/">Dashboard</a>
+        <a class="{{ 'active' if active_page == 'employees' else '' }}" href="/employees">Employees</a>
+        <a class="{{ 'active' if active_page == 'uploads' else '' }}" href="/uploads">Uploads</a>
+        <a class="{{ 'active' if active_page == 'requirements' else '' }}" href="/requirements">Requirements</a>
+        <a class="{{ 'active' if active_page == 'reports' else '' }}" href="/reports">Reports</a>
+      </nav>
+      <div class="hierarchy">Hierarchy: LPM &gt; Motorman &gt; LPP &gt; LPG &gt; LPS (Shunter) &gt; ALP</div>
+    </aside>
+
+    <main class="content">
+      <header>
+        <div>
+          <h1>Uploads</h1>
+          <p>Import employees and seniority data from Excel.</p>
+        </div>
+      </header>
+
+      <section class="grid">
+        <div class="card">
+          <h2>Add Employee (manual)</h2>
+          <form method="post" action="/employees">
+            <label>Name <input name="name" required /></label>
+            <label>Role
+              <select name="role" required>
+                {% for role in role_order %}<option value="{{ role }}">{{ role }}</option>{% endfor %}
+              </select>
+            </label>
+            <label>Hire date <input type="date" name="hire_date" required /></label>
+            <label>Retirement date <input type="date" name="retirement_date" required /></label>
+            <label>Promotion role
+              <select name="promotion_role">
+                <option value=""></option>
+                {% for role in role_order %}<option value="{{ role }}">{{ role }}</option>{% endfor %}
+              </select>
+            </label>
+            <label>Promotion ready date <input type="date" name="promotion_ready_date" /></label>
+            <label>Category <input name="category" /></label>
+            <label>PF No <input name="pf_no" /></label>
+            <label>HRMS ID <input name="hrms" /></label>
+            <label>Gradation <input name="gradation" /></label>
+            <label>CLI <input name="cli" /></label>
+            <label>Date of birth <input type="date" name="dob" /></label>
+            <label>PME Due <input type="date" name="pme_due" /></label>
+            <label>Technical Due <input type="date" name="technical_due" /></label>
+            <label>Transportation Due <input type="date" name="transportation_due" /></label>
+            <label>Status
+              <select name="status">
+                <option value=""></option>
+                <option value="ACTIVE">ACTIVE</option>
+                <option value="INACTIVE">INACTIVE</option>
+              </select>
+            </label>
+            <label>Working at <input name="working_at" /></label>
+            <button type="submit">Add</button>
+          </form>
+        </div>
+
+        <div class="card">
+          <h2>Upload Employees (.xlsx)</h2>
+          <form method="post" action="/upload" enctype="multipart/form-data">
+            <label>Excel file
+              <input type="file" name="file" accept=".xlsx,.xlsm" required />
+            </label>
+            <p class="hint">
+              Required columns: <code>name</code>, <code>role</code>, <code>hire_date</code>, <code>retirement_date</code>.
+              Optional: <code>promotion_role</code>, <code>promotion_ready_date</code>, <code>category</code>, <code>pf_no</code>, <code>hrms</code>, <code>dob</code>, <code>doa</code>, <code>do_report</code>, <code>status</code>, <code>working_at</code>, <code>gradation</code>, <code>cli</code>, <code>pme_due</code>, <code>technical_due</code>, <code>transportation_due</code>.
+              Dates may be ISO (YYYY-MM-DD) or Excel date cells.
+            </p>
+            <button type="submit">Upload</button>
+          </form>
+        </div>
+
+        <div class="card">
+          <h2>Upload Seniority (.xlsx)</h2>
+          <form method="post" action="/upload-seniority" enctype="multipart/form-data">
+            <label>Excel file
+              <input type="file" name="file" accept=".xlsx,.xlsm" required />
+            </label>
+            <p class="hint">Columns: name, role, seniority_rank (or seniority). Optional: promotion_role, promotion_ready_date. Rows update existing employees; names/roles must match the roster.</p>
+            <button type="submit">Upload</button>
+          </form>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script>
+    (() => {
+      const brand = document.querySelector('.brand');
+      if (!brand) return;
+      brand.style.cursor = 'pointer';
+      brand.setAttribute('title', 'Click to hide/show navigation');
+      brand.setAttribute('tabindex', '0');
+      const toggle = () => document.body.classList.toggle('nav-hidden');
+      brand.addEventListener('click', toggle);
+      brand.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          toggle();
+        }
+      });
+      document.body.classList.remove('nav-hidden');
+    })();
+  </script>
+</body>
+</html>

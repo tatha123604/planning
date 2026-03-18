@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Employees | HR Planner</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="dot"></div>
+        <span>HR Planner</span>
+      </div>
+      <nav class="side-links">
+        <a class="{{ 'active' if active_page == 'dashboard' else '' }}" href="/">Dashboard</a>
+        <a class="{{ 'active' if active_page == 'employees' else '' }}" href="/employees">Employees</a>
+        <a class="{{ 'active' if active_page == 'uploads' else '' }}" href="/uploads">Uploads</a>
+        <a class="{{ 'active' if active_page == 'requirements' else '' }}" href="/requirements">Requirements</a>
+        <a class="{{ 'active' if active_page == 'reports' else '' }}" href="/reports">Reports</a>
+      </nav>
+      <div class="hierarchy">Hierarchy: LPM &gt; Motorman &gt; LPP &gt; LPG &gt; LPS (Shunter) &gt; ALP</div>
+    </aside>
+
+    <main class="content">
+      <header>
+        <div>
+          <h1>Employees</h1>
+          <p>Complete roster with key dates and identifiers.</p>
+        </div>
+      </header>
+
+      <section class="card collapsible" id="employees-card">
+        <details {% if employees_open %}open{% endif %}>
+          <summary>Employees</summary>
+          <form class="inline" method="get" action="/employees#employees-card">
+            <label>Search <input name="q" value="{{ query }}" placeholder="Name or role" /></label>
+            <label>Role
+              <select name="role">
+                <option value="">All</option>
+                {% for role in role_order %}
+                  <option value="{{ role }}" {% if role == filter_role %}selected{% endif %}>{{ role }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>CLI
+              <select name="cli" id="filter-cli">
+                <option value="">All</option>
+                {% for opt in cli_opts %}
+                  <option value="{{ opt }}" {% if request.query_params.get('cli','') == opt %}selected{% endif %}>{{ opt }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>Gradation
+              <select name="gradation">
+                <option value="">All</option>
+                {% for opt in gradation_opts %}
+                  <option value="{{ opt }}" {% if filter_gradation == opt %}selected{% endif %}>{{ opt }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>Working at
+              <select name="working_at" id="filter-working">
+                <option value="">All</option>
+                {% for opt in working_opts %}
+                  <option value="{{ opt }}" {% if request.query_params.get('working_at','') == opt %}selected{% endif %}>{{ opt }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>Sort
+              <select name="sort" id="sort-select">
+                <option value="role" {% if sort == 'role' %}selected{% endif %}>Role, Name</option>
+                <option value="name" {% if sort == 'name' %}selected{% endif %}>Name</option>
+                <option value="retirement" {% if sort == 'retirement' %}selected{% endif %}>Retirement date</option>
+                <option value="hire" {% if sort == 'hire' %}selected{% endif %}>Hire date</option>
+                <option value="cli" {% if sort == 'cli' %}selected{% endif %}>CLI</option>
+                <option value="working_at" {% if sort == 'working_at' %}selected{% endif %}>Working at</option>
+              </select>
+            </label>
+            <button type="submit">Filter</button>
+            <a class="ghost" href="/employees#employees-card">Reset</a>
+            <div class="summary-chip">Total: {{ employees | length }}</div>
+          </form>
+          <div class="table-wrap">
+            <table class="employee-table">
+              <thead>
+                <tr>
+                  <th>Sl No.</th>
+                  <th>Name</th>
+                  <th>Role</th>
+                <th>Retirement</th>
+                <th>PME Due</th>
+                <th>Technical Due</th>
+                <th>Transportation Due</th>
+                  <th>Promotion Role</th>
+                  <th>Promotion Ready</th>
+                  <th>Seniority</th>
+                  <th>Category</th>
+                  <th>PF No</th>
+                  <th>HRMS</th>
+                  <th>Gradation</th>
+                  <th>CLI</th>
+                  <th>DOB</th>
+                  <th>Status</th>
+                  <th>Working At</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for e in employees %}
+                <tr>
+                  <td>{{ loop.index }}</td>
+                  <td>{{ e.name }}</td>
+                  <td>{{ e.role }}</td>
+                <td>{{ e.retirement_date | dmy if e.retirement_date else '' }}</td>
+                <td>{{ e.pme_due | dmy }}</td>
+                <td>{{ e.technical_due | dmy }}</td>
+                <td>{{ e.transportation_due | dmy }}</td>
+                  <td>{{ e.promotion_role or '' }}</td>
+                  <td>{{ e.promotion_ready_date | dmy }}</td>
+                  <td>{{ e.seniority_rank if e.seniority_rank is not none else '' }}</td>
+                  <td>{{ e.category or '' }}</td>
+                  <td>{{ e.pf_no or '' }}</td>
+                  <td>{{ e.hrms or '' }}</td>
+                  <td>{{ e.gradation or '' }}</td>
+                  <td>{{ e.cli or '' }}</td>
+                  <td>{{ e.dob | dmy }}</td>
+                  <td>{{ e.status or '' }}</td>
+                  <td>{{ e.working_at or '' }}</td>
+                  <td class="actions-cell">
+                    <a class="ghost small" href="/employees/{{ e.id }}">Edit</a>
+                    <form method="post" action="/employees/{{ e.id }}/delete" onsubmit="return confirm('Delete {{ e.name }}?');" style="display:inline;">
+                      <button type="submit" class="danger small">Delete</button>
+                    </form>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      </section>
+
+      <section class="card collapsible" id="cli-roster">
+        <details {% if roster_open %}open{% endif %}>
+          <summary>CLI Roster</summary>
+          <form class="inline" method="get" action="/employees#cli-roster">
+            <input type="hidden" name="q" value="{{ request.query_params.get('q','') }}" />
+            <input type="hidden" name="role" value="{{ request.query_params.get('role','') }}" />
+            <input type="hidden" name="working_at" value="{{ request.query_params.get('working_at','') }}" />
+            <input type="hidden" name="cli" value="{{ request.query_params.get('cli','') }}" />
+            <input type="hidden" name="gradation" value="{{ request.query_params.get('gradation','') }}" />
+            <input type="hidden" name="sort" value="{{ request.query_params.get('sort','') }}" />
+            <label>Name
+              <input name="roster_name" value="{{ roster_name }}" placeholder="Search name" />
+            </label>
+            <label>CLI
+              <select name="roster_cli">
+                <option value="">All</option>
+                {% for opt in cli_opts %}
+                  <option value="{{ opt }}" {% if roster_cli == opt %}selected{% endif %}>{{ opt }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>Gradation
+              <select name="roster_gradation">
+                <option value="">All</option>
+                {% for opt in gradation_opts %}
+                  <option value="{{ opt }}" {% if roster_gradation == opt %}selected{% endif %}>{{ opt }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <button type="submit">Filter</button>
+            <a class="ghost" href="/employees#cli-roster">Reset</a>
+          </form>
+          <div class="table-wrap">
+            <table class="employee-table">
+              <thead>
+                <tr>
+                  <th>CLI</th>
+                  <th>Name</th>
+                  <th>Role</th>
+                  <th>Gradation</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for e in cli_roster %}
+                <tr>
+                  <td>{{ e.cli }}</td>
+                  <td><a href="/employees/{{ e.id }}">{{ e.name }}</a></td>
+                  <td>{{ e.role }}</td>
+                  <td>{{ e.gradation or '' }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      </section>
+    </main>
+  </div>
+  <script>
+    (() => {
+      const brand = document.querySelector('.brand');
+      if (!brand) return;
+      brand.style.cursor = 'pointer';
+      brand.setAttribute('title', 'Click to hide/show navigation');
+      brand.setAttribute('tabindex', '0');
+      const toggle = () => document.body.classList.toggle('nav-hidden');
+      brand.addEventListener('click', toggle);
+      brand.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          toggle();
+        }
+      });
+      document.body.classList.remove('nav-hidden');
+
+      // Enable/disable CLI & Working filters based on sort selection
+      const sortSelect = document.getElementById('sort-select');
+      const cliSelect = document.getElementById('filter-cli');
+      const workingSelect = document.getElementById('filter-working');
+      const sync = () => {
+        const sortVal = sortSelect ? sortSelect.value : '';
+        const cliActive = sortVal === 'cli';
+        const workingActive = sortVal === 'working_at';
+        if (cliSelect) cliSelect.disabled = !cliActive;
+        if (workingSelect) workingSelect.disabled = !workingActive;
+      };
+      if (sortSelect) {
+        sortSelect.addEventListener('change', sync);
+        sync();
+      }
+    })();
+  </script>
+</body>
+</html>

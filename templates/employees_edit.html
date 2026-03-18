@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Edit Employee | HR Planner</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="dot"></div>
+        <span>HR Planner</span>
+      </div>
+      <nav class="side-links">
+        <a class="{{ 'active' if active_page == 'dashboard' else '' }}" href="/">Dashboard</a>
+        <a class="{{ 'active' if active_page == 'employees' else '' }}" href="/employees">Employees</a>
+        <a class="{{ 'active' if active_page == 'uploads' else '' }}" href="/uploads">Uploads</a>
+        <a class="{{ 'active' if active_page == 'requirements' else '' }}" href="/requirements">Requirements</a>
+        <a class="{{ 'active' if active_page == 'reports' else '' }}" href="/reports">Reports</a>
+      </nav>
+      <div class="hierarchy">Hierarchy: LPM &gt; Motorman &gt; LPP &gt; LPG &gt; LPS (Shunter) &gt; ALP</div>
+    </aside>
+
+    <main class="content">
+      <header>
+        <div>
+          <h1>Edit Employee</h1>
+          <p>{{ employee.name }} — {{ employee.role }}</p>
+        </div>
+      </header>
+
+      <section class="card">
+        <form method="post" action="/employees/{{ employee.id }}">
+          <div class="grid">
+            <label>Name <input name="name" value="{{ employee.name }}" required /></label>
+            <label>Role
+              <select name="role" required>
+                {% for role in role_order %}
+                  <option value="{{ role }}" {% if role == employee.role %}selected{% endif %}>{{ role }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>Retirement date <input type="date" name="retirement_date" value="{{ employee.retirement_date if employee.retirement_date else '' }}" required /></label>
+            <label>Promotion role
+              <select name="promotion_role">
+                <option value=""></option>
+                {% for role in role_order %}
+                  <option value="{{ role }}" {% if role == employee.promotion_role %}selected{% endif %}>{{ role }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>Promotion ready date <input type="date" name="promotion_ready_date" value="{{ employee.promotion_ready_date or '' }}" /></label>
+            <label>Seniority rank <input type="number" name="seniority_rank" value="{{ employee.seniority_rank or '' }}" min="0" /></label>
+            <label>Category <input name="category" value="{{ employee.category or '' }}" /></label>
+            <label>PF No <input name="pf_no" value="{{ employee.pf_no or '' }}" /></label>
+            <label>HRMS ID <input name="hrms" value="{{ employee.hrms or '' }}" /></label>
+            <label>Gradation <input name="gradation" value="{{ employee.gradation or '' }}" /></label>
+            <label>CLI <input name="cli" value="{{ employee.cli or '' }}" /></label>
+            <label>Date of birth <input type="date" name="dob" value="{{ employee.dob or '' }}" /></label>
+            <label>Date of appointment <input type="date" name="doa" value="{{ employee.doa or '' }}" /></label>
+            <label>Date of report <input type="date" name="do_report" value="{{ employee.do_report or '' }}" /></label>
+            <label>PME Due <input type="date" name="pme_due" value="{{ employee.pme_due or '' }}" /></label>
+            <label>Technical Due <input type="date" name="technical_due" value="{{ employee.technical_due or '' }}" /></label>
+            <label>Transportation Due <input type="date" name="transportation_due" value="{{ employee.transportation_due or '' }}" /></label>
+            <label>Status
+              <select name="status">
+                <option value=""></option>
+                <option value="ACTIVE" {% if employee.status == 'ACTIVE' %}selected{% endif %}>ACTIVE</option>
+                <option value="INACTIVE" {% if employee.status == 'INACTIVE' %}selected{% endif %}>INACTIVE</option>
+              </select>
+            </label>
+            <label>Working at <input name="working_at" value="{{ employee.working_at or '' }}" /></label>
+          </div>
+          <div class="actions">
+            <button type="submit">Save</button>
+            <a class="ghost" href="/employees">Cancel</a>
+          </div>
+        </form>
+      </section>
+    </main>
+  </div>
+  <script>
+    (() => {
+      const brand = document.querySelector('.brand');
+      if (!brand) return;
+      brand.style.cursor = 'pointer';
+      brand.setAttribute('title', 'Click to hide/show navigation');
+      brand.setAttribute('tabindex', '0');
+      const toggle = () => document.body.classList.toggle('nav-hidden');
+      brand.addEventListener('click', toggle);
+      brand.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          toggle();
+        }
+      });
+      document.body.classList.remove('nav-hidden');
+    })();
+  </script>
+</body>
+</html>
