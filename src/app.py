@@ -553,6 +553,7 @@ def reports_page(
         "CC(R) NH",
         "CC(R) NORTH",
         "CC(R) RHA",
+        "CC(R) KOAA",
         "CC(R) SOUTH",
     ]
     allowed_norm = {loc.upper(): loc for loc in allowed_working}
