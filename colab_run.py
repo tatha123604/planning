@@ -61,6 +61,7 @@ def main() -> None:
     if args.region:
         connect_kwargs["region"] = args.region
 
+    print("Opening ngrok tunnel...", flush=True)
     try:
         public_tunnel = ngrok.connect(**connect_kwargs)
     except Exception as exc:  # pragma: no cover - runtime/network dependent
@@ -70,8 +71,8 @@ def main() -> None:
         else:
             raise
 
-    print(f"Public URL: {public_tunnel.public_url}")
-    print("Starting uvicorn... (Ctrl+C to stop)")
+    print(f"Public URL: {public_tunnel.public_url}", flush=True)
+    print("Starting uvicorn... (Ctrl+C to stop)", flush=True)
 
     uvicorn.run(app, host="0.0.0.0", port=args.port)
 
