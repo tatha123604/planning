@@ -1,0 +1,23 @@
+git command
+
+
+
+Check kor:
+
+1. Status dekh
+git status
+2. Jodi file thake → add + commit
+git add .
+git commit -m "update"
+3. Remote already ache naki check kor
+git remote -v
+
+👉 Jodi kichu na dekhae → remote add korte hobe:
+
+git remote add origin https://gitlab.com/username/repo.git
+4. Push kor
+git push
+
+👉 Jodi bole upstream nai:
+
+git push -u origin main
