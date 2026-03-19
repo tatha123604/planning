@@ -23,6 +23,29 @@ python src/hr.py --as-of 2026-03-17 --horizon-months 12 --lead-time-days 90 \
 
 Features: shows headcount vs requirement, recruiting steps (immediate and timed backfills), promotion schedule, upcoming retirements, roster table, forms to add employees/change requirements, and Excel uploads (employees + seniority). Planning window and lead time are query params on the home page. Roles are sorted by hierarchy: LPM > Motorman > LPP > LPG > LPS (Shunter) > ALP.
 
+### Run on Google Colab
+Colab can host the app and expose it publicly with ngrok.
+
+1) Clone the online branch and enter it:
+```bash
+!git clone -b codex/online https://gitlab.com/tatha1234/promotion.git
+%cd promotion
+```
+2) Install Colab-specific deps:
+```bash
+!pip install -r requirements-colab.txt
+```
+3) Set your ngrok token (from https://dashboard.ngrok.com/get-started/your-authtoken):
+```python
+import os
+os.environ["NGROK_AUTHTOKEN"] = "<your-token>"
+```
+4) Start the server with a tunnel (adjust region if you like):
+```bash
+!python colab_run.py --port 8000 --region in
+```
+The cell prints a public URL like `https://xxxx.ngrok.io`; open it to use the app.
+
 ### Excel upload format
 - Employees: headers `name`, `role`, `hire_date`, `retirement_date`; optional `promotion_role`, `promotion_ready_date`.
 - Seniority: headers `name`, `role`, `seniority_rank` (or `seniority`); optional `promotion_role`, `promotion_ready_date`. Rows update matching employees.
