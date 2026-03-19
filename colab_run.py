@@ -35,8 +35,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--region",
         type=str,
-        default=os.environ.get("NGROK_REGION", "in"),
-        help="ngrok region code (e.g., in, us, eu)",
+        default=os.environ.get("NGROK_REGION"),
+        help="(optional) ngrok region; leave unset for ngrok v3/default",
     )
     parser.add_argument(
         "--auth-token",
@@ -57,7 +57,19 @@ def main() -> None:
             "Warning: NGROK_AUTHTOKEN not set. ngrok may refuse to open a stable tunnel.\n"
         )
 
-    public_tunnel = ngrok.connect(args.port, "http", region=args.region)
+    connect_kwargs = {"addr": args.port, "proto": "http"}
+    if args.region:
+        connect_kwargs["region"] = args.region
+
+    try:
+        public_tunnel = ngrok.connect(**connect_kwargs)
+    except Exception as exc:  # pragma: no cover - runtime/network dependent
+        # Retry without region if the ngrok binary rejects the field (v3+)
+        if "field region not found" in str(exc):
+            public_tunnel = ngrok.connect(args.port, "http")
+        else:
+            raise
+
     print(f"Public URL: {public_tunnel.public_url}")
     print("Starting uvicorn... (Ctrl+C to stop)")
 

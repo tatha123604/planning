@@ -40,11 +40,11 @@ Colab can host the app and expose it publicly with ngrok.
 import os
 os.environ["NGROK_AUTHTOKEN"] = "<your-token>"
 ```
-4) Start the server with a tunnel (adjust region if you like):
+4) Start the server with a tunnel:
 ```bash
-!python colab_run.py --port 8000 --region in
+!python colab_run.py --port 8000
 ```
-The cell prints a public URL like `https://xxxx.ngrok.io`; open it to use the app.
+The cell prints a public URL like `https://xxxx.ngrok.io`; open it to use the app. (Region is optional; leave it off for ngrok v3 defaults.)
 
 ### Excel upload format
 - Employees: headers `name`, `role`, `hire_date`, `retirement_date`; optional `promotion_role`, `promotion_ready_date`.
