@@ -1,0 +1,40 @@
+run ser ver
+
+
+
+step 1
+
+%%bash
+cd /content/promotion
+git pull origin codex/online || git pull
+pkill -f "uvicorn src.app:app" || true
+nohup python -m uvicorn src.app:app --host 0.0.0.0 --port 8000 --reload > /tmp/uvicorn.log 2>&1 &
+sleep 3
+grep -o "Staff Positions by Working Location" templates/reports.html
+
+
+
+step 2
+ %%bash
+cd /content/promotion
+pkill -f "uvicorn src.app:app" || true
+nohup python -m uvicorn src.app:app --host 0.0.0.0 --port 8000 --reload > /tmp/uvicorn.log 2>&1 &
+sleep 2
+curl -I http://127.0.0.1:8000 || tail -n 20 /tmp/uvicorn.log   # 405 is fine
+
+
+step 3
+
+!pip install -q "pyngrok==7.2.2"
+from pyngrok import conf, ngrok
+conf.get_default().auth_token = "3B9WvAAaNX7E8pzMGKUwIguDc5J_SRAk73NHkVKenW5oVp9f"  # your token
+public = ngrok.connect(8000, "http")
+print("Public URL:", public.public_url, flush=True)
+print("Keep this cell running to keep the link alive.")
+import time
+while True:
+    time.sleep(60)
+
+
+
+
