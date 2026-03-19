@@ -23,6 +23,9 @@ python src/hr.py --as-of 2026-03-17 --horizon-months 12 --lead-time-days 90 \
 
 Features: shows headcount vs requirement, recruiting steps (immediate and timed backfills), promotion schedule, upcoming retirements, roster table, forms to add employees/change requirements, and Excel uploads (employees + seniority). Planning window and lead time are query params on the home page. Roles are sorted by hierarchy: LPM > Motorman > LPP > LPG > LPS (Shunter) > ALP.
 
+Authentication
+- Login required. Default credentials: user `admin`, password `sdah1234`.
+
 ### Run on Google Colab
 Colab can host the app and expose it publicly with ngrok.
 

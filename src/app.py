@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from openpyxl import load_workbook, Workbook
 from sqlmodel import Session, select
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from .db import get_session, init_db
 from .logic import (
@@ -52,6 +53,22 @@ def filter_hire_by(value, days: int = 30):
     except Exception:
         return None
 templates.env.filters["hire_by"] = filter_hire_by
+
+ADMIN_USER = "admin"
+ADMIN_PASS = "sdah1234"
+_AUTH_COOKIE = "session"
+_ALLOWED_PATHS = {"/login", "/logout", "/health"}
+_ALLOWED_PREFIXES = ("/static", "/openapi.json", "/docs", "/redoc")
+
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        path = request.url.path
+        if path in _ALLOWED_PATHS or any(path.startswith(pref) for pref in _ALLOWED_PREFIXES):
+            return await call_next(request)
+        if request.cookies.get(_AUTH_COOKIE) == "ok":
+            return await call_next(request)
+        return RedirectResponse(url="/login", status_code=302)
 
 def _parse_as_of(request: Request, as_of: Optional[str]) -> date:
     """Resolve as_of date from query or cookie; fallback to today."""
@@ -93,6 +110,7 @@ def _parse_date_cookie(request: Request, key: str, param: Optional[str]) -> date
 
 app = FastAPI(title="HR Planner")
 app.mount("/static", StaticFiles(directory=str(BASE_PATH / "static")), name="static")
+app.add_middleware(AuthMiddleware)
 
 # Always serve fresh pages (avoid browser caching dashboards/reports)
 @app.middleware("http")
@@ -160,6 +178,39 @@ def on_startup() -> None:
         seed_all(session)
     finally:
         session.close()
+
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}
+
+
+@app.get("/login")
+def login_form(request: Request, error: str | None = None):
+    return templates.TemplateResponse(
+        "login.html",
+        {"request": request, "error": error},
+    )
+
+
+@app.post("/login")
+async def login_submit(request: Request, username: str = Form(...), password: str = Form(...)):
+    if username == ADMIN_USER and password == ADMIN_PASS:
+        response = RedirectResponse(url="/", status_code=302)
+        response.set_cookie(_AUTH_COOKIE, "ok", httponly=True, max_age=86400)
+        return response
+    return templates.TemplateResponse(
+        "login.html",
+        {"request": request, "error": "Invalid credentials"},
+        status_code=401,
+    )
+
+
+@app.get("/logout")
+def logout():
+    response = RedirectResponse(url="/login", status_code=302)
+    response.delete_cookie(_AUTH_COOKIE)
+    return response
 
 
 @app.get("/")
