@@ -1,61 +1,33 @@
-# HR Planning Prototype
+# CLI Matrix Overdue Updater
 
-Lightweight script to plan headcount, recruiting, and promotions for roles such as Motorman, LPP, LPM, ALP, and Shunter.
+Lightweight Streamlit app to refresh the first two sheets of your CLI Matrix workbook using the latest CMS export.
 
-## Files
-- `config/requirements.json` - target headcount per role.
-- `data/employees.csv` - roster with retirement and promotion readiness dates.
-- `src/hr.py` - planner CLI (console).
-- `src/app.py` - FastAPI web app.
-- `src/models.py`, `src/logic.py`, `src/db.py`, `src/seed.py` - shared data model, planning logic, DB setup, and seed loaders.
-- `templates/index.html`, `static/style.css` - browser UI assets.
+## What it does
+- Reads the new matrix file (e.g., `CLI Matrix-19-03-2026.xlsx`).
+- Aggregates overdue counts by `CLI ID` + `CLI Name` + `Alloted Desig.`.
+- Rebuilds:
+  - Sheet 1 (`Summary position of FP OVERDUE`): only FP overdue rows.
+  - Sheet 2 (`18.03.26` or whatever is the second sheet name in the template): all overdue metrics.
+- Copies the remaining sheets from the template unchanged and saves a fresh workbook.
 
-## Console planner
+## Run locally
 ```bash
-python src/hr.py --as-of 2026-03-17 --horizon-months 12 --lead-time-days 90 \
-  --requirements config/requirements.json --employees data/employees.csv
+cd C:\Users\HP\Documents\Playground
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+streamlit run app.py
 ```
 
-## Web app (browser + local SQLite)
-1) Install deps (once): `python -m pip install -r requirements.txt`
-2) Run server: `python -m uvicorn src.app:app --host 127.0.0.1 --port 8000 --reload`
-3) Open `http://localhost:8000`
+## How to use
+1) Open the Streamlit page in your browser (auto-opens after the command).
+2) Upload:
+   - **Latest CLI Matrix (source)** — the fresh CMS export.
+   - **Template / previous workbook** — the file whose other sheets you want to keep.
+3) Click **Generate output file**.
+4) Download `CLI_Matrix_updated.xlsx`.
 
-Features: shows headcount vs requirement, recruiting steps (immediate and timed backfills), promotion schedule, upcoming retirements, roster table, forms to add employees/change requirements, and Excel uploads (employees + seniority). Planning window and lead time are query params on the home page. Roles are sorted by hierarchy: LPM > Motorman > LPP > LPG > LPS (Shunter) > ALP.
-
-Authentication
-- Login required. Default credentials: user `admin`, password `sdah1234`.
-
-### Run on Google Colab
-Colab can host the app and expose it publicly with ngrok.
-
-1) Clone the online branch and enter it:
-```bash
-!git clone -b codex/online https://gitlab.com/tatha1234/promotion.git
-%cd promotion
-```
-2) Install Colab-specific deps:
-```bash
-!pip install -r requirements-colab.txt
-```
-3) Set your ngrok token (from https://dashboard.ngrok.com/get-started/your-authtoken):
-```python
-import os
-os.environ["NGROK_AUTHTOKEN"] = "<your-token>"
-```
-4) Start the server with a tunnel:
-```bash
-!python colab_run.py --port 8000
-```
-The cell prints a public URL like `https://xxxx.ngrok.io`; open it to use the app. (Region is optional; leave it off for ngrok v3 defaults.)
-
-### Excel upload format
-- Employees: headers `name`, `role`, `hire_date`, `retirement_date`; optional `promotion_role`, `promotion_ready_date`.
-- Seniority: headers `name`, `role`, `seniority_rank` (or `seniority`); optional `promotion_role`, `promotion_ready_date`. Rows update matching employees.
-- Dates can be ISO strings (YYYY-MM-DD) or Excel date cells. Role aliases like `Shunter`/`LPS(Shunter)` normalize to `LPS`.
-- Promotion ordering: only superior roles per hierarchy; ordered by role then seniority rank then ready date.
-
-## Customize
-- Edit `config/requirements.json` to change required numbers (used for seeding).
-- Add or modify rows in `data/employees.csv` with ISO dates (YYYY-MM-DD) for seeding.
-- Adjust `--horizon-months` and `--lead-time-days` (CLI) or form fields (web) per policy.
+## Notes
+- Column detection is driven by the header row at index 2 of the source file (after the two title rows).
+- Date parsing assumes `dayfirst=True` (e.g., `19-03-2026`).
+- Total overdue is recalculated as `FP + Counsel + Grading` per row before aggregation.
