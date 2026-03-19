@@ -29,6 +29,9 @@
           <h1>Reports</h1>
           <p>Cumulative retirements, CLI distribution, and detailed listings. Use the filters inside each section.</p>
         </div>
+        <div class="header-actions">
+          <a class="ghost small" href="/logout">Logout</a>
+        </div>
       </header>
 
       {% set recalc = request.query_params.get('start_date') or request.query_params.get('end_date') %}

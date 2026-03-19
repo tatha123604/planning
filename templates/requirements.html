@@ -29,6 +29,9 @@
           <h1>Requirements</h1>
           <p>Recalculate staffing and see the key panels.</p>
         </div>
+        <div class="header-actions">
+          <a class="ghost small" href="/logout">Logout</a>
+        </div>
         <form class="inline" method="get" action="/requirements">
           <label>As of <input type="date" name="as_of" value="{{ as_of.isoformat() }}" /></label>
           <input type="hidden" name="horizon_months" value="0" />
