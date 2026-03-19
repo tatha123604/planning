@@ -548,11 +548,7 @@ def reports_page(
     working_summary = []
     working_map: dict[str, dict[str, int]] = {}
     for e in employees:
-        loc_raw = (e.working_at or "").strip()
-        # Only include CCR entries in the staff position table
-        if loc_raw.lower() != "ccr":
-            continue
-        loc = loc_raw or "CCR"
+        loc = (e.working_at or "Unassigned").strip() or "Unassigned"
         role_key = e.role
         working_map.setdefault(loc, {}).setdefault(role_key, 0)
         working_map[loc][role_key] += 1
