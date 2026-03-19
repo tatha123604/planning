@@ -69,6 +69,37 @@
 
       <section class="card collapsible">
         <details open>
+          <summary>Staff Positions by Working Location</summary>
+          <p>Counts of employees per role grouped by <code>working_at</code>.</p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Working At</th>
+                  {% for role in role_headers %}
+                    <th>{{ role }}</th>
+                  {% endfor %}
+                  <th>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in working_summary %}
+                  <tr>
+                    <td>{{ row.working_at }}</td>
+                    {% for role in role_headers %}
+                      <td>{{ row.counts[role] }}</td>
+                    {% endfor %}
+                    <td>{{ row.total }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      </section>
+
+      <section class="card collapsible">
+        <details open>
           <summary>Retirements by Role</summary>
           <form class="inline" method="get" action="/reports">
             <label>From <input type="date" name="start_date" value="{{ start_date.isoformat() }}" /></label>

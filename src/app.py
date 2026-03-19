@@ -543,6 +543,24 @@ def reports_page(
     horizon_months = 0
     employees = session.exec(select(Employee)).all()
     cli_distribution = build_cli_distribution(employees)
+    dynamic_roles = sorted({e.role for e in employees if e.role not in ROLE_ORDER})
+    role_headers = ROLE_ORDER + [r for r in dynamic_roles if r not in ROLE_ORDER]
+    working_summary = []
+    working_map: dict[str, dict[str, int]] = {}
+    for e in employees:
+        loc = (e.working_at or "Unassigned").strip() or "Unassigned"
+        role_key = e.role
+        working_map.setdefault(loc, {}).setdefault(role_key, 0)
+        working_map[loc][role_key] += 1
+    for loc in sorted(working_map.keys(), key=lambda x: x.lower()):
+        counts = {r: working_map[loc].get(r, 0) for r in role_headers}
+        working_summary.append(
+            {
+                "working_at": loc,
+                "counts": counts,
+                "total": sum(counts.values()),
+            }
+        )
     retirements: dict[str, int] = {}
     retiring_list = []
     for e in employees:
@@ -567,6 +585,8 @@ def reports_page(
         "retiring_list": retiring_list,
         "dashboard_link": f"/?as_of={start.isoformat()}&horizon_months={horizon_months}",
         "cli_distribution": cli_distribution,
+        "role_headers": role_headers,
+        "working_summary": working_summary,
     },
 )
     response.set_cookie("as_of", end.isoformat())
