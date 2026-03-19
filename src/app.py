@@ -547,8 +547,21 @@ def reports_page(
     role_headers = ROLE_ORDER + [r for r in dynamic_roles if r not in ROLE_ORDER]
     working_summary = []
     working_map: dict[str, dict[str, int]] = {}
+    allowed_working = [
+        "CC(R) BT",
+        "CC(R) DDJ",
+        "CC(R) NH",
+        "CC(R) NORTH",
+        "CC(R) RHA",
+        "CC(R) SOUTH",
+    ]
+    allowed_norm = {loc.upper(): loc for loc in allowed_working}
     for e in employees:
-        loc = (e.working_at or "Unassigned").strip() or "Unassigned"
+        loc_raw = (e.working_at or "").strip()
+        loc_key = loc_raw.upper()
+        if loc_key not in allowed_norm:
+            continue  # skip non-CCR entries
+        loc = allowed_norm[loc_key]  # use canonical casing
         role_key = e.role
         working_map.setdefault(loc, {}).setdefault(role_key, 0)
         working_map[loc][role_key] += 1
