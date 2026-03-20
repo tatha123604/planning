@@ -158,7 +158,14 @@
                   <td>{{ (e.retirement_date | hire_by(30)) | dmy if e.retirement_date else '' }}</td>
                   <td>{{ e.working_at or '' }}</td>
                   <td>{{ e.status or '' }}</td>
-                  <td><a class="ghost small" href="/employees/{{ e.id }}">Edit</a></td>
+                  <td class="actions-cell actions-col">
+                    <details class="actions-toggle">
+                      <summary></summary>
+                      <div>
+                        <a class="ghost small" href="/employees/{{ e.id }}">Edit</a>
+                      </div>
+                    </details>
+                  </td>
                 </tr>
                 {% endfor %}
               </tbody>

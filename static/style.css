@@ -95,6 +95,20 @@ ul { padding-left: 18px; margin: 6px 0; }
 .ghost.small, .danger.small { padding: 6px 10px; font-size: 12px; }
 .danger { background: #ff6b6b; color: #0b1220; border: none; }
 .danger:hover { filter: brightness(1.05); }
+.actions-toggle { display: inline-block; }
+.actions-toggle summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 4px 8px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 6px;
+  color: #e5e7f0;
+  font-size: 12px;
+}
+.actions-toggle summary::-webkit-details-marker { display: none; }
+.actions-toggle summary:after { content: "⋯"; }
+.actions-toggle div { margin-top: 6px; display: flex; gap: 6px; }
 .collapsible details > summary {
   cursor: pointer;
   font-weight: 700;
