@@ -11,4 +11,6 @@ COPY . .
 # Ensure data dir exists; Railway volume can mount here
 RUN mkdir -p /app/data
 
-CMD ["python", "main.py"]
+EXPOSE 8000
+
+CMD ["uvicorn", "src.app:app", "--host", "0.0.0.0", "--port", "8000"]
