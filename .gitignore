@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+promotion/
+all.txt
+railway_dns.png
