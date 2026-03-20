@@ -44,12 +44,12 @@
             <a class="ghost" href="/reports/cli-distribution.xlsx">Download Excel</a>
           </div>
           <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>CLI</th>
-                  <th>Gradation A</th>
-                  <th>Gradation B</th>
+          <table class="paged">
+            <thead>
+              <tr>
+                <th>CLI</th>
+                <th>Gradation A</th>
+                <th>Gradation B</th>
                   <th>Gradation C</th>
                   <th>Total</th>
                 </tr>
@@ -110,7 +110,7 @@
             <button type="submit">Recalculate</button>
             {# <a class="ghost" href="{{ dashboard_link }}">Apply dates to Dashboard</a> #}
           </form>
-          <table>
+          <table class="paged">
             <thead>
               <tr><th>Role</th><th>Retirements</th></tr>
             </thead>
@@ -133,12 +133,12 @@
             <p><a class="ghost small" href="/reports?start_date={{ start_date.isoformat() }}&end_date={{ end_date.isoformat() }}">Clear role filter</a></p>
           {% endif %}
           <div class="table-wrap">
-            <table class="employee-table">
+            <table class="employee-table paged">
               <thead>
                 <tr>
                   <th>Name</th>
-                <th>Role</th>
-                <th>CLI</th>
+                  <th>Role</th>
+                  <th>CLI</th>
                 <th>Gradation</th>
                 <th>Retirement Date</th>
                 <th>Hire By (30d before)</th>
@@ -186,5 +186,6 @@
       document.body.classList.remove('nav-hidden');
     })();
   </script>
+  <script src="/static/table-pager.js"></script>
 </body>
 </html>

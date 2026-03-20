@@ -38,7 +38,7 @@
         <div class="card">
           <h2>Headcount vs Requirement</h2>
           <p class="hint">Target date: {{ target_date | dmy }}</p>
-          <table>
+          <table class="paged">
             <thead>
               <tr><th>Role</th><th>Man on Role</th><th>No. of Retirements</th><th>IN HAND</th></tr>
             </thead>
@@ -120,5 +120,6 @@
       document.body.classList.remove('nav-hidden');
     })();
   </script>
+  <script src="/static/table-pager.js"></script>
 </body>
 </html>
