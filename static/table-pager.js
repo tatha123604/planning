@@ -56,6 +56,7 @@
       if (page > maxPage) page = maxPage;
 
       rows.forEach((row, idx) => {
+        row.classList.remove("table-paged-active");
         if (ps === 0) {
           row.style.display = "";
         } else {
@@ -95,6 +96,14 @@
         page += 1;
         render();
       }
+    });
+
+    // row click highlight
+    rows.forEach((row) => {
+      row.addEventListener("click", () => {
+        rows.forEach((r) => r.classList.remove("table-paged-active"));
+        row.classList.add("table-paged-active");
+      });
     });
 
     controls.append(label, select, prev, next);

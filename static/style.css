@@ -72,9 +72,10 @@ h2 { margin-top: 0; color: #f1f4ff; }
 .table-wrap { width: 100%; }
 table { width: 100%; border-collapse: collapse; color: #e5e7f0; table-layout: auto; }
 th, td { padding: 10px 10px; border-bottom: 1px solid rgba(255,255,255,0.08); text-align: left; }
-th { font-size: 13px; text-transform: uppercase; letter-spacing: 0.03em; color: #9aa3b9; }
+th { font-size: 13px; text-transform: uppercase; letter-spacing: 0.03em; color: #cfe7ff; }
 tr.ok td { background: rgba(102, 225, 182, 0.08); }
 tr.warn td { background: rgba(255, 149, 128, 0.08); }
+.table-paged-active td { background: rgba(102, 225, 182, 0.12); }
 ul { padding-left: 18px; margin: 6px 0; }
 .hint { font-size: 12px; color: #8b92a8; margin: 6px 0; }
 .summary-chip {
@@ -88,6 +89,7 @@ ul { padding-left: 18px; margin: 6px 0; }
 .employee-table tbody tr:nth-child(odd) td { background: rgba(255,255,255,0.02); }
 .employee-table td { font-size: 13px; white-space: nowrap; }
 .employee-table th { position: sticky; top: 0; background: rgba(17,24,39,0.95); }
+.employee-table tr.active td { background: rgba(102, 225, 182, 0.15); }
 .employee-table .working-at-col { min-width: 120px; max-width: 160px; }
 .employee-table .actions-col { width: 1%; padding-left: 6px; padding-right: 6px; }
 .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
