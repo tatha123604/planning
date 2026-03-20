@@ -96,9 +96,6 @@
                 <th>PME Due</th>
                 <th>Technical Due</th>
                 <th>Transportation Due</th>
-                  <th>Promotion Role</th>
-                  <th>Promotion Ready</th>
-                  <th>Seniority</th>
                   <th>Category</th>
                   <th>PF No</th>
                   <th>HRMS</th>
@@ -120,9 +117,6 @@
                 <td>{{ e.pme_due | dmy }}</td>
                 <td>{{ e.technical_due | dmy }}</td>
                 <td>{{ e.transportation_due | dmy }}</td>
-                  <td>{{ e.promotion_role or '' }}</td>
-                  <td>{{ e.promotion_ready_date | dmy }}</td>
-                  <td>{{ e.seniority_rank if e.seniority_rank is not none else '' }}</td>
                   <td>{{ e.category or '' }}</td>
                   <td>{{ e.pf_no or '' }}</td>
                   <td>{{ e.hrms or '' }}</td>
