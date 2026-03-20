@@ -133,7 +133,7 @@ def sync_bootstrap(session: Session) -> None:
                 "dob": _parse_optional_date(row["dob"]),
                 "doa": _parse_optional_date(row["doa"]),
                 "do_report": _parse_optional_date(row["do_report"]),
-                "status": row["status"],
+                "status": row["status"] or "ACTIVE",
                 "working_at": row["working_at"],
                 "gradation": row["gradation"],
                 "cli": row["cli"],

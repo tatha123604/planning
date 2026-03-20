@@ -103,8 +103,8 @@
                   <th>CLI</th>
                   <th>DOB</th>
                   <th>Status</th>
-                  <th>Working At</th>
-                  <th>Actions</th>
+                  <th class="working-at-col">Working At</th>
+                  <th class="actions-col">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -124,8 +124,8 @@
                   <td>{{ e.cli or '' }}</td>
                   <td>{{ e.dob | dmy }}</td>
                   <td>{{ e.status or '' }}</td>
-                  <td>{{ e.working_at or '' }}</td>
-                  <td class="actions-cell">
+                  <td class="working-at-col">{{ e.working_at or '' }}</td>
+                  <td class="actions-cell actions-col">
                     <a class="ghost small" href="/employees/{{ e.id }}">Edit</a>
                     <form method="post" action="/employees/{{ e.id }}/delete" onsubmit="return confirm('Delete {{ e.name }}?');" style="display:inline;">
                       <button type="submit" class="danger small">Delete</button>

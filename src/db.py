@@ -33,6 +33,7 @@ def init_db() -> None:
         ]:
             if col not in names:
                 conn.execute(text(f"ALTER TABLE employee ADD COLUMN {col} {ddl};"))
+        conn.execute(text("UPDATE employee SET status = 'ACTIVE' WHERE status IS NULL OR TRIM(status) = '';"))
         # If retirement_date is NOT NULL, rebuild table to allow NULL and normalize placeholder date
         retirement_col = next((c for c in cols if c[1] == "retirement_date"), None)
         retirement_notnull = retirement_col and retirement_col[3] == 1

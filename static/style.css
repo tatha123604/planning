@@ -86,8 +86,10 @@ ul { padding-left: 18px; margin: 6px 0; }
 .employee-table tbody tr:nth-child(odd) td { background: rgba(255,255,255,0.02); }
 .employee-table td { font-size: 13px; white-space: nowrap; }
 .employee-table th { position: sticky; top: 0; background: rgba(17,24,39,0.95); }
+.employee-table .working-at-col { min-width: 120px; max-width: 160px; }
+.employee-table .actions-col { width: 1%; padding-left: 6px; padding-right: 6px; }
 .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
-.actions-cell { white-space: nowrap; }
+.actions-cell { white-space: nowrap; min-width: 116px; }
 .ghost.small, .danger.small { padding: 6px 10px; font-size: 12px; }
 .danger { background: #ff6b6b; color: #0b1220; border: none; }
 .danger:hover { filter: brightness(1.05); }
