@@ -5,4 +5,5 @@ __pycache__/
 .tmp
 data/*.db
 data/*.sqlite
+!data/hr.db
 *.log

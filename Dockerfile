@@ -8,8 +8,8 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt
 
 COPY . .
-# Ensure data dir exists; Railway volume can mount here
-RUN mkdir -p /app/data
+# Preserve the tracked baseline DB outside the mounted data volume.
+RUN mkdir -p /app/data /bootstrap && cp /app/data/hr.db /bootstrap/hr.db
 
 EXPOSE 8080
 
