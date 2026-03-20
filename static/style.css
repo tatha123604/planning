@@ -76,9 +76,9 @@ th { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: 
 tr.ok td { background: rgba(102, 225, 182, 0.08); }
 tr.warn td { background: rgba(255, 149, 128, 0.08); }
 .table-paged-active td {
-  background: linear-gradient(90deg, rgba(123,215,255,0.5), rgba(108,99,255,0.4));
-  box-shadow: inset 0 0 0 1px rgba(108,99,255,0.6), inset 0 0 0 2px rgba(18,189,231,0.35);
-  color: #0b1220;
+  background: #baf0ff;
+  box-shadow: inset 0 0 0 2px rgba(18,189,231,0.55);
+  color: #072035;
   font-weight: 700;
 }
 ul { padding-left: 18px; margin: 6px 0; }
