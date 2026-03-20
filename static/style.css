@@ -5,7 +5,7 @@ body {
   padding: 0;
   background: radial-gradient(circle at 20% 20%, #11203b 0, rgba(17,32,59,0) 30%), radial-gradient(circle at 80% 10%, #0e2f4d 0, rgba(14,47,77,0) 25%), radial-gradient(circle at 50% 80%, #133860 0, rgba(19,56,96,0) 35%), #0b1220;
 }
-.layout { display: flex; min-height: 100vh; }
+.layout { display: flex; min-height: 100vh; min-width: 0; }
 .sidebar {
   flex: 0 0 240px;
   width: 240px;
@@ -27,7 +27,7 @@ body {
 .side-links a:hover { background: rgba(255,255,255,0.06); }
 .hierarchy { color: #8b92a8; font-size: 13px; line-height: 1.4; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 12px; }
 
-.content { flex: 1; padding: 18px 24px 32px; }
+.content { flex: 1; min-width: 0; width: 100%; padding: 18px 24px 32px; }
 
 header { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; padding: 6px 4px 12px; }
 h1 { margin: 0 0 4px 0; color: #f1f4ff; }
@@ -68,7 +68,9 @@ button:hover { filter: brightness(1.05); }
 }
 h2 { margin-top: 0; color: #f1f4ff; }
 .table-wrap { overflow-x: auto; }
-table { width: 100%; border-collapse: collapse; color: #e5e7f0; }
+.card { width: 100%; }
+.table-wrap { width: 100%; }
+table { width: 100%; border-collapse: collapse; color: #e5e7f0; table-layout: auto; }
 th, td { padding: 10px 10px; border-bottom: 1px solid rgba(255,255,255,0.08); text-align: left; }
 th { font-size: 13px; text-transform: uppercase; letter-spacing: 0.03em; color: #9aa3b9; }
 tr.ok td { background: rgba(102, 225, 182, 0.08); }
