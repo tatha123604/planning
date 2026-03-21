@@ -224,7 +224,8 @@ ul { padding-left: 18px; margin: 6px 0; }
   .nav-hidden .sidebar { transform: translateX(-105%); }
   .content { padding: 16px; }
   .sidebar-toggle-btn {
-    left: 12px;
+    left: auto;
+    right: 12px;
     top: 14px;
     transform: none;
     width: 34px;
