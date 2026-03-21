@@ -43,6 +43,10 @@ def format_dmy(value):
     except Exception:
         return str(value)
 templates.env.filters["dmy"] = format_dmy
+ASSET_VER = "v20260321c"
+templates.env.globals["asset_ver"] = ASSET_VER
+ASSET_VER = "v20260321b"
+templates.env.globals["asset_ver"] = ASSET_VER
 
 
 def filter_hire_by(value, days: int = 30):

@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SDAH Crew Planner</title>
-  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="stylesheet" href="/static/style.css?v={{ asset_ver }}" />
 </head>
 <body>
   <div class="layout">
@@ -120,7 +120,7 @@
       document.body.classList.remove('nav-hidden');
     })();
   </script>
-  <script src="/static/table-pager.js"></script>
-  <script src="/static/sidebar-toggle.js"></script>
+  <script src="/static/table-pager.js?v={{ asset_ver }}"></script>
+  <script src="/static/sidebar-toggle.js?v={{ asset_ver }}"></script>
 </body>
 </html>
