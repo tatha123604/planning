@@ -99,10 +99,11 @@
     });
 
     // row click highlight
-    rows.forEach((row) => {
+    rows.forEach((row, idx) => {
       row.addEventListener("click", () => {
-        rows.forEach((r) => r.classList.remove("table-paged-active"));
+        rows.forEach((r) => r.classList.remove("table-paged-active", "table-paged-active-odd", "table-paged-active-even"));
         row.classList.add("table-paged-active");
+        row.classList.add(idx % 2 === 0 ? "table-paged-active-odd" : "table-paged-active-even");
       });
     });
 
