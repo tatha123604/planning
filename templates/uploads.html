@@ -110,7 +110,7 @@
       brand.style.cursor = 'pointer';
       brand.setAttribute('title', 'Click to hide/show navigation');
       brand.setAttribute('tabindex', '0');
-      const toggle = () => document.body.classList.toggle('nav-hidden');
+      const toggle = () => { document.body.classList.toggle('nav-hidden'); syncNavToggle(); };
       brand.addEventListener('click', toggle);
       brand.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -118,8 +118,30 @@
           toggle();
         }
       });
+      let navToggleBtn = null;
+      const syncNavToggle = () => {
+        if (!navToggleBtn) return;
+        const hidden = document.body.classList.contains('nav-hidden');
+        navToggleBtn.textContent = hidden ? 'Show Menu' : 'Hide Menu';
+        navToggleBtn.setAttribute('aria-label', hidden ? 'Show navigation menu' : 'Hide navigation menu');
+      };
+
+      const ensureNavToggle = () => {
+        if (navToggleBtn) return;
+        navToggleBtn = document.createElement('button');
+        navToggleBtn.type = 'button';
+        navToggleBtn.id = 'nav-toggle';
+        navToggleBtn.className = 'ghost small nav-toggle';
+        navToggleBtn.addEventListener('click', toggle);
+        document.body.appendChild(navToggleBtn);
+        syncNavToggle();
+      };
+
       document.body.classList.remove('nav-hidden');
+      ensureNavToggle();
     })();
   </script>
 </body>
 </html>
+
+
