@@ -46,7 +46,7 @@ def _normalize_date(value):
     return value
 
 
-def _extract_report_date(filename: str | None) -> str | None:
+def infer_report_date(filename: str | None) -> date | None:
     if not filename:
         return None
 
@@ -57,8 +57,45 @@ def _extract_report_date(filename: str | None) -> str | None:
     ):
         match = re.search(pattern, stem)
         if match:
-            return f"{match.group('day')}.{match.group('month')}.{match.group('year')}"
+            try:
+                return date(
+                    int(match.group("year")),
+                    int(match.group("month")),
+                    int(match.group("day")),
+                )
+            except ValueError:
+                return None
     return None
+
+
+def coerce_report_date(value) -> date | None:
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    text = str(value).strip()
+    for fmt in ("%Y-%m-%d", "%d.%m.%Y", "%d-%m-%Y", "%d_%m_%Y"):
+        try:
+            return datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def format_report_date(value) -> str | None:
+    report_date = coerce_report_date(value)
+    if not report_date:
+        return None
+    return report_date.strftime("%d.%m.%Y")
+
+
+def report_date_iso(value) -> str:
+    report_date = coerce_report_date(value)
+    if not report_date:
+        return ""
+    return report_date.isoformat()
 
 
 def _replace_date_string(value: str, report_date: str) -> str:
@@ -324,10 +361,17 @@ def _write_sheet2(ws, df: pd.DataFrame) -> None:
     _trim_trailing_empty_rows(ws, data_start, end_col)
 
 
-def build_output_workbook(source_file, template_file, source_filename: str | None = None) -> BytesIO:
+def build_output_workbook(
+    source_file,
+    template_file,
+    source_filename: str | None = None,
+    report_date_value=None,
+) -> BytesIO:
     summary_df = build_summary_df(source_file)
     sheet2_df = build_sheet2_df(source_file)
-    report_date = _extract_report_date(source_filename)
+    report_date = format_report_date(report_date_value) or format_report_date(
+        infer_report_date(source_filename)
+    )
 
     workbook = load_workbook(_as_stream(template_file))
     if len(workbook.sheetnames) < 2:

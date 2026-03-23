@@ -20,9 +20,9 @@ source_file = st.file_uploader("Latest CLI Matrix (input file)", type=["xlsx"])
 template_file = st.file_uploader("Template / previous workbook (output base)", type=["xlsx"])
 
 default_name = "CLI_Matrix_updated.xlsx"
-if template_file is not None and template_file.name:
-    template_name = Path(template_file.name).stem
-    default_name = f"{template_name}_updated.xlsx"
+if source_file is not None and source_file.name:
+    source_name = Path(source_file.name).stem
+    default_name = f"{source_name}_updated.xlsx"
 
 if st.button("Generate output file", type="primary"):
     if source_file is None or template_file is None:

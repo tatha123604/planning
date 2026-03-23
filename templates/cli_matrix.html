@@ -47,22 +47,101 @@
               <input id="source-file" type="file" name="source_file" accept=".xlsx,.xlsm" required />
             </label>
             <label>Template / previous workbook
-              <input id="template-file" type="file" name="template_file" accept=".xlsx,.xlsm" required />
+              <input id="template-file" type="file" name="template_file" accept=".xlsx,.xlsm" />
+            </label>
+            <label>Report date
+              <input id="report-date" type="date" name="report_date" value="{{ report_date or '' }}" />
             </label>
             <p class="hint">
               Source file: latest export with columns like <code>CLI ID</code>, <code>CLI Name</code>, <code>AllotedDesig.</code>, and <code>FPOverDue</code>.
               Template file: workbook with the 5 sheets whose formatting should be preserved.
             </p>
+            <p class="hint">The report date is auto-detected from the input filename when possible, and you can still adjust it manually.</p>
             <p class="hint">
               Output: Sheet 1 keeps FP overdue rows only, merges repeated CLI names, preserves template style, and writes the total in the FP Over Due column.
               Sheet 2 refreshes all overdue values by CLI and designation.
             </p>
             <div class="actions">
-              <button type="submit">Generate and download</button>
+              <button type="submit" class="ghost" formaction="/cli-matrix/preview" formmethod="post">Preview tables</button>
+              <button type="submit" id="generate-cli-matrix">Generate and download</button>
               <button type="button" class="ghost" id="reset-cli-matrix">Reset files</button>
             </div>
           </form>
         </div>
+
+        {% if summary_rows %}
+        <div class="card">
+          <h2>Summary position of FP OVERDUE</h2>
+          <div class="table-wrap">
+            <table class="employee-table paged">
+              <thead>
+                <tr>
+                  <th>S.No.</th>
+                  <th>CLI ID</th>
+                  <th>CLI Name</th>
+                  <th>Alloted Desig.</th>
+                  <th>FP Over Due</th>
+                  <th>Oldest FP OverDue Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in summary_rows %}
+                <tr>
+                  <td>{{ row["S.No."] }}</td>
+                  <td>{{ row["CLI ID"] }}</td>
+                  <td>{{ row["CLI Name"] }}</td>
+                  <td>{{ row["Alloted Desig."] }}</td>
+                  <td>{{ row["FP Over Due"] }}</td>
+                  <td>{{ row["Oldest FP OverDue Date"] | dmy }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        {% endif %}
+
+        {% if overdue_rows %}
+        <div class="card">
+          <h2>Total Summary of OVERDUE</h2>
+          <div class="table-wrap">
+            <table class="employee-table paged">
+              <thead>
+                <tr>
+                  <th>S.No.</th>
+                  <th>CLI ID</th>
+                  <th>CLI Name</th>
+                  <th>Alloted Desig.</th>
+                  <th>FP Over Due</th>
+                  <th>Oldest FP OverDue Date</th>
+                  <th>Counsel Over Due</th>
+                  <th>Oldest Counsel OverDue Date</th>
+                  <th>Grading OverDue</th>
+                  <th>Oldest Grading OverDue</th>
+                  <th>Total Over Due Cases</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in overdue_rows %}
+                <tr>
+                  <td>{{ row["S.No."] }}</td>
+                  <td>{{ row["CLI ID"] }}</td>
+                  <td>{{ row["CLI Name"] }}</td>
+                  <td>{{ row["Alloted Desig."] }}</td>
+                  <td>{{ row["FP Over Due"] }}</td>
+                  <td>{{ row["Oldest FP OverDue Date"] | dmy }}</td>
+                  <td>{{ row["Counsel Over Due"] }}</td>
+                  <td>{{ row["Oldest Counsel OverDue Date"] | dmy }}</td>
+                  <td>{{ row["Grading OverDue"] }}</td>
+                  <td>{{ row["Oldest Grading OverDue"] | dmy }}</td>
+                  <td>{{ row["Total Over Due Cases"] }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        {% endif %}
       </section>
     </main>
   </div>
@@ -86,7 +165,18 @@
       const form = document.querySelector('#cli-matrix-form');
       const sourceInput = document.querySelector('#source-file');
       const templateInput = document.querySelector('#template-file');
+      const reportDateInput = document.querySelector('#report-date');
       const resetBtn = document.querySelector('#reset-cli-matrix');
+
+      const inferDateFromName = (name) => {
+        if (!name) return '';
+        const stem = name.replace(/\.[^.]+$/, '');
+        let match = stem.match(/(\d{2})[.\-_](\d{2})[.\-_](\d{4})/);
+        if (match) return `${match[3]}-${match[2]}-${match[1]}`;
+        match = stem.match(/(\d{4})[.\-_](\d{2})[.\-_](\d{2})/);
+        if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+        return '';
+      };
 
       const clearFiles = () => {
         if (sourceInput) sourceInput.value = '';
@@ -94,17 +184,32 @@
       };
 
       if (resetBtn) {
-        resetBtn.addEventListener('click', clearFiles);
+        resetBtn.addEventListener('click', () => {
+          clearFiles();
+          if (reportDateInput) reportDateInput.value = '';
+        });
+      }
+
+      if (sourceInput) {
+        sourceInput.addEventListener('change', () => {
+          const file = sourceInput.files && sourceInput.files[0];
+          if (!file || !reportDateInput) return;
+          const inferredDate = inferDateFromName(file.name);
+          if (inferredDate) reportDateInput.value = inferredDate;
+        });
       }
 
       if (form) {
-        form.addEventListener('submit', () => {
-          window.setTimeout(clearFiles, 1200);
+        form.addEventListener('submit', (event) => {
+          if (event.submitter && event.submitter.id === 'generate-cli-matrix') {
+            window.setTimeout(clearFiles, 1200);
+          }
         });
       }
     })();
   </script>
   <script src="/static/sidebar-toggle.js"></script>
+  <script src="/static/table-pager.js"></script>
 </body>
 </html>
 

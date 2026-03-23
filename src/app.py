@@ -31,7 +31,13 @@ from .logic import (
 )
 from .models import Employee, Requirement
 from .seed import seed_all
-from processor import build_output_workbook
+from processor import (
+    build_output_workbook,
+    build_sheet2_df,
+    build_summary_df,
+    infer_report_date,
+    report_date_iso,
+)
 
 BASE_PATH = Path(__file__).resolve().parent.parent
 templates = Jinja2Templates(directory=str(BASE_PATH / "templates"))
@@ -474,16 +480,74 @@ def uploads_page(request: Request):
     )
 
 
+def _cli_matrix_context(
+    request: Request,
+    error: Optional[str] = None,
+    report_date: str = "",
+    summary_rows: Optional[list[dict]] = None,
+    overdue_rows: Optional[list[dict]] = None,
+):
+    return {
+        "request": request,
+        "active_page": "cli_matrix",
+        "role_order": ROLE_ORDER,
+        "error": error,
+        "report_date": report_date,
+        "summary_rows": summary_rows or [],
+        "overdue_rows": overdue_rows or [],
+    }
+
+
 @app.get("/cli-matrix")
 def cli_matrix_page(request: Request, error: Optional[str] = None):
     return templates.TemplateResponse(
         "cli_matrix.html",
-        {
-            "request": request,
-            "active_page": "cli_matrix",
-            "role_order": ROLE_ORDER,
-            "error": error,
-        },
+        _cli_matrix_context(request, error=error),
+    )
+
+
+@app.post("/cli-matrix/preview")
+async def preview_cli_matrix(
+    request: Request,
+    source_file: UploadFile = File(...),
+    report_date: Optional[str] = Form(None),
+):
+    source_name = source_file.filename or ""
+    if not source_name.lower().endswith((".xlsx", ".xlsm")):
+        return templates.TemplateResponse(
+            "cli_matrix.html",
+            _cli_matrix_context(
+                request,
+                error="Latest CLI Matrix must be an .xlsx file.",
+                report_date=report_date or report_date_iso(infer_report_date(source_name)),
+            ),
+            status_code=400,
+        )
+
+    try:
+        source_bytes = await source_file.read()
+        summary_df = build_summary_df(source_bytes)
+        overdue_df = build_sheet2_df(source_bytes)
+        selected_date = report_date or report_date_iso(infer_report_date(source_name))
+    except Exception as exc:
+        return templates.TemplateResponse(
+            "cli_matrix.html",
+            _cli_matrix_context(
+                request,
+                error=f"CLI Matrix preview failed: {exc}",
+                report_date=report_date or report_date_iso(infer_report_date(source_name)),
+            ),
+            status_code=400,
+        )
+
+    return templates.TemplateResponse(
+        "cli_matrix.html",
+        _cli_matrix_context(
+            request,
+            report_date=selected_date,
+            summary_rows=summary_df.to_dict(orient="records"),
+            overdue_rows=overdue_df.to_dict(orient="records"),
+        ),
     )
 
 
@@ -491,50 +555,53 @@ def cli_matrix_page(request: Request, error: Optional[str] = None):
 async def generate_cli_matrix(
     request: Request,
     source_file: UploadFile = File(...),
-    template_file: UploadFile = File(...),
+    template_file: Optional[UploadFile] = File(None),
+    report_date: Optional[str] = Form(None),
 ):
     source_name = source_file.filename or ""
-    template_name = template_file.filename or ""
+    template_name = template_file.filename if template_file else ""
     if not source_name.lower().endswith((".xlsx", ".xlsm")):
         return templates.TemplateResponse(
             "cli_matrix.html",
-            {
-                "request": request,
-                "active_page": "cli_matrix",
-                "role_order": ROLE_ORDER,
-                "error": "Latest CLI Matrix must be an .xlsx file.",
-            },
+            _cli_matrix_context(
+                request,
+                error="Latest CLI Matrix must be an .xlsx file.",
+                report_date=report_date or report_date_iso(infer_report_date(source_name)),
+            ),
             status_code=400,
         )
-    if not template_name.lower().endswith((".xlsx", ".xlsm")):
+    if not template_file or not template_name.lower().endswith((".xlsx", ".xlsm")):
         return templates.TemplateResponse(
             "cli_matrix.html",
-            {
-                "request": request,
-                "active_page": "cli_matrix",
-                "role_order": ROLE_ORDER,
-                "error": "Template workbook must be an .xlsx file.",
-            },
+            _cli_matrix_context(
+                request,
+                error="Template workbook must be an .xlsx file.",
+                report_date=report_date or report_date_iso(infer_report_date(source_name)),
+            ),
             status_code=400,
         )
 
     try:
         source_bytes = await source_file.read()
         template_bytes = await template_file.read()
-        output = build_output_workbook(source_bytes, template_bytes, source_name)
+        output = build_output_workbook(
+            source_bytes,
+            template_bytes,
+            source_name,
+            report_date,
+        )
     except Exception as exc:
         return templates.TemplateResponse(
             "cli_matrix.html",
-            {
-                "request": request,
-                "active_page": "cli_matrix",
-                "role_order": ROLE_ORDER,
-                "error": f"CLI Matrix generation failed: {exc}",
-            },
+            _cli_matrix_context(
+                request,
+                error=f"CLI Matrix generation failed: {exc}",
+                report_date=report_date or report_date_iso(infer_report_date(source_name)),
+            ),
             status_code=400,
         )
 
-    base_name = template_name.rsplit(".", 1)[0] if "." in template_name else "CLI_Matrix"
+    base_name = source_name.rsplit(".", 1)[0] if "." in source_name else "CLI_Matrix"
     filename = f"{base_name}_updated.xlsx"
     return StreamingResponse(
         iter([output.getvalue()]),
