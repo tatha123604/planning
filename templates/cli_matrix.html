@@ -41,12 +41,12 @@
           {% if error %}
           <p class="error-text">{{ error }}</p>
           {% endif %}
-          <form method="post" action="/cli-matrix/generate" enctype="multipart/form-data">
+          <form id="cli-matrix-form" method="post" action="/cli-matrix/generate" enctype="multipart/form-data">
             <label>Latest CLI Matrix file
-              <input type="file" name="source_file" accept=".xlsx,.xlsm" required />
+              <input id="source-file" type="file" name="source_file" accept=".xlsx,.xlsm" required />
             </label>
             <label>Template / previous workbook
-              <input type="file" name="template_file" accept=".xlsx,.xlsm" required />
+              <input id="template-file" type="file" name="template_file" accept=".xlsx,.xlsm" required />
             </label>
             <p class="hint">
               Source file: latest export with columns like <code>CLI ID</code>, <code>CLI Name</code>, <code>AllotedDesig.</code>, and <code>FPOverDue</code>.
@@ -56,7 +56,10 @@
               Output: Sheet 1 keeps FP overdue rows only, merges repeated CLI names, preserves template style, and writes the total in the FP Over Due column.
               Sheet 2 refreshes all overdue values by CLI and designation.
             </p>
-            <button type="submit">Generate and download</button>
+            <div class="actions">
+              <button type="submit">Generate and download</button>
+              <button type="button" class="ghost" id="reset-cli-matrix">Reset files</button>
+            </div>
           </form>
         </div>
       </section>
@@ -78,6 +81,26 @@
         }
       });
       document.body.classList.remove('nav-hidden');
+
+      const form = document.querySelector('#cli-matrix-form');
+      const sourceInput = document.querySelector('#source-file');
+      const templateInput = document.querySelector('#template-file');
+      const resetBtn = document.querySelector('#reset-cli-matrix');
+
+      const clearFiles = () => {
+        if (sourceInput) sourceInput.value = '';
+        if (templateInput) templateInput.value = '';
+      };
+
+      if (resetBtn) {
+        resetBtn.addEventListener('click', clearFiles);
+      }
+
+      if (form) {
+        form.addEventListener('submit', () => {
+          window.setTimeout(clearFiles, 1200);
+        });
+      }
     })();
   </script>
 </body>
