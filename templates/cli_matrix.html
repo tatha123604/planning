@@ -86,13 +86,14 @@
         </div>
 
         {% if summary_rows %}
-        <section class="card collapsible">
-          <details open>
-            <summary>Summary position of FP OVERDUE</summary>
-            <div class="table-wrap">
-              <table class="employee-table paged">
-                <thead>
-                  <tr>
+          <section class="card collapsible">
+            <details open>
+              <summary>Summary position of FP OVERDUE</summary>
+              <div class="table-wrap">
+                {% set summary_total = namespace(fp=0) %}
+                <table class="employee-table paged">
+                  <thead>
+                    <tr>
                     <th>S.No.</th>
                     <th>CLI ID</th>
                     <th>CLI Name</th>
@@ -101,20 +102,26 @@
                     <th>Oldest FP OverDue Date</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {% for row in summary_rows %}
-                  <tr>
-                    <td>{{ row["S.No."] }}</td>
-                    <td>{{ row["CLI ID"] }}</td>
+                  <tbody>
+                    {% for row in summary_rows %}
+                    {% set summary_total.fp = summary_total.fp + row["FP Over Due"] %}
+                    <tr>
+                      <td>{{ row["S.No."] }}</td>
+                      <td>{{ row["CLI ID"] }}</td>
                     <td>{{ row["CLI Name"] }}</td>
                     <td>{{ row["Alloted Desig."] }}</td>
                     <td>{{ row["FP Over Due"] }}</td>
-                    <td>{{ row["Oldest FP OverDue Date"] | dmy }}</td>
-                  </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
-            </div>
+                      <td>{{ row["Oldest FP OverDue Date"] | dmy }}</td>
+                    </tr>
+                    {% endfor %}
+                    <tr class="active">
+                      <td colspan="4"><strong>TOTAL</strong></td>
+                      <td><strong>{{ summary_total.fp }}</strong></td>
+                      <td></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
           </details>
         </section>
         {% endif %}
