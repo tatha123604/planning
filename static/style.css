@@ -197,6 +197,9 @@ ul { padding-left: 18px; margin: 6px 0; }
   box-shadow: 0 10px 30px rgba(0,0,0,0.35);
   z-index: 1000;
 }
+.nav-hidden .content {
+  padding-top: 96px;
+}
 .sidebar-toggle-btn {
   position: fixed;
   left: 252px;
@@ -241,6 +244,7 @@ ul { padding-left: 18px; margin: 6px 0; }
   }
   .nav-hidden .sidebar { transform: translateX(-105%); }
   .content { padding: 16px; }
+  .nav-hidden .content { padding-top: 88px; }
   .sidebar-toggle-btn {
     left: 12px;
     top: 14px;
