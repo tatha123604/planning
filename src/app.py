@@ -688,7 +688,6 @@ async def preview_cli_matrix(
                 error="Latest CLI Matrix must be an .xlsx file.",
                 report_date=selected_date,
             ),
-            status_code=400,
         )
 
     try:
@@ -705,7 +704,6 @@ async def preview_cli_matrix(
                 error=f"CLI Matrix preview failed: {exc}",
                 report_date=selected_date,
             ),
-            status_code=400,
         )
 
     return templates.TemplateResponse(
@@ -739,7 +737,6 @@ async def generate_cli_matrix(
                 error="Latest CLI Matrix must be an .xlsx file.",
                 report_date=selected_date,
             ),
-            status_code=400,
         )
     if not template_file or not template_name.lower().endswith((".xlsx", ".xlsm")):
         return templates.TemplateResponse(
@@ -749,7 +746,6 @@ async def generate_cli_matrix(
                 error="Template workbook must be an .xlsx file.",
                 report_date=selected_date,
             ),
-            status_code=400,
         )
 
     try:
@@ -773,7 +769,6 @@ async def generate_cli_matrix(
                 error=f"CLI Matrix generation failed: {exc}",
                 report_date=selected_date,
             ),
-            status_code=400,
         )
 
     base_name = source_name.rsplit(".", 1)[0] if "." in source_name else "CLI_Matrix"
