@@ -31,6 +31,7 @@ from .logic import (
 )
 from .models import Employee, Requirement
 from .seed import seed_all
+from processor import build_output_workbook
 
 BASE_PATH = Path(__file__).resolve().parent.parent
 templates = Jinja2Templates(directory=str(BASE_PATH / "templates"))
@@ -470,6 +471,75 @@ def uploads_page(request: Request):
             "active_page": "uploads",
             "role_order": ROLE_ORDER,
         },
+    )
+
+
+@app.get("/cli-matrix")
+def cli_matrix_page(request: Request, error: Optional[str] = None):
+    return templates.TemplateResponse(
+        "cli_matrix.html",
+        {
+            "request": request,
+            "active_page": "cli_matrix",
+            "role_order": ROLE_ORDER,
+            "error": error,
+        },
+    )
+
+
+@app.post("/cli-matrix/generate")
+async def generate_cli_matrix(
+    request: Request,
+    source_file: UploadFile = File(...),
+    template_file: UploadFile = File(...),
+):
+    source_name = source_file.filename or ""
+    template_name = template_file.filename or ""
+    if not source_name.lower().endswith((".xlsx", ".xlsm")):
+        return templates.TemplateResponse(
+            "cli_matrix.html",
+            {
+                "request": request,
+                "active_page": "cli_matrix",
+                "role_order": ROLE_ORDER,
+                "error": "Latest CLI Matrix must be an .xlsx file.",
+            },
+            status_code=400,
+        )
+    if not template_name.lower().endswith((".xlsx", ".xlsm")):
+        return templates.TemplateResponse(
+            "cli_matrix.html",
+            {
+                "request": request,
+                "active_page": "cli_matrix",
+                "role_order": ROLE_ORDER,
+                "error": "Template workbook must be an .xlsx file.",
+            },
+            status_code=400,
+        )
+
+    try:
+        source_bytes = await source_file.read()
+        template_bytes = await template_file.read()
+        output = build_output_workbook(source_bytes, template_bytes)
+    except Exception as exc:
+        return templates.TemplateResponse(
+            "cli_matrix.html",
+            {
+                "request": request,
+                "active_page": "cli_matrix",
+                "role_order": ROLE_ORDER,
+                "error": f"CLI Matrix generation failed: {exc}",
+            },
+            status_code=400,
+        )
+
+    base_name = template_name.rsplit(".", 1)[0] if "." in template_name else "CLI_Matrix"
+    filename = f"{base_name}_updated.xlsx"
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

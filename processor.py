@@ -1,0 +1,290 @@
+from __future__ import annotations
+
+from copy import copy
+from datetime import date, datetime
+from io import BytesIO
+from typing import BinaryIO
+
+import pandas as pd
+from openpyxl import load_workbook
+
+
+def _read_bytes(file_obj) -> bytes:
+    if isinstance(file_obj, (bytes, bytearray)):
+        return bytes(file_obj)
+    if isinstance(file_obj, str):
+        with open(file_obj, "rb") as handle:
+            return handle.read()
+    if hasattr(file_obj, "getvalue"):
+        return file_obj.getvalue()
+    if hasattr(file_obj, "read"):
+        pos = None
+        if hasattr(file_obj, "tell"):
+            pos = file_obj.tell()
+        data = file_obj.read()
+        if hasattr(file_obj, "seek") and pos is not None:
+            file_obj.seek(pos)
+        return data
+    raise TypeError("Unsupported file input")
+
+
+def _as_stream(file_obj) -> BytesIO:
+    return BytesIO(_read_bytes(file_obj))
+
+
+def _normalize_date(value):
+    if pd.isna(value):
+        return None
+    if isinstance(value, pd.Timestamp):
+        return value.to_pydatetime()
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, date):
+        return datetime.combine(value, datetime.min.time())
+    return value
+
+
+def _load_source_dataframe(source_file) -> pd.DataFrame:
+    df = pd.read_excel(_as_stream(source_file), skiprows=2)
+    df.columns = [str(col).strip().replace("\n", " ") for col in df.columns]
+    df = df.rename(
+        columns={
+            "AllotedDesig.": "Alloted Desig.",
+            "Oldest FPOverDue Date": "Oldest FP OverDue Date",
+            "CounselOverDue": "Counsel Over Due",
+            "Oldest CounselOverDue Date": "Oldest Counsel OverDue Date",
+            "GradingOverDue": "Grading OverDue",
+            "Oldest GradingOverDue": "Oldest Grading OverDue",
+            "TotalOverDue Cases": "Total Over Due Cases",
+        }
+    )
+    needed = [
+        "CLI ID",
+        "CLI Name",
+        "Alloted Desig.",
+        "FPOverDue",
+        "Oldest FP OverDue Date",
+        "Counsel Over Due",
+        "Oldest Counsel OverDue Date",
+        "Grading OverDue",
+        "Oldest Grading OverDue",
+    ]
+    missing = [col for col in needed if col not in df.columns]
+    if missing:
+        raise ValueError(f"Missing source columns: {', '.join(missing)}")
+
+    df = df[df["CLI ID"].notna()].copy()
+    df["CLI ID"] = df["CLI ID"].astype(str).str.strip()
+    df["CLI Name"] = df["CLI Name"].fillna("").astype(str).str.strip()
+    df["Alloted Desig."] = df["Alloted Desig."].fillna("").astype(str).str.strip()
+
+    for col in ["FPOverDue", "Counsel Over Due", "Grading OverDue"]:
+        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
+
+    for col in [
+        "Oldest FP OverDue Date",
+        "Oldest Counsel OverDue Date",
+        "Oldest Grading OverDue",
+    ]:
+        df[col] = pd.to_datetime(df[col], errors="coerce", dayfirst=True)
+
+    df["Total Over Due Cases"] = (
+        df["FPOverDue"] + df["Counsel Over Due"] + df["Grading OverDue"]
+    )
+    return df
+
+
+def _aggregate_source(df: pd.DataFrame) -> pd.DataFrame:
+    grouped = (
+        df.groupby(["CLI ID", "CLI Name", "Alloted Desig."], dropna=False, sort=True)
+        .agg(
+            {
+                "FPOverDue": "sum",
+                "Oldest FP OverDue Date": "min",
+                "Counsel Over Due": "sum",
+                "Oldest Counsel OverDue Date": "min",
+                "Grading OverDue": "sum",
+                "Oldest Grading OverDue": "min",
+                "Total Over Due Cases": "sum",
+            }
+        )
+        .reset_index()
+    )
+    return grouped.sort_values(["CLI ID", "CLI Name", "Alloted Desig."]).reset_index(
+        drop=True
+    )
+
+
+def build_summary_df(source_file) -> pd.DataFrame:
+    aggregated = _aggregate_source(_load_source_dataframe(source_file))
+    summary = aggregated[aggregated["FPOverDue"] > 0].copy()
+    summary = summary.rename(columns={"FPOverDue": "FP Over Due"})
+    summary = summary[
+        [
+            "CLI ID",
+            "CLI Name",
+            "Alloted Desig.",
+            "FP Over Due",
+            "Oldest FP OverDue Date",
+        ]
+    ].reset_index(drop=True)
+    summary.insert(0, "S.No.", range(1, len(summary) + 1))
+    return summary
+
+
+def build_sheet2_df(source_file) -> pd.DataFrame:
+    aggregated = _aggregate_source(_load_source_dataframe(source_file)).copy()
+    aggregated = aggregated.rename(columns={"FPOverDue": "FP Over Due"})
+    aggregated = aggregated[
+        [
+            "CLI ID",
+            "CLI Name",
+            "Alloted Desig.",
+            "FP Over Due",
+            "Oldest FP OverDue Date",
+            "Counsel Over Due",
+            "Oldest Counsel OverDue Date",
+            "Grading OverDue",
+            "Oldest Grading OverDue",
+            "Total Over Due Cases",
+        ]
+    ].reset_index(drop=True)
+    aggregated.insert(0, "S.No.", range(1, len(aggregated) + 1))
+    return aggregated
+
+
+def _copy_cell_style(source_cell, target_cell) -> None:
+    target_cell._style = copy(source_cell._style)
+    target_cell.font = copy(source_cell.font)
+    target_cell.fill = copy(source_cell.fill)
+    target_cell.border = copy(source_cell.border)
+    target_cell.alignment = copy(source_cell.alignment)
+    target_cell.protection = copy(source_cell.protection)
+    target_cell.number_format = source_cell.number_format
+
+
+def _clear_merges(ws, from_row: int) -> None:
+    for merged_range in list(ws.merged_cells.ranges):
+        if merged_range.min_row >= from_row:
+            ws.unmerge_cells(str(merged_range))
+
+
+def _clear_range(ws, start_row: int, end_row: int, end_col: int) -> None:
+    for row in range(start_row, end_row + 1):
+        for col in range(1, end_col + 1):
+            ws.cell(row=row, column=col).value = None
+
+
+def _apply_row_style(ws, source_row: int, target_row: int, end_col: int) -> None:
+    for col in range(1, end_col + 1):
+        _copy_cell_style(ws.cell(source_row, col), ws.cell(target_row, col))
+    if ws.row_dimensions[source_row].height is not None:
+        ws.row_dimensions[target_row].height = ws.row_dimensions[source_row].height
+
+
+def _write_dataframe(ws, df: pd.DataFrame, start_row: int) -> None:
+    for row_index in range(len(df)):
+        for col_index, col_name in enumerate(df.columns, start=1):
+            value = df.iloc[row_index, col_index - 1]
+            ws.cell(row=start_row + row_index, column=col_index).value = _normalize_date(value)
+
+
+def _merge_same_cli(ws, start_row: int, count: int, cli_col: int, name_col: int) -> None:
+    if count <= 1:
+        return
+    block_start = start_row
+    current_cli = ws.cell(start_row, cli_col).value
+    for row in range(start_row + 1, start_row + count):
+        value = ws.cell(row, cli_col).value
+        if value != current_cli:
+            if current_cli and row - 1 > block_start:
+                ws.merge_cells(
+                    start_row=block_start,
+                    end_row=row - 1,
+                    start_column=cli_col,
+                    end_column=cli_col,
+                )
+                ws.merge_cells(
+                    start_row=block_start,
+                    end_row=row - 1,
+                    start_column=name_col,
+                    end_column=name_col,
+                )
+            block_start = row
+            current_cli = value
+    if current_cli and start_row + count - 1 > block_start:
+        ws.merge_cells(
+            start_row=block_start,
+            end_row=start_row + count - 1,
+            start_column=cli_col,
+            end_column=cli_col,
+        )
+        ws.merge_cells(
+            start_row=block_start,
+            end_row=start_row + count - 1,
+            start_column=name_col,
+            end_column=name_col,
+        )
+
+
+def _find_total_row(ws, start_row: int) -> int:
+    for row in range(start_row, ws.max_row + 1):
+        value = ws.cell(row, 1).value
+        if isinstance(value, str) and "total" in value.lower():
+            return row
+    return start_row + 19
+
+
+def _write_sheet1(ws, df: pd.DataFrame) -> None:
+    data_start = 3
+    total_template_row = _find_total_row(ws, data_start)
+    _clear_merges(ws, data_start)
+    _clear_range(ws, data_start, max(ws.max_row, data_start + len(df) + 2), 6)
+
+    for offset in range(len(df)):
+        _apply_row_style(ws, 3, data_start + offset, 6)
+
+    _write_dataframe(ws, df, data_start)
+    _merge_same_cli(ws, data_start, len(df), 2, 3)
+
+    total_row = data_start + len(df)
+    _apply_row_style(ws, total_template_row, total_row, 6)
+    ws.cell(total_row, 1).value = "TOTAL FP DUE"
+    ws.cell(total_row, 5).value = f"=SUM(E{data_start}:E{total_row - 1})"
+    ws.cell(total_row, 2).value = None
+    ws.cell(total_row, 3).value = None
+    ws.cell(total_row, 4).value = None
+    ws.cell(total_row, 6).value = None
+    ws.merge_cells(start_row=total_row, end_row=total_row, start_column=1, end_column=4)
+    ws.merge_cells(start_row=total_row, end_row=total_row, start_column=5, end_column=6)
+
+
+def _write_sheet2(ws, df: pd.DataFrame) -> None:
+    data_start = 3
+    end_col = 11
+    _clear_merges(ws, data_start)
+    _clear_range(ws, data_start, max(ws.max_row, data_start + len(df) + 2), end_col)
+
+    for offset in range(len(df)):
+        _apply_row_style(ws, 3, data_start + offset, end_col)
+
+    _write_dataframe(ws, df, data_start)
+    _merge_same_cli(ws, data_start, len(df), 2, 3)
+
+
+def build_output_workbook(source_file, template_file) -> BytesIO:
+    summary_df = build_summary_df(source_file)
+    sheet2_df = build_sheet2_df(source_file)
+
+    workbook = load_workbook(_as_stream(template_file))
+    if len(workbook.sheetnames) < 2:
+        raise ValueError("Template workbook must have at least 2 sheets")
+
+    _write_sheet1(workbook[workbook.sheetnames[0]], summary_df)
+    _write_sheet2(workbook[workbook.sheetnames[1]], sheet2_df)
+    workbook.calculation.fullCalcOnLoad = True
+
+    output = BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    return output

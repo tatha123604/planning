@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CLI Matrix | SDAH Crew Planner</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="dot"></div>
+        <span>SDAH Crew Planner</span>
+      </div>
+      <nav class="side-links">
+        <a class="{{ 'active' if active_page == 'dashboard' else '' }}" href="/">Dashboard</a>
+        <a class="{{ 'active' if active_page == 'employees' else '' }}" href="/employees">Employees</a>
+        <a class="{{ 'active' if active_page == 'uploads' else '' }}" href="/uploads">Uploads</a>
+        <a class="{{ 'active' if active_page == 'cli_matrix' else '' }}" href="/cli-matrix">CLI Matrix</a>
+        <a class="{{ 'active' if active_page == 'requirements' else '' }}" href="/requirements">Requirements</a>
+        <a class="{{ 'active' if active_page == 'reports' else '' }}" href="/reports">Reports</a>
+      </nav>
+      <div class="hierarchy">Hierarchy: LPM &gt; Motorman &gt; LPP &gt; LPG &gt; LPS (Shunter) &gt; ALP</div>
+    </aside>
+
+    <main class="content">
+      <header>
+        <div>
+          <h1>CLI Matrix</h1>
+          <p>Update Sheet 1 and Sheet 2 from the latest CLI Matrix export while keeping the template workbook format and remaining sheets.</p>
+        </div>
+        <div class="header-actions">
+          <a class="ghost small" href="/logout">Logout</a>
+        </div>
+      </header>
+
+      <section class="grid">
+        <div class="card">
+          <h2>Generate workbook</h2>
+          {% if error %}
+          <p class="error-text">{{ error }}</p>
+          {% endif %}
+          <form method="post" action="/cli-matrix/generate" enctype="multipart/form-data">
+            <label>Latest CLI Matrix file
+              <input type="file" name="source_file" accept=".xlsx,.xlsm" required />
+            </label>
+            <label>Template / previous workbook
+              <input type="file" name="template_file" accept=".xlsx,.xlsm" required />
+            </label>
+            <p class="hint">
+              Source file: latest export with columns like <code>CLI ID</code>, <code>CLI Name</code>, <code>AllotedDesig.</code>, and <code>FPOverDue</code>.
+              Template file: workbook with the 5 sheets whose formatting should be preserved.
+            </p>
+            <p class="hint">
+              Output: Sheet 1 keeps FP overdue rows only, merges repeated CLI names, preserves template style, and writes the total in the FP Over Due column.
+              Sheet 2 refreshes all overdue values by CLI and designation.
+            </p>
+            <button type="submit">Generate and download</button>
+          </form>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script>
+    (() => {
+      const brand = document.querySelector('.brand');
+      if (!brand) return;
+      brand.style.cursor = 'pointer';
+      brand.setAttribute('title', 'Click to hide/show navigation');
+      brand.setAttribute('tabindex', '0');
+      const toggle = () => document.body.classList.toggle('nav-hidden');
+      brand.addEventListener('click', toggle);
+      brand.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          toggle();
+        }
+      });
+      document.body.classList.remove('nav-hidden');
+    })();
+  </script>
+</body>
+</html>
