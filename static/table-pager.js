@@ -5,6 +5,13 @@
     if (!table.tBodies.length) return;
     const rows = Array.from(table.tBodies[0].rows || []);
     if (!rows.length) return;
+    const isTotalRow = (row) =>
+      Array.from(row.cells || []).some((cell) =>
+        String(cell.textContent || "").trim().toUpperCase() === "TOTAL"
+      );
+    const stickyRows = rows.filter(isTotalRow);
+    const pageableRows = rows.filter((row) => !isTotalRow(row));
+    if (!pageableRows.length) return;
 
     let pageSize = DEFAULT_PAGE_SIZE;
     let page = 0;
@@ -50,12 +57,12 @@
     info.style.fontSize = "13px";
 
     function render() {
-      const total = rows.length;
+      const total = pageableRows.length;
       const ps = pageSize === 0 ? total : pageSize;
       const maxPage = ps === 0 ? 0 : Math.max(0, Math.ceil(total / ps) - 1);
       if (page > maxPage) page = maxPage;
 
-      rows.forEach((row, idx) => {
+      pageableRows.forEach((row, idx) => {
         row.classList.remove("table-paged-active");
         if (ps === 0) {
           row.style.display = "";
@@ -64,6 +71,10 @@
           const end = start + ps;
           row.style.display = idx >= start && idx < end ? "" : "none";
         }
+      });
+
+      stickyRows.forEach((row) => {
+        row.style.display = "";
       });
 
       const startIdx = ps === 0 ? 1 : page * ps + 1;
