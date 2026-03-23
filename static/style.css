@@ -111,7 +111,10 @@ tr.warn td { background: rgba(255, 149, 128, 0.08); }
   box-shadow: inset 0 0 0 2px rgba(18,189,231,0.55);
   font-weight: 700;
 }
-.table-paged-active-odd td { color: #fff6a1; }
+.table-paged-active-odd td {
+  background: #05070d;
+  color: #fff6a1;
+}
 .table-paged-active-even td { color: #0b1630; }
 ul { padding-left: 18px; margin: 6px 0; }
 .hint { font-size: 12px; color: #8b92a8; margin: 6px 0; }
