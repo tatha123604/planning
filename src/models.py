@@ -31,3 +31,30 @@ class Employee(SQLModel, table=True):
 class Requirement(SQLModel, table=True):
     role: str = Field(primary_key=True)
     needed: int
+
+
+class CliMatrixSummarySnapshot(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    report_date: date = Field(index=True)
+    row_no: int = Field(index=True)
+    cli_id: str
+    cli_name: str
+    alloted_desig: str
+    fp_over_due: int
+    oldest_fp_overdue_date: date | None = None
+
+
+class CliMatrixOverdueSnapshot(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    report_date: date = Field(index=True)
+    row_no: int = Field(index=True)
+    cli_id: str
+    cli_name: str
+    alloted_desig: str
+    fp_over_due: int
+    oldest_fp_overdue_date: date | None = None
+    counsel_over_due: int
+    oldest_counsel_overdue_date: date | None = None
+    grading_overdue: int
+    oldest_grading_overdue_date: date | None = None
+    total_over_due_cases: int

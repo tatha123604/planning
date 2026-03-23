@@ -29,12 +29,18 @@ from .logic import (
     role_sort_key,
     normalize_role,
 )
-from .models import Employee, Requirement
+from .models import (
+    CliMatrixOverdueSnapshot,
+    CliMatrixSummarySnapshot,
+    Employee,
+    Requirement,
+)
 from .seed import seed_all
 from processor import (
     build_output_workbook,
     build_sheet2_df,
     build_summary_df,
+    coerce_report_date,
     infer_report_date,
     report_date_iso,
 )
@@ -486,6 +492,7 @@ def _cli_matrix_context(
     report_date: str = "",
     summary_rows: Optional[list[dict]] = None,
     overdue_rows: Optional[list[dict]] = None,
+    saved_notice: str = "",
 ):
     return {
         "request": request,
@@ -495,14 +502,171 @@ def _cli_matrix_context(
         "report_date": report_date,
         "summary_rows": summary_rows or [],
         "overdue_rows": overdue_rows or [],
+        "saved_notice": saved_notice,
     }
 
 
+def _cli_matrix_record_date(value) -> date | None:
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if hasattr(value, "to_pydatetime"):
+        try:
+            return value.to_pydatetime().date()
+        except Exception:
+            return None
+    return None
+
+
+def _save_cli_matrix_snapshots(
+    session: Session,
+    report_date_value: date,
+    summary_df,
+    overdue_df,
+) -> None:
+    existing_summary = session.exec(
+        select(CliMatrixSummarySnapshot).where(
+            CliMatrixSummarySnapshot.report_date == report_date_value
+        )
+    ).all()
+    for row in existing_summary:
+        session.delete(row)
+
+    existing_overdue = session.exec(
+        select(CliMatrixOverdueSnapshot).where(
+            CliMatrixOverdueSnapshot.report_date == report_date_value
+        )
+    ).all()
+    for row in existing_overdue:
+        session.delete(row)
+
+    for record in summary_df.to_dict(orient="records"):
+        session.add(
+            CliMatrixSummarySnapshot(
+                report_date=report_date_value,
+                row_no=int(record["S.No."]),
+                cli_id=str(record["CLI ID"]),
+                cli_name=str(record["CLI Name"]),
+                alloted_desig=str(record["Alloted Desig."]),
+                fp_over_due=int(record["FP Over Due"]),
+                oldest_fp_overdue_date=_cli_matrix_record_date(
+                    record["Oldest FP OverDue Date"]
+                ),
+            )
+        )
+
+    for record in overdue_df.to_dict(orient="records"):
+        session.add(
+            CliMatrixOverdueSnapshot(
+                report_date=report_date_value,
+                row_no=int(record["S.No."]),
+                cli_id=str(record["CLI ID"]),
+                cli_name=str(record["CLI Name"]),
+                alloted_desig=str(record["Alloted Desig."]),
+                fp_over_due=int(record["FP Over Due"]),
+                oldest_fp_overdue_date=_cli_matrix_record_date(
+                    record["Oldest FP OverDue Date"]
+                ),
+                counsel_over_due=int(record["Counsel Over Due"]),
+                oldest_counsel_overdue_date=_cli_matrix_record_date(
+                    record["Oldest Counsel OverDue Date"]
+                ),
+                grading_overdue=int(record["Grading OverDue"]),
+                oldest_grading_overdue_date=_cli_matrix_record_date(
+                    record["Oldest Grading OverDue"]
+                ),
+                total_over_due_cases=int(record["Total Over Due Cases"]),
+            )
+        )
+
+    cutoff_date = date.today() - timedelta(days=31)
+    old_summary = session.exec(
+        select(CliMatrixSummarySnapshot).where(
+            CliMatrixSummarySnapshot.report_date < cutoff_date
+        )
+    ).all()
+    for row in old_summary:
+        session.delete(row)
+
+    old_overdue = session.exec(
+        select(CliMatrixOverdueSnapshot).where(
+            CliMatrixOverdueSnapshot.report_date < cutoff_date
+        )
+    ).all()
+    for row in old_overdue:
+        session.delete(row)
+
+    session.commit()
+
+
+def _load_cli_matrix_snapshots(session: Session, report_date_value: date) -> tuple[list[dict], list[dict]]:
+    summary_rows = session.exec(
+        select(CliMatrixSummarySnapshot)
+        .where(CliMatrixSummarySnapshot.report_date == report_date_value)
+        .order_by(CliMatrixSummarySnapshot.row_no)
+    ).all()
+    overdue_rows = session.exec(
+        select(CliMatrixOverdueSnapshot)
+        .where(CliMatrixOverdueSnapshot.report_date == report_date_value)
+        .order_by(CliMatrixOverdueSnapshot.row_no)
+    ).all()
+
+    return (
+        [
+            {
+                "S.No.": row.row_no,
+                "CLI ID": row.cli_id,
+                "CLI Name": row.cli_name,
+                "Alloted Desig.": row.alloted_desig,
+                "FP Over Due": row.fp_over_due,
+                "Oldest FP OverDue Date": row.oldest_fp_overdue_date,
+            }
+            for row in summary_rows
+        ],
+        [
+            {
+                "S.No.": row.row_no,
+                "CLI ID": row.cli_id,
+                "CLI Name": row.cli_name,
+                "Alloted Desig.": row.alloted_desig,
+                "FP Over Due": row.fp_over_due,
+                "Oldest FP OverDue Date": row.oldest_fp_overdue_date,
+                "Counsel Over Due": row.counsel_over_due,
+                "Oldest Counsel OverDue Date": row.oldest_counsel_overdue_date,
+                "Grading OverDue": row.grading_overdue,
+                "Oldest Grading OverDue": row.oldest_grading_overdue_date,
+                "Total Over Due Cases": row.total_over_due_cases,
+            }
+            for row in overdue_rows
+        ],
+    )
+
+
 @app.get("/cli-matrix")
-def cli_matrix_page(request: Request, error: Optional[str] = None):
+def cli_matrix_page(
+    request: Request,
+    error: Optional[str] = None,
+    report_date: Optional[str] = None,
+    session: Session = Depends(get_session),
+):
+    selected_date = coerce_report_date(report_date) or date.today()
+    summary_rows, overdue_rows = _load_cli_matrix_snapshots(session, selected_date)
+    saved_notice = ""
+    if report_date and not summary_rows and not overdue_rows:
+        saved_notice = "No saved CLI Matrix snapshot found for the selected date."
     return templates.TemplateResponse(
         "cli_matrix.html",
-        _cli_matrix_context(request, error=error),
+        _cli_matrix_context(
+            request,
+            error=error,
+            report_date=selected_date.isoformat(),
+            summary_rows=summary_rows,
+            overdue_rows=overdue_rows,
+            saved_notice=saved_notice,
+        ),
     )
 
 
@@ -511,15 +675,18 @@ async def preview_cli_matrix(
     request: Request,
     source_file: UploadFile = File(...),
     report_date: Optional[str] = Form(None),
+    session: Session = Depends(get_session),
 ):
     source_name = source_file.filename or ""
+    inferred_date = coerce_report_date(report_date) or infer_report_date(source_name)
+    selected_date = report_date_iso(inferred_date)
     if not source_name.lower().endswith((".xlsx", ".xlsm")):
         return templates.TemplateResponse(
             "cli_matrix.html",
             _cli_matrix_context(
                 request,
                 error="Latest CLI Matrix must be an .xlsx file.",
-                report_date=report_date or report_date_iso(infer_report_date(source_name)),
+                report_date=selected_date,
             ),
             status_code=400,
         )
@@ -528,14 +695,15 @@ async def preview_cli_matrix(
         source_bytes = await source_file.read()
         summary_df = build_summary_df(source_bytes)
         overdue_df = build_sheet2_df(source_bytes)
-        selected_date = report_date or report_date_iso(infer_report_date(source_name))
+        if inferred_date:
+            _save_cli_matrix_snapshots(session, inferred_date, summary_df, overdue_df)
     except Exception as exc:
         return templates.TemplateResponse(
             "cli_matrix.html",
             _cli_matrix_context(
                 request,
                 error=f"CLI Matrix preview failed: {exc}",
-                report_date=report_date or report_date_iso(infer_report_date(source_name)),
+                report_date=selected_date,
             ),
             status_code=400,
         )
@@ -557,16 +725,19 @@ async def generate_cli_matrix(
     source_file: UploadFile = File(...),
     template_file: Optional[UploadFile] = File(None),
     report_date: Optional[str] = Form(None),
+    session: Session = Depends(get_session),
 ):
     source_name = source_file.filename or ""
     template_name = template_file.filename if template_file else ""
+    inferred_date = coerce_report_date(report_date) or infer_report_date(source_name)
+    selected_date = report_date_iso(inferred_date)
     if not source_name.lower().endswith((".xlsx", ".xlsm")):
         return templates.TemplateResponse(
             "cli_matrix.html",
             _cli_matrix_context(
                 request,
                 error="Latest CLI Matrix must be an .xlsx file.",
-                report_date=report_date or report_date_iso(infer_report_date(source_name)),
+                report_date=selected_date,
             ),
             status_code=400,
         )
@@ -576,7 +747,7 @@ async def generate_cli_matrix(
             _cli_matrix_context(
                 request,
                 error="Template workbook must be an .xlsx file.",
-                report_date=report_date or report_date_iso(infer_report_date(source_name)),
+                report_date=selected_date,
             ),
             status_code=400,
         )
@@ -584,19 +755,23 @@ async def generate_cli_matrix(
     try:
         source_bytes = await source_file.read()
         template_bytes = await template_file.read()
+        summary_df = build_summary_df(source_bytes)
+        overdue_df = build_sheet2_df(source_bytes)
         output = build_output_workbook(
             source_bytes,
             template_bytes,
             source_name,
-            report_date,
+            inferred_date,
         )
+        if inferred_date:
+            _save_cli_matrix_snapshots(session, inferred_date, summary_df, overdue_df)
     except Exception as exc:
         return templates.TemplateResponse(
             "cli_matrix.html",
             _cli_matrix_context(
                 request,
                 error=f"CLI Matrix generation failed: {exc}",
-                report_date=report_date or report_date_iso(infer_report_date(source_name)),
+                report_date=selected_date,
             ),
             status_code=400,
         )
