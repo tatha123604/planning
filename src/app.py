@@ -521,7 +521,7 @@ async def generate_cli_matrix(
     try:
         source_bytes = await source_file.read()
         template_bytes = await template_file.read()
-        output = build_output_workbook(source_bytes, template_bytes)
+        output = build_output_workbook(source_bytes, template_bytes, source_name)
     except Exception as exc:
         return templates.TemplateResponse(
             "cli_matrix.html",

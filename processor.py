@@ -3,6 +3,8 @@ from __future__ import annotations
 from copy import copy
 from datetime import date, datetime
 from io import BytesIO
+from pathlib import Path
+import re
 from typing import BinaryIO
 
 import pandas as pd
@@ -42,6 +44,25 @@ def _normalize_date(value):
     if isinstance(value, date):
         return datetime.combine(value, datetime.min.time())
     return value
+
+
+def _extract_report_date(filename: str | None) -> str | None:
+    if not filename:
+        return None
+
+    stem = Path(filename).stem
+    for pattern in (
+        r"(?P<day>\d{2})[.\-_](?P<month>\d{2})[.\-_](?P<year>\d{4})",
+        r"(?P<year>\d{4})[.\-_](?P<month>\d{2})[.\-_](?P<day>\d{2})",
+    ):
+        match = re.search(pattern, stem)
+        if match:
+            return f"{match.group('day')}.{match.group('month')}.{match.group('year')}"
+    return None
+
+
+def _replace_date_string(value: str, report_date: str) -> str:
+    return re.sub(r"\d{2}[.\-_]\d{2}[.\-_]\d{4}", report_date, value)
 
 
 def _load_source_dataframe(source_file) -> pd.DataFrame:
@@ -236,6 +257,34 @@ def _find_total_row(ws, start_row: int) -> int:
     return start_row + 19
 
 
+def _trim_trailing_empty_rows(ws, start_row: int, end_col: int) -> None:
+    last_used_row = start_row - 1
+    for row in range(start_row, ws.max_row + 1):
+        if any(ws.cell(row, col).value not in (None, "") for col in range(1, end_col + 1)):
+            last_used_row = row
+    if last_used_row < ws.max_row:
+        ws.delete_rows(last_used_row + 1, ws.max_row - last_used_row)
+
+
+def _update_sheet_headers(ws, report_date: str | None) -> None:
+    if not report_date:
+        return
+
+    for row in ws.iter_rows():
+        for cell in row:
+            if isinstance(cell.value, str) and "CLI MATRIX" in cell.value.upper():
+                cell.value = _replace_date_string(cell.value, report_date)
+
+    for header_name in ("oddHeader", "evenHeader", "firstHeader"):
+        header = getattr(ws, header_name, None)
+        if header is None:
+            continue
+        for part_name in ("left", "center", "right"):
+            part = getattr(header, part_name, None)
+            if part is not None and getattr(part, "text", ""):
+                part.text = _replace_date_string(part.text, report_date)
+
+
 def _write_sheet1(ws, df: pd.DataFrame) -> None:
     data_start = 3
     total_template_row = _find_total_row(ws, data_start)
@@ -258,6 +307,7 @@ def _write_sheet1(ws, df: pd.DataFrame) -> None:
     ws.cell(total_row, 6).value = None
     ws.merge_cells(start_row=total_row, end_row=total_row, start_column=1, end_column=4)
     ws.merge_cells(start_row=total_row, end_row=total_row, start_column=5, end_column=6)
+    _trim_trailing_empty_rows(ws, data_start, 6)
 
 
 def _write_sheet2(ws, df: pd.DataFrame) -> None:
@@ -271,18 +321,27 @@ def _write_sheet2(ws, df: pd.DataFrame) -> None:
 
     _write_dataframe(ws, df, data_start)
     _merge_same_cli(ws, data_start, len(df), 2, 3)
+    _trim_trailing_empty_rows(ws, data_start, end_col)
 
 
-def build_output_workbook(source_file, template_file) -> BytesIO:
+def build_output_workbook(source_file, template_file, source_filename: str | None = None) -> BytesIO:
     summary_df = build_summary_df(source_file)
     sheet2_df = build_sheet2_df(source_file)
+    report_date = _extract_report_date(source_filename)
 
     workbook = load_workbook(_as_stream(template_file))
     if len(workbook.sheetnames) < 2:
         raise ValueError("Template workbook must have at least 2 sheets")
 
-    _write_sheet1(workbook[workbook.sheetnames[0]], summary_df)
-    _write_sheet2(workbook[workbook.sheetnames[1]], sheet2_df)
+    sheet1 = workbook[workbook.sheetnames[0]]
+    sheet2 = workbook[workbook.sheetnames[1]]
+
+    _write_sheet1(sheet1, summary_df)
+    _write_sheet2(sheet2, sheet2_df)
+    _update_sheet_headers(sheet1, report_date)
+    _update_sheet_headers(sheet2, report_date)
+    if report_date and re.search(r"\d{2}[.\-_]\d{2}[.\-_]\d{4}", sheet2.title):
+        sheet2.title = _replace_date_string(sheet2.title, report_date)
     workbook.calculation.fullCalcOnLoad = True
 
     output = BytesIO()

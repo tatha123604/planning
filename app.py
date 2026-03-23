@@ -29,7 +29,7 @@ if st.button("Generate output file", type="primary"):
         st.error("Upload both files first.")
     else:
         try:
-            output = build_output_workbook(source_file, template_file)
+            output = build_output_workbook(source_file, template_file, source_file.name)
         except Exception as exc:
             st.error(f"Processing failed: {exc}")
         else:
