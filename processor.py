@@ -134,6 +134,7 @@ def build_summary_df(source_file) -> pd.DataFrame:
 
 def build_sheet2_df(source_file) -> pd.DataFrame:
     aggregated = _aggregate_source(_load_source_dataframe(source_file)).copy()
+    aggregated = aggregated[aggregated["Total Over Due Cases"] > 0].copy()
     aggregated = aggregated.rename(columns={"FPOverDue": "FP Over Due"})
     aggregated = aggregated[
         [
