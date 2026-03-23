@@ -38,22 +38,6 @@
 
       <section>
         <div class="card">
-          <h2>View saved daily data</h2>
-          {% if saved_notice %}
-          <p class="hint">{{ saved_notice }}</p>
-          {% endif %}
-          <form method="get" action="/cli-matrix" class="inline">
-            <label>Saved date
-              <input type="date" name="report_date" value="{{ report_date or '' }}" />
-            </label>
-            <div class="actions">
-              <button type="submit" class="ghost">Load saved data</button>
-            </div>
-          </form>
-          <p class="hint">Each preview or generated CLI Matrix snapshot is stored on the server for about 1 month, so you can reopen old daily values from here.</p>
-        </div>
-
-        <div class="card">
           <h2>Generate workbook</h2>
           {% if error %}
           <p class="error-text">{{ error }}</p>
@@ -83,6 +67,22 @@
               <button type="button" class="ghost" id="reset-cli-matrix">Reset files</button>
             </div>
           </form>
+        </div>
+
+        <div class="card">
+          <h2>View saved daily data</h2>
+          {% if saved_notice %}
+          <p class="hint">{{ saved_notice }}</p>
+          {% endif %}
+          <form method="get" action="/cli-matrix" class="inline">
+            <label>Saved date
+              <input type="date" name="report_date" value="{{ report_date or '' }}" />
+            </label>
+            <div class="actions">
+              <button type="submit" class="ghost">Load saved data</button>
+            </div>
+          </form>
+          <p class="hint">Each preview or generated CLI Matrix snapshot is stored on the server for about 1 month, so you can reopen old daily values from here.</p>
         </div>
 
         {% if summary_rows %}
