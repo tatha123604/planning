@@ -36,7 +36,14 @@ body {
   transition: transform 0.2s ease, background 0.2s ease;
 }
 .brand:hover { background: rgba(255,255,255,0.07); transform: translateY(-1px); }
-.brand .dot { width: 14px; height: 14px; border-radius: 50%; background: linear-gradient(135deg, #12bde7, #66e1b6); box-shadow: 0 0 12px rgba(18,189,231,0.9); }
+.brand-mark {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 8px rgba(255,255,255,0.2));
+}
+.brand span { display: block; }
 .side-links { display: flex; flex-direction: column; gap: 10px; }
 .side-links a {
   color: #c5cada;
