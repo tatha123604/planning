@@ -10,8 +10,9 @@ from sqlmodel import Session, select
 from .models import Employee, Requirement
 from .logic import normalize_role
 
-CONFIG_REQUIREMENTS = Path("config/requirements.json")
-DATA_EMPLOYEES = Path("data/employees.csv")
+BASE_PATH = Path(__file__).resolve().parent.parent
+CONFIG_REQUIREMENTS = BASE_PATH / "config" / "requirements.json"
+DATA_EMPLOYEES = BASE_PATH / "data" / "employees.csv"
 BOOTSTRAP_DB = Path("/bootstrap/hr.db")
 
 

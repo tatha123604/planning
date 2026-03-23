@@ -1,8 +1,14 @@
+import os
 from pathlib import Path
 from sqlalchemy import text
 from sqlmodel import SQLModel, Session, create_engine
 
-DB_PATH = Path("data/hr.db")
+BASE_PATH = Path(__file__).resolve().parent.parent
+DB_PATH = Path(
+    os.getenv("DATABASE_PATH")
+    or os.getenv("DB_PATH")
+    or ("/app/data/hr.db" if Path("/app/data").exists() else str(BASE_PATH / "data" / "hr.db"))
+)
 DATABASE_URL = f"sqlite:///{DB_PATH.as_posix()}"
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 
