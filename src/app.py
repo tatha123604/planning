@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from openpyxl import load_workbook, Workbook
+import pandas as pd
 from sqlmodel import Session, select
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -507,7 +508,7 @@ def _cli_matrix_context(
 
 
 def _cli_matrix_record_date(value) -> date | None:
-    if not value:
+    if value is None or pd.isna(value):
         return None
     if isinstance(value, datetime):
         return value.date()
