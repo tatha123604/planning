@@ -528,6 +528,8 @@ def _save_cli_matrix_snapshots(
     summary_df,
     overdue_df,
 ) -> None:
+    _cleanup_cli_matrix_snapshots(session)
+
     existing_summary = session.exec(
         select(CliMatrixSummarySnapshot).where(
             CliMatrixSummarySnapshot.report_date == report_date_value
@@ -583,7 +585,11 @@ def _save_cli_matrix_snapshots(
             )
         )
 
-    cutoff_date = date.today() - timedelta(days=31)
+    session.commit()
+
+
+def _cleanup_cli_matrix_snapshots(session: Session) -> None:
+    cutoff_date = date.today() - timedelta(days=30)
     old_summary = session.exec(
         select(CliMatrixSummarySnapshot).where(
             CliMatrixSummarySnapshot.report_date < cutoff_date
@@ -653,6 +659,7 @@ def cli_matrix_page(
     report_date: Optional[str] = None,
     session: Session = Depends(get_session),
 ):
+    _cleanup_cli_matrix_snapshots(session)
     selected_date = coerce_report_date(report_date) or date.today()
     summary_rows, overdue_rows = _load_cli_matrix_snapshots(session, selected_date)
     saved_notice = ""
