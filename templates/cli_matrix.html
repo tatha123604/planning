@@ -86,77 +86,81 @@
         </div>
 
         {% if summary_rows %}
-        <div class="card">
-          <h2>Summary position of FP OVERDUE</h2>
-          <div class="table-wrap">
-            <table class="employee-table paged">
-              <thead>
-                <tr>
-                  <th>S.No.</th>
-                  <th>CLI ID</th>
-                  <th>CLI Name</th>
-                  <th>Alloted Desig.</th>
-                  <th>FP Over Due</th>
-                  <th>Oldest FP OverDue Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for row in summary_rows %}
-                <tr>
-                  <td>{{ row["S.No."] }}</td>
-                  <td>{{ row["CLI ID"] }}</td>
-                  <td>{{ row["CLI Name"] }}</td>
-                  <td>{{ row["Alloted Desig."] }}</td>
-                  <td>{{ row["FP Over Due"] }}</td>
-                  <td>{{ row["Oldest FP OverDue Date"] | dmy }}</td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <section class="card collapsible">
+          <details open>
+            <summary>Summary position of FP OVERDUE</summary>
+            <div class="table-wrap">
+              <table class="employee-table paged">
+                <thead>
+                  <tr>
+                    <th>S.No.</th>
+                    <th>CLI ID</th>
+                    <th>CLI Name</th>
+                    <th>Alloted Desig.</th>
+                    <th>FP Over Due</th>
+                    <th>Oldest FP OverDue Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for row in summary_rows %}
+                  <tr>
+                    <td>{{ row["S.No."] }}</td>
+                    <td>{{ row["CLI ID"] }}</td>
+                    <td>{{ row["CLI Name"] }}</td>
+                    <td>{{ row["Alloted Desig."] }}</td>
+                    <td>{{ row["FP Over Due"] }}</td>
+                    <td>{{ row["Oldest FP OverDue Date"] | dmy }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        </section>
         {% endif %}
 
         {% if overdue_rows %}
-        <div class="card">
-          <h2>Total Summary of OVERDUE</h2>
-          <div class="table-wrap">
-            <table class="employee-table paged">
-              <thead>
-                <tr>
-                  <th>S.No.</th>
-                  <th>CLI ID</th>
-                  <th>CLI Name</th>
-                  <th>Alloted Desig.</th>
-                  <th>FP Over Due</th>
-                  <th>Oldest FP OverDue Date</th>
-                  <th>Counsel Over Due</th>
-                  <th>Oldest Counsel OverDue Date</th>
-                  <th>Grading OverDue</th>
-                  <th>Oldest Grading OverDue</th>
-                  <th>Total Over Due Cases</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for row in overdue_rows %}
-                <tr>
-                  <td>{{ row["S.No."] }}</td>
-                  <td>{{ row["CLI ID"] }}</td>
-                  <td>{{ row["CLI Name"] }}</td>
-                  <td>{{ row["Alloted Desig."] }}</td>
-                  <td>{{ row["FP Over Due"] }}</td>
-                  <td>{{ row["Oldest FP OverDue Date"] | dmy }}</td>
-                  <td>{{ row["Counsel Over Due"] }}</td>
-                  <td>{{ row["Oldest Counsel OverDue Date"] | dmy }}</td>
-                  <td>{{ row["Grading OverDue"] }}</td>
-                  <td>{{ row["Oldest Grading OverDue"] | dmy }}</td>
-                  <td>{{ row["Total Over Due Cases"] }}</td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <section class="card collapsible">
+          <details open>
+            <summary>Total Summary of OVERDUE</summary>
+            <div class="table-wrap">
+              <table class="employee-table paged">
+                <thead>
+                  <tr>
+                    <th>S.No.</th>
+                    <th>CLI ID</th>
+                    <th>CLI Name</th>
+                    <th>Alloted Desig.</th>
+                    <th>FP Over Due</th>
+                    <th>Oldest FP OverDue Date</th>
+                    <th>Counsel Over Due</th>
+                    <th>Oldest Counsel OverDue Date</th>
+                    <th>Grading OverDue</th>
+                    <th>Oldest Grading OverDue</th>
+                    <th>Total Over Due Cases</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for row in overdue_rows %}
+                  <tr>
+                    <td>{{ row["S.No."] }}</td>
+                    <td>{{ row["CLI ID"] }}</td>
+                    <td>{{ row["CLI Name"] }}</td>
+                    <td>{{ row["Alloted Desig."] }}</td>
+                    <td>{{ row["FP Over Due"] }}</td>
+                    <td>{{ row["Oldest FP OverDue Date"] | dmy }}</td>
+                    <td>{{ row["Counsel Over Due"] }}</td>
+                    <td>{{ row["Oldest Counsel OverDue Date"] | dmy }}</td>
+                    <td>{{ row["Grading OverDue"] }}</td>
+                    <td>{{ row["Oldest Grading OverDue"] | dmy }}</td>
+                    <td>{{ row["Total Over Due Cases"] }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        </section>
         {% endif %}
       </section>
     </main>
