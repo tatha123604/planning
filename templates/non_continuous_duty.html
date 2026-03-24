@@ -57,6 +57,7 @@
             </label>
             <label>Formal / template workbook
               <input id="ncd-template-file" type="file" name="template_file" accept=".xlsx,.xlsm" />
+              <input id="ncd-template-name-display" class="template-name-display" type="text" value="{{ cached_template_name or '' }}" placeholder="No template saved yet" readonly />
             </label>
             <label>Report date
               <input id="ncd-report-date" type="date" name="report_date" value="{{ report_date or '' }}" />
@@ -243,6 +244,7 @@
       const resetBtn = document.querySelector('#reset-ncd');
       const templateTokenInput = form ? form.querySelector('input[name="template_token"]') : null;
       const sourceNameInput = form ? form.querySelector('input[name="source_name"]') : null;
+      const templateNameDisplay = document.querySelector('#ncd-template-name-display');
 
       const inferDateFromName = (name) => {
         if (!name) return '';
@@ -258,7 +260,6 @@
         if (sourceInput) sourceInput.value = '';
         if (templateInput) templateInput.value = '';
         if (sourceNameInput) sourceNameInput.value = '';
-        if (templateTokenInput) templateTokenInput.value = '';
       };
 
       if (resetBtn) {
@@ -282,6 +283,10 @@
       if (templateInput) {
         templateInput.addEventListener('change', () => {
           templateInput.setCustomValidity('');
+          const file = templateInput.files && templateInput.files[0];
+          if (templateNameDisplay) {
+            templateNameDisplay.value = file ? file.name : (templateTokenInput && templateTokenInput.value ? templateNameDisplay.defaultValue : '');
+          }
         });
       }
 

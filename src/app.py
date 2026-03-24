@@ -56,6 +56,7 @@ from processor import (
 
 BASE_PATH = Path(__file__).resolve().parent.parent
 TEMPLATE_STORE_DIR = DB_PATH.parent / "saved_templates"
+CLI_MATRIX_2026_03_24_CLEANUP_SENTINEL = DB_PATH.parent / ".cli_matrix_cleanup_2026_03_24.done"
 NON_CONTINUOUS_VARIANTS = {
     "non_sub": {
         "active_page": "non_continuous_duty",
@@ -227,6 +228,7 @@ def on_startup() -> None:
     session = next(get_session())
     try:
         seed_all(session)
+        _run_one_time_cli_matrix_cleanup(session)
     finally:
         session.close()
 
@@ -569,6 +571,18 @@ def _load_persistent_template(key: str) -> tuple[bytes | None, str]:
         return None, ""
     stored_name = name_path.read_text(encoding="utf-8").strip() if name_path.exists() else "template.xlsx"
     return data_path.read_bytes(), stored_name
+
+
+def _run_one_time_cli_matrix_cleanup(session: Session) -> None:
+    if CLI_MATRIX_2026_03_24_CLEANUP_SENTINEL.exists():
+        return
+    target_date = date(2026, 3, 24)
+    for model in (CliMatrixSummarySnapshot, CliMatrixOverdueSnapshot):
+        rows = session.exec(select(model).where(model.report_date == target_date)).all()
+        for row in rows:
+            session.delete(row)
+    session.commit()
+    CLI_MATRIX_2026_03_24_CLEANUP_SENTINEL.write_text("done", encoding="utf-8")
 
 
 def _cli_matrix_record_date(value) -> date | None:

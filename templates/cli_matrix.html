@@ -56,6 +56,7 @@
             </label>
             <label>Template / previous workbook
               <input id="template-file" type="file" name="template_file" accept=".xlsx,.xlsm" />
+              <input id="template-name-display" class="template-name-display" type="text" value="{{ cached_template_name or '' }}" placeholder="No template saved yet" readonly />
             </label>
             <label>Report date
               <input id="report-date" type="date" name="report_date" value="{{ report_date or '' }}" />
@@ -206,6 +207,7 @@
       const reportDateInput = document.querySelector('#report-date');
       const resetBtn = document.querySelector('#reset-cli-matrix');
       const templateReadyInput = form ? form.querySelector('input[name="template_ready"]') : null;
+      const templateNameDisplay = document.querySelector('#template-name-display');
 
       const inferDateFromName = (name) => {
         if (!name) return '';
@@ -235,6 +237,16 @@
           if (!file || !reportDateInput) return;
           const inferredDate = inferDateFromName(file.name);
           if (inferredDate) reportDateInput.value = inferredDate;
+        });
+      }
+
+      if (templateInput) {
+        templateInput.addEventListener('change', () => {
+          templateInput.setCustomValidity('');
+          const file = templateInput.files && templateInput.files[0];
+          if (templateNameDisplay) {
+            templateNameDisplay.value = file ? file.name : (templateReadyInput && templateReadyInput.value ? templateNameDisplay.defaultValue : '');
+          }
         });
       }
 
