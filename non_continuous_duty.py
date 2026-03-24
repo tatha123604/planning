@@ -44,6 +44,10 @@ def _normalize_header(value) -> str:
     return re.sub(r"[^A-Z0-9]+", " ", text.upper()).strip()
 
 
+def _normalize_label(value) -> str:
+    return _normalize_header(value).replace(" ", "")
+
+
 def _display_value(value) -> str:
     if value in (None, ""):
         return ""
@@ -164,12 +168,55 @@ def _apply_row_style(ws, source_row: int, target_row: int, end_col: int) -> None
 
 
 def _find_row_by_text(ws, text: str, start_row: int = 1) -> int:
-    text = text.upper()
+    target = _normalize_label(text)
     for row in range(start_row, ws.max_row + 1):
-        value = str(ws.cell(row, 1).value or "").upper()
-        if text in value:
-            return row
+        for col in range(1, ws.max_column + 1):
+            value = _normalize_label(ws.cell(row, col).value)
+            if value and target in value:
+                return row
     raise ValueError(f"Could not find row for '{text}' in template.")
+
+
+def _find_template_sheet(workbook, report_date_value=None):
+    report_date = coerce_report_date(report_date_value)
+    month_tokens = []
+    if report_date:
+        month_tokens = [
+            report_date.strftime("%B").upper(),
+            report_date.strftime("%b").upper(),
+        ]
+
+    best_sheet = None
+    best_score = -1
+    for sheet_name in workbook.sheetnames:
+        ws = workbook[sheet_name]
+        try:
+            _find_row_by_text(ws, SIGN_ON_TITLE)
+            has_sign_on = True
+        except ValueError:
+            has_sign_on = False
+        try:
+            _find_row_by_text(ws, SIGN_OFF_TITLE)
+            has_sign_off = True
+        except ValueError:
+            has_sign_off = False
+
+        score = 0
+        if has_sign_on:
+            score += 2
+        if has_sign_off:
+            score += 2
+        upper_name = sheet_name.upper()
+        if any(token and token in upper_name for token in month_tokens):
+            score += 3
+
+        if score > best_score:
+            best_sheet = ws
+            best_score = score
+
+    if best_sheet is None:
+        raise ValueError("Template workbook must contain at least one sheet.")
+    return best_sheet
 
 
 def _clear_range(ws, start_row: int, end_row: int, end_col: int) -> None:
@@ -239,11 +286,11 @@ def build_non_continuous_workbook(
 
     if TARGET_SHEET_TITLE in workbook.sheetnames:
         del workbook[TARGET_SHEET_TITLE]
-    ws = workbook.copy_worksheet(workbook[workbook.sheetnames[0]])
+    ws = workbook.copy_worksheet(_find_template_sheet(workbook, report_date_value))
     ws.title = TARGET_SHEET_TITLE
 
-    sign_on_title_row = 1
-    sign_off_title_row = _find_row_by_text(ws, "NON CONTINUOUS DUTY SIGN_OFF", 2)
+    sign_on_title_row = _find_row_by_text(ws, SIGN_ON_TITLE, 1)
+    sign_off_title_row = _find_row_by_text(ws, SIGN_OFF_TITLE, sign_on_title_row + 1)
     sign_on_data_start = sign_on_title_row + 2
     sign_on_capacity = max(0, sign_off_title_row - sign_on_data_start)
     extra_sign_on_rows = max(0, len(sign_on_rows) - sign_on_capacity)
