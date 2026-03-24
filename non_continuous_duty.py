@@ -11,7 +11,6 @@ from openpyxl import load_workbook
 from processor import coerce_report_date, format_report_date
 
 TARGET_SHEET_TITLE = "NON CONT DUTY SIGNON SIGNOFF"
-TARGET_HEADER = "NON CONTINUOUS DUTY SIGN_ON/SIGN_OFF"
 SIGN_ON_TITLE = "NON CONTINUOUS DUTY SIGN_ON"
 SIGN_OFF_TITLE = "NON CONTINUOUS DUTY SIGN_OFF"
 
@@ -302,7 +301,7 @@ def build_non_continuous_workbook(
         ws,
         sign_on_rows,
         sign_on_title_row,
-        TARGET_HEADER,
+        SIGN_ON_TITLE,
         "SIGNON STTN",
         "To STN",
         block_end=sign_off_title_row - 1,
