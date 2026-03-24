@@ -336,6 +336,18 @@ ul { padding-left: 18px; margin: 6px 0; }
   cursor: text;
 }
 
+.reason-save {
+  background: #ffe45c;
+  color: #0b1220;
+  border-color: #ffe45c;
+  font-weight: 800;
+}
+
+.reason-save:hover {
+  background: #fff08b;
+  border-color: #fff08b;
+}
+
 @media (max-width: 768px) {
   .layout { flex-direction: column; }
   .sidebar {
