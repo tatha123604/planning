@@ -130,7 +130,19 @@
                     <td>{{ row["LOCO NO."] }}</td>
                     <td>{{ row["DUTY TYPE"] }}</td>
                     <td>{{ row["ROUTE STN"] }}</td>
-                    <td>{{ row["REASON"] }}</td>
+                    <td class="reason-cell">
+                      {% if allow_reason_edit %}
+                      <div class="reason-editor" data-section="sign_on" data-row-no="{{ row['SNO.'] }}" data-report-date="{{ report_date }}" data-save-url="{{ route_base }}/reason">
+                        <span class="reason-display">{{ row["REASON"] or "Double-click to add reason" }}</span>
+                        <div class="reason-edit-controls" hidden>
+                          <input type="text" class="reason-input" value="{{ row['REASON'] }}" placeholder="Enter reason" />
+                          <button type="button" class="ghost small reason-save">Save</button>
+                        </div>
+                      </div>
+                      {% else %}
+                      {{ row["REASON"] }}
+                      {% endif %}
+                    </td>
                   </tr>
                   {% endfor %}
                 </tbody>
@@ -180,7 +192,19 @@
                     <td>{{ row["LOCO NO."] }}</td>
                     <td>{{ row["DUTY TYPE"] }}</td>
                     <td>{{ row["ROUTE STN"] }}</td>
-                    <td>{{ row["REASON"] }}</td>
+                    <td class="reason-cell">
+                      {% if allow_reason_edit %}
+                      <div class="reason-editor" data-section="sign_off" data-row-no="{{ row['SNO.'] }}" data-report-date="{{ report_date }}" data-save-url="{{ route_base }}/reason">
+                        <span class="reason-display">{{ row["REASON"] or "Double-click to add reason" }}</span>
+                        <div class="reason-edit-controls" hidden>
+                          <input type="text" class="reason-input" value="{{ row['REASON'] }}" placeholder="Enter reason" />
+                          <button type="button" class="ghost small reason-save">Save</button>
+                        </div>
+                      </div>
+                      {% else %}
+                      {{ row["REASON"] }}
+                      {% endif %}
+                    </td>
                   </tr>
                   {% endfor %}
                 </tbody>
@@ -304,6 +328,89 @@
           }
         });
       }
+
+      const reasonEditors = document.querySelectorAll('.reason-editor');
+      reasonEditors.forEach((editor) => {
+        const display = editor.querySelector('.reason-display');
+        const controls = editor.querySelector('.reason-edit-controls');
+        const input = editor.querySelector('.reason-input');
+        const saveButton = editor.querySelector('.reason-save');
+        const saveUrl = editor.dataset.saveUrl;
+        const reportDate = editor.dataset.reportDate;
+        const section = editor.dataset.section;
+        const rowNo = Number(editor.dataset.rowNo || '0');
+
+        const startEdit = () => {
+          if (!display || !controls || !input) return;
+          editor.classList.add('editing');
+          display.hidden = true;
+          controls.hidden = false;
+          input.focus();
+          input.select();
+        };
+
+        const stopEdit = (reasonText) => {
+          if (!display || !controls || !input) return;
+          const text = reasonText || '';
+          input.value = text;
+          input.defaultValue = text;
+          display.textContent = text || 'Double-click to add reason';
+          controls.hidden = true;
+          display.hidden = false;
+          editor.classList.remove('editing');
+        };
+
+        const saveReason = async () => {
+          if (!saveButton || !saveUrl || !reportDate || !section || !rowNo) return;
+          const previousLabel = saveButton.textContent;
+          saveButton.disabled = true;
+          saveButton.textContent = 'Saving...';
+          try {
+            const response = await fetch(saveUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                report_date: reportDate,
+                section,
+                row_no: rowNo,
+                reason: input ? input.value : '',
+              }),
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+              throw new Error(payload.detail || 'Could not save reason.');
+            }
+            stopEdit(payload.reason || '');
+          } catch (error) {
+            window.alert(error && error.message ? error.message : 'Could not save reason.');
+          } finally {
+            saveButton.disabled = false;
+            saveButton.textContent = previousLabel;
+          }
+        };
+
+        editor.addEventListener('dblclick', () => {
+          if (editor.classList.contains('editing')) return;
+          startEdit();
+        });
+
+        if (saveButton) {
+          saveButton.addEventListener('click', saveReason);
+        }
+
+        if (input) {
+          input.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              saveReason();
+            }
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              stopEdit(input.defaultValue || '');
+            }
+          });
+        }
+      });
     })();
   </script>
   <script src="/static/sidebar-toggle.js"></script>

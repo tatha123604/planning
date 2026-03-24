@@ -722,6 +722,7 @@ def _non_continuous_context(
         "feature_name": config["feature_name"],
         "sign_on_label": config["sign_on_label"],
         "sign_off_label": config["sign_off_label"],
+        "allow_reason_edit": variant_key == "non_sub",
     }
 
 
@@ -852,6 +853,29 @@ def _load_non_continuous_snapshot(
         ]
 
     return serialize(sign_on_rows), serialize(sign_off_rows)
+
+
+def _update_non_continuous_reason(
+    session: Session,
+    variant_key: str,
+    report_date_value: date,
+    section: str,
+    row_no: int,
+    reason: str,
+):
+    config = NON_CONTINUOUS_VARIANTS[variant_key]
+    model = config["sign_on_model"] if section == "sign_on" else config["sign_off_model"]
+    row = session.exec(
+        select(model)
+        .where(model.report_date == report_date_value)
+        .where(model.row_no == row_no)
+    ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Row not found.")
+    row.reason = reason.strip() or None
+    session.add(row)
+    session.commit()
+    return row.reason or ""
 
 
 @app.get("/cli-matrix")
@@ -1187,6 +1211,44 @@ async def generate_non_continuous_duty(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@app.post("/non-continuous-duty/reason")
+async def update_non_continuous_duty_reason(
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    try:
+        payload = await request.json()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid request payload.") from exc
+
+    report_date_raw = str(payload.get("report_date") or "").strip()
+    section = str(payload.get("section") or "").strip().lower()
+    reason = str(payload.get("reason") or "")
+
+    if section not in {"sign_on", "sign_off"}:
+        raise HTTPException(status_code=400, detail="Invalid section.")
+
+    try:
+        report_date_value = date.fromisoformat(report_date_raw)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid report date.") from exc
+
+    try:
+        row_no = int(payload.get("row_no"))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid row number.") from exc
+
+    saved_reason = _update_non_continuous_reason(
+        session,
+        "non_sub",
+        report_date_value,
+        section,
+        row_no,
+        reason,
+    )
+    return JSONResponse({"ok": True, "reason": saved_reason})
 
 
 @app.get("/sub-non-continuous-duty")

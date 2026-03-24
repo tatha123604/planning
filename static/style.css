@@ -299,6 +299,36 @@ ul { padding-left: 18px; margin: 6px 0; }
   box-shadow: 0 10px 30px rgba(0,0,0,0.25);
 }
 
+.reason-cell {
+  min-width: 220px;
+}
+
+.reason-editor {
+  min-height: 28px;
+}
+
+.reason-display {
+  display: inline-block;
+  width: 100%;
+  min-height: 22px;
+  cursor: pointer;
+}
+
+.reason-edit-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.reason-input {
+  flex: 1 1 auto;
+  min-width: 140px;
+}
+
+.reason-editor.editing .reason-display {
+  cursor: text;
+}
+
 @media (max-width: 768px) {
   .layout { flex-direction: column; }
   .sidebar {
