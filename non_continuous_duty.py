@@ -10,9 +10,11 @@ from openpyxl import load_workbook
 
 from processor import coerce_report_date, format_report_date
 
-TARGET_SHEET_TITLE = "NON CONT DUTY SIGNON SIGNOFF"
-SIGN_ON_TITLE = "NON CONTINUOUS DUTY SIGN_ON"
-SIGN_OFF_TITLE = "NON CONTINUOUS DUTY SIGN_OFF"
+TARGET_SHEET_TITLE = "NON SUB NON CONT. DUTY"
+TEMPLATE_SIGN_ON_MARKER = "NON CONTINUOUS DUTY SIGN_ON"
+TEMPLATE_SIGN_OFF_MARKER = "NON CONTINUOUS DUTY SIGN_OFF"
+OUTPUT_SIGN_ON_TITLE = "NON SUB NON CONTINUOUS DUTY SIGN_ON"
+OUTPUT_SIGN_OFF_TITLE = "NON SUB NON CONTINUOUS DUTY SIGN_OFF"
 
 
 def _read_bytes(file_obj) -> bytes:
@@ -190,12 +192,12 @@ def _find_template_sheet(workbook, report_date_value=None):
     for sheet_name in workbook.sheetnames:
         ws = workbook[sheet_name]
         try:
-            _find_row_by_text(ws, SIGN_ON_TITLE)
+            _find_row_by_text(ws, TEMPLATE_SIGN_ON_MARKER)
             has_sign_on = True
         except ValueError:
             has_sign_on = False
         try:
-            _find_row_by_text(ws, SIGN_OFF_TITLE)
+            _find_row_by_text(ws, TEMPLATE_SIGN_OFF_MARKER)
             has_sign_off = True
         except ValueError:
             has_sign_off = False
@@ -288,8 +290,8 @@ def build_non_continuous_workbook(
     ws = workbook.copy_worksheet(_find_template_sheet(workbook, report_date_value))
     ws.title = TARGET_SHEET_TITLE
 
-    sign_on_title_row = _find_row_by_text(ws, SIGN_ON_TITLE, 1)
-    sign_off_title_row = _find_row_by_text(ws, SIGN_OFF_TITLE, sign_on_title_row + 1)
+    sign_on_title_row = _find_row_by_text(ws, TEMPLATE_SIGN_ON_MARKER, 1)
+    sign_off_title_row = _find_row_by_text(ws, TEMPLATE_SIGN_OFF_MARKER, sign_on_title_row + 1)
     sign_on_data_start = sign_on_title_row + 2
     sign_on_capacity = max(0, sign_off_title_row - sign_on_data_start)
     extra_sign_on_rows = max(0, len(sign_on_rows) - sign_on_capacity)
@@ -301,7 +303,7 @@ def build_non_continuous_workbook(
         ws,
         sign_on_rows,
         sign_on_title_row,
-        SIGN_ON_TITLE,
+        OUTPUT_SIGN_ON_TITLE,
         "SIGNON STTN",
         "To STN",
         block_end=sign_off_title_row - 1,
@@ -310,7 +312,7 @@ def build_non_continuous_workbook(
         ws,
         sign_off_rows,
         sign_off_title_row,
-        SIGN_OFF_TITLE,
+        OUTPUT_SIGN_OFF_TITLE,
         "SIGNOFF STTN",
         "From STN",
     )
