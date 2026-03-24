@@ -44,8 +44,10 @@
           <p class="error-text">{{ error }}</p>
           {% endif %}
           <form id="ncd-form" method="post" action="/non-continuous-duty/generate" enctype="multipart/form-data">
+            <input type="hidden" name="template_token" value="{{ template_token or '' }}" />
+            <input type="hidden" name="source_name" value="{{ source_name or '' }}" />
             <label>Source SIGN_ON / SIGN_OFF file
-              <input id="ncd-source-file" type="file" name="source_file" accept=".xlsx,.xlsm" required />
+              <input id="ncd-source-file" type="file" name="source_file" accept=".xlsx,.xlsm" />
             </label>
             <label>Formal / template workbook
               <input id="ncd-template-file" type="file" name="template_file" accept=".xlsx,.xlsm" />
@@ -54,6 +56,12 @@
               <input id="ncd-report-date" type="date" name="report_date" value="{{ report_date or '' }}" />
             </label>
             <p class="hint">The uploaded report type is detected automatically. SIGN_ON uploads update the SIGN_ON section; SIGN_OFF uploads update the SIGN_OFF section for the chosen date.</p>
+            {% if source_name %}
+            <p class="hint">Preview-ready source snapshot: <strong>{{ source_name }}</strong></p>
+            {% endif %}
+            {% if cached_template_name %}
+            <p class="hint">Cached template ready for download: <strong>{{ cached_template_name }}</strong></p>
+            {% endif %}
             <div class="actions">
               <button type="submit" class="primary-action" id="generate-ncd" formaction="/non-continuous-duty/preview" formmethod="post">Generate</button>
               <button type="submit" class="secondary-action" id="download-ncd">Download</button>
@@ -203,6 +211,8 @@
       const templateInput = document.querySelector('#ncd-template-file');
       const reportDateInput = document.querySelector('#ncd-report-date');
       const resetBtn = document.querySelector('#reset-ncd');
+      const templateTokenInput = form ? form.querySelector('input[name="template_token"]') : null;
+      const sourceNameInput = form ? form.querySelector('input[name="source_name"]') : null;
 
       const inferDateFromName = (name) => {
         if (!name) return '';
@@ -217,6 +227,8 @@
       const clearFiles = () => {
         if (sourceInput) sourceInput.value = '';
         if (templateInput) templateInput.value = '';
+        if (sourceNameInput) sourceNameInput.value = '';
+        if (templateTokenInput) templateTokenInput.value = '';
       };
 
       if (resetBtn) {
@@ -228,16 +240,60 @@
 
       if (sourceInput) {
         sourceInput.addEventListener('change', () => {
+          sourceInput.setCustomValidity('');
           const file = sourceInput.files && sourceInput.files[0];
           if (!file || !reportDateInput) return;
           const inferredDate = inferDateFromName(file.name);
           if (inferredDate) reportDateInput.value = inferredDate;
+          if (sourceNameInput && file.name) sourceNameInput.value = file.name;
+        });
+      }
+
+      if (templateInput) {
+        templateInput.addEventListener('change', () => {
+          templateInput.setCustomValidity('');
         });
       }
 
       if (form) {
         form.addEventListener('submit', (event) => {
-          if (event.submitter && event.submitter.id === 'download-ncd') {
+          const submitter = event.submitter;
+          const hasSourceFile = !!(sourceInput && sourceInput.files && sourceInput.files.length);
+          const hasSourceSnapshot = !!(sourceNameInput && sourceNameInput.value);
+          const hasTemplateFile = !!(templateInput && templateInput.files && templateInput.files.length);
+          const hasTemplateToken = !!(templateTokenInput && templateTokenInput.value);
+
+          if (sourceInput) sourceInput.setCustomValidity('');
+          if (templateInput) templateInput.setCustomValidity('');
+
+          if (submitter && submitter.id === 'generate-ncd' && !hasSourceFile) {
+            if (sourceInput) {
+              sourceInput.setCustomValidity('Please choose a source file before clicking Generate.');
+              sourceInput.reportValidity();
+            }
+            event.preventDefault();
+            return;
+          }
+
+          if (submitter && submitter.id === 'download-ncd' && !hasSourceFile && !hasSourceSnapshot) {
+            if (sourceInput) {
+              sourceInput.setCustomValidity('Please click Generate first or choose a source file before downloading.');
+              sourceInput.reportValidity();
+            }
+            event.preventDefault();
+            return;
+          }
+
+          if (submitter && submitter.id === 'download-ncd' && !hasTemplateFile && !hasTemplateToken) {
+            if (templateInput) {
+              templateInput.setCustomValidity('Please choose the formal/template workbook once before downloading.');
+              templateInput.reportValidity();
+            }
+            event.preventDefault();
+            return;
+          }
+
+          if (submitter && submitter.id === 'download-ncd') {
             window.setTimeout(clearFiles, 1200);
           }
         });

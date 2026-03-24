@@ -6,6 +6,7 @@ from io import BytesIO
 from pathlib import Path
 from typing import Optional
 import re
+import uuid
 
 from fastapi import Depends, FastAPI, Form, Request, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
@@ -16,7 +17,7 @@ import pandas as pd
 from sqlmodel import Session, select
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from .db import get_session, init_db
+from .db import DB_PATH, get_session, init_db
 from .logic import (
     ROLE_ORDER,
     apply_promotions,
@@ -53,6 +54,8 @@ from processor import (
 )
 
 BASE_PATH = Path(__file__).resolve().parent.parent
+NON_CONTINUOUS_CACHE_DIR = DB_PATH.parent / "non_continuous_cache"
+NON_CONTINUOUS_CACHE_TTL = timedelta(days=2)
 templates = Jinja2Templates(directory=str(BASE_PATH / "templates"))
 # Jinja filter for dd-mm-yyyy display
 def format_dmy(value):
@@ -665,6 +668,9 @@ def _non_continuous_context(
     sign_on_rows: Optional[list[dict]] = None,
     sign_off_rows: Optional[list[dict]] = None,
     saved_notice: str = "",
+    template_token: str = "",
+    source_name: str = "",
+    cached_template_name: str = "",
 ):
     return {
         "request": request,
@@ -675,7 +681,42 @@ def _non_continuous_context(
         "sign_on_rows": sign_on_rows or [],
         "sign_off_rows": sign_off_rows or [],
         "saved_notice": saved_notice,
+        "template_token": template_token,
+        "source_name": source_name,
+        "cached_template_name": cached_template_name,
     }
+
+
+def _cleanup_non_continuous_template_cache() -> None:
+    if not NON_CONTINUOUS_CACHE_DIR.exists():
+        return
+    cutoff = datetime.now() - NON_CONTINUOUS_CACHE_TTL
+    for file_path in NON_CONTINUOUS_CACHE_DIR.glob("*"):
+        try:
+            if datetime.fromtimestamp(file_path.stat().st_mtime) < cutoff:
+                file_path.unlink(missing_ok=True)
+        except OSError:
+            continue
+
+
+def _cache_non_continuous_template(filename: str, payload: bytes) -> tuple[str, str]:
+    _cleanup_non_continuous_template_cache()
+    NON_CONTINUOUS_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    token = uuid.uuid4().hex
+    (NON_CONTINUOUS_CACHE_DIR / f"{token}.bin").write_bytes(payload)
+    (NON_CONTINUOUS_CACHE_DIR / f"{token}.name").write_text(filename or "template.xlsx", encoding="utf-8")
+    return token, filename or "template.xlsx"
+
+
+def _load_non_continuous_template(token: str | None) -> tuple[bytes | None, str]:
+    if not token:
+        return None, ""
+    data_path = NON_CONTINUOUS_CACHE_DIR / f"{token}.bin"
+    name_path = NON_CONTINUOUS_CACHE_DIR / f"{token}.name"
+    if not data_path.exists():
+        return None, ""
+    template_name = name_path.read_text(encoding="utf-8").strip() if name_path.exists() else "template.xlsx"
+    return data_path.read_bytes(), template_name
 
 
 def _cleanup_non_continuous_snapshots(session: Session) -> None:
@@ -911,11 +952,15 @@ def non_continuous_duty_page(
     request: Request,
     error: Optional[str] = None,
     report_date: Optional[str] = None,
+    source_name: Optional[str] = None,
+    template_token: Optional[str] = None,
     session: Session = Depends(get_session),
 ):
     _cleanup_non_continuous_snapshots(session)
+    _cleanup_non_continuous_template_cache()
     selected_date = coerce_report_date(report_date) or date.today()
     sign_on_rows, sign_off_rows = _load_non_continuous_snapshot(session, selected_date)
+    _, cached_template_name = _load_non_continuous_template(template_token)
     saved_notice = ""
     if report_date and not sign_on_rows and not sign_off_rows:
         saved_notice = "No saved NON CONTINUOUS DUTY snapshot found for the selected date."
@@ -928,6 +973,9 @@ def non_continuous_duty_page(
             sign_on_rows=sign_on_rows,
             sign_off_rows=sign_off_rows,
             saved_notice=saved_notice,
+            template_token=template_token or "",
+            source_name=source_name or "",
+            cached_template_name=cached_template_name,
         ),
     )
 
@@ -936,7 +984,9 @@ def non_continuous_duty_page(
 async def preview_non_continuous_duty(
     request: Request,
     source_file: UploadFile = File(...),
+    template_file: Optional[UploadFile] = File(None),
     report_date: Optional[str] = Form(None),
+    template_token: Optional[str] = Form(None),
     session: Session = Depends(get_session),
 ):
     source_name = source_file.filename or ""
@@ -957,6 +1007,16 @@ async def preview_non_continuous_duty(
         section, rows = parse_non_continuous_source(source_bytes)
         if inferred_date:
             _save_non_continuous_snapshot(session, inferred_date, section, rows)
+        cached_template_name = ""
+        if template_file and template_file.filename:
+            if not template_file.filename.lower().endswith((".xlsx", ".xlsm")):
+                raise ValueError("Formal / template workbook must be an .xlsx file.")
+            template_token, cached_template_name = _cache_non_continuous_template(
+                template_file.filename,
+                await template_file.read(),
+            )
+        else:
+            _, cached_template_name = _load_non_continuous_template(template_token)
         sign_on_rows, sign_off_rows = _load_non_continuous_snapshot(
             session, inferred_date or date.today()
         )
@@ -967,6 +1027,8 @@ async def preview_non_continuous_duty(
                 request,
                 error=f"NON CONTINUOUS DUTY preview failed: {exc}",
                 report_date=selected_date,
+                template_token=template_token or "",
+                source_name=source_name,
             ),
         )
 
@@ -977,6 +1039,9 @@ async def preview_non_continuous_duty(
             report_date=selected_date,
             sign_on_rows=sign_on_rows,
             sign_off_rows=sign_off_rows,
+            template_token=template_token or "",
+            source_name=source_name,
+            cached_template_name=cached_template_name,
         ),
     )
 
@@ -984,44 +1049,61 @@ async def preview_non_continuous_duty(
 @app.post("/non-continuous-duty/generate")
 async def generate_non_continuous_duty(
     request: Request,
-    source_file: UploadFile = File(...),
+    source_file: Optional[UploadFile] = File(None),
     template_file: Optional[UploadFile] = File(None),
     report_date: Optional[str] = Form(None),
+    template_token: Optional[str] = Form(None),
+    source_name: Optional[str] = Form(None),
     session: Session = Depends(get_session),
 ):
-    source_name = source_file.filename or ""
+    uploaded_source_name = source_file.filename if source_file and source_file.filename else ""
     template_name = template_file.filename if template_file else ""
-    inferred_date = coerce_report_date(report_date) or infer_report_date(source_name)
+    display_source_name = uploaded_source_name or source_name or ""
+    inferred_date = coerce_report_date(report_date) or infer_report_date(display_source_name)
     selected_date = report_date_iso(inferred_date)
 
-    if not source_name.lower().endswith((".xlsx", ".xlsm")):
+    if uploaded_source_name and not uploaded_source_name.lower().endswith((".xlsx", ".xlsm")):
         return templates.TemplateResponse(
             "non_continuous_duty.html",
             _non_continuous_context(
                 request,
                 error="Source workbook must be an .xlsx file.",
                 report_date=selected_date,
+                template_token=template_token or "",
+                source_name=display_source_name,
             ),
         )
-    if not template_file or not template_name.lower().endswith((".xlsx", ".xlsm")):
+    if not uploaded_source_name and not display_source_name:
         return templates.TemplateResponse(
             "non_continuous_duty.html",
             _non_continuous_context(
                 request,
-                error="Formal / template workbook must be an .xlsx file.",
+                error="Please click Generate first or choose a source workbook before downloading.",
                 report_date=selected_date,
+                template_token=template_token or "",
             ),
         )
 
     try:
-        source_bytes = await source_file.read()
-        template_bytes = await template_file.read()
-        section, rows = parse_non_continuous_source(source_bytes)
-        if inferred_date:
-            _save_non_continuous_snapshot(session, inferred_date, section, rows)
+        if uploaded_source_name:
+            source_bytes = await source_file.read()
+            section, rows = parse_non_continuous_source(source_bytes)
+            if inferred_date:
+                _save_non_continuous_snapshot(session, inferred_date, section, rows)
+        if template_file and template_name:
+            if not template_name.lower().endswith((".xlsx", ".xlsm")):
+                raise ValueError("Formal / template workbook must be an .xlsx file.")
+            template_bytes = await template_file.read()
+            template_token, cached_template_name = _cache_non_continuous_template(template_name, template_bytes)
+        else:
+            template_bytes, cached_template_name = _load_non_continuous_template(template_token)
+            if not template_bytes:
+                raise ValueError("Please choose the formal / template workbook once before downloading.")
         sign_on_rows, sign_off_rows = _load_non_continuous_snapshot(
             session, inferred_date or date.today()
         )
+        if not sign_on_rows and not sign_off_rows:
+            raise ValueError("No saved NON SUB NON CONTINUOUS DUTY data found for the selected date. Please click Generate first.")
         output = build_non_continuous_workbook(
             sign_on_rows,
             sign_off_rows,
@@ -1035,10 +1117,12 @@ async def generate_non_continuous_duty(
                 request,
                 error=f"NON CONTINUOUS DUTY generation failed: {exc}",
                 report_date=selected_date,
+                template_token=template_token or "",
+                source_name=display_source_name,
             ),
         )
 
-    base_name = source_name.rsplit(".", 1)[0] if "." in source_name else "NON_CONTINUOUS_DUTY"
+    base_name = display_source_name.rsplit(".", 1)[0] if "." in display_source_name else "NON_CONTINUOUS_DUTY"
     filename = f"{base_name}_updated.xlsx"
     return StreamingResponse(
         iter([output.getvalue()]),
