@@ -6,7 +6,6 @@ from io import BytesIO
 from pathlib import Path
 from typing import Optional
 import re
-import uuid
 
 from fastapi import Depends, FastAPI, Form, Request, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
@@ -56,8 +55,7 @@ from processor import (
 )
 
 BASE_PATH = Path(__file__).resolve().parent.parent
-NON_CONTINUOUS_CACHE_DIR = DB_PATH.parent / "non_continuous_cache"
-NON_CONTINUOUS_CACHE_TTL = timedelta(days=2)
+TEMPLATE_STORE_DIR = DB_PATH.parent / "saved_templates"
 NON_CONTINUOUS_VARIANTS = {
     "non_sub": {
         "active_page": "non_continuous_duty",
@@ -533,6 +531,7 @@ def _cli_matrix_context(
     summary_rows: Optional[list[dict]] = None,
     overdue_rows: Optional[list[dict]] = None,
     saved_notice: str = "",
+    cached_template_name: str = "",
 ):
     return {
         "request": request,
@@ -543,7 +542,33 @@ def _cli_matrix_context(
         "summary_rows": summary_rows or [],
         "overdue_rows": overdue_rows or [],
         "saved_notice": saved_notice,
+        "cached_template_name": cached_template_name,
     }
+
+
+def _template_store_paths(key: str) -> tuple[Path, Path]:
+    safe_key = re.sub(r"[^a-zA-Z0-9_.-]+", "_", key.strip().lower()) or "template"
+    return (
+        TEMPLATE_STORE_DIR / f"{safe_key}.bin",
+        TEMPLATE_STORE_DIR / f"{safe_key}.name",
+    )
+
+
+def _save_persistent_template(key: str, filename: str, payload: bytes) -> str:
+    TEMPLATE_STORE_DIR.mkdir(parents=True, exist_ok=True)
+    data_path, name_path = _template_store_paths(key)
+    data_path.write_bytes(payload)
+    stored_name = filename or "template.xlsx"
+    name_path.write_text(stored_name, encoding="utf-8")
+    return stored_name
+
+
+def _load_persistent_template(key: str) -> tuple[bytes | None, str]:
+    data_path, name_path = _template_store_paths(key)
+    if not data_path.exists():
+        return None, ""
+    stored_name = name_path.read_text(encoding="utf-8").strip() if name_path.exists() else "template.xlsx"
+    return data_path.read_bytes(), stored_name
 
 
 def _cli_matrix_record_date(value) -> date | None:
@@ -726,36 +751,17 @@ def _non_continuous_context(
     }
 
 
-def _cleanup_non_continuous_template_cache() -> None:
-    if not NON_CONTINUOUS_CACHE_DIR.exists():
-        return
-    cutoff = datetime.now() - NON_CONTINUOUS_CACHE_TTL
-    for file_path in NON_CONTINUOUS_CACHE_DIR.glob("*"):
-        try:
-            if datetime.fromtimestamp(file_path.stat().st_mtime) < cutoff:
-                file_path.unlink(missing_ok=True)
-        except OSError:
-            continue
+def _non_continuous_template_key(variant_key: str) -> str:
+    return f"{variant_key}_non_continuous_template"
 
 
-def _cache_non_continuous_template(filename: str, payload: bytes) -> tuple[str, str]:
-    _cleanup_non_continuous_template_cache()
-    NON_CONTINUOUS_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    token = uuid.uuid4().hex
-    (NON_CONTINUOUS_CACHE_DIR / f"{token}.bin").write_bytes(payload)
-    (NON_CONTINUOUS_CACHE_DIR / f"{token}.name").write_text(filename or "template.xlsx", encoding="utf-8")
-    return token, filename or "template.xlsx"
+def _cache_non_continuous_template(variant_key: str, filename: str, payload: bytes) -> tuple[str, str]:
+    stored_name = _save_persistent_template(_non_continuous_template_key(variant_key), filename, payload)
+    return "saved", stored_name
 
 
-def _load_non_continuous_template(token: str | None) -> tuple[bytes | None, str]:
-    if not token:
-        return None, ""
-    data_path = NON_CONTINUOUS_CACHE_DIR / f"{token}.bin"
-    name_path = NON_CONTINUOUS_CACHE_DIR / f"{token}.name"
-    if not data_path.exists():
-        return None, ""
-    template_name = name_path.read_text(encoding="utf-8").strip() if name_path.exists() else "template.xlsx"
-    return data_path.read_bytes(), template_name
+def _load_non_continuous_template(variant_key: str) -> tuple[bytes | None, str]:
+    return _load_persistent_template(_non_continuous_template_key(variant_key))
 
 
 def _cleanup_non_continuous_snapshots(session: Session, variant_key: str) -> None:
@@ -888,6 +894,7 @@ def cli_matrix_page(
     _cleanup_cli_matrix_snapshots(session)
     selected_date = coerce_report_date(report_date) or date.today()
     summary_rows, overdue_rows = _load_cli_matrix_snapshots(session, selected_date)
+    _, cached_template_name = _load_persistent_template("cli_matrix")
     saved_notice = ""
     if report_date and not summary_rows and not overdue_rows:
         saved_notice = "No saved CLI Matrix snapshot found for the selected date."
@@ -900,6 +907,7 @@ def cli_matrix_page(
             summary_rows=summary_rows,
             overdue_rows=overdue_rows,
             saved_notice=saved_notice,
+            cached_template_name=cached_template_name,
         ),
     )
 
@@ -908,6 +916,7 @@ def cli_matrix_page(
 async def preview_cli_matrix(
     request: Request,
     source_file: UploadFile = File(...),
+    template_file: Optional[UploadFile] = File(None),
     report_date: Optional[str] = Form(None),
     session: Session = Depends(get_session),
 ):
@@ -928,6 +937,17 @@ async def preview_cli_matrix(
         source_bytes = await source_file.read()
         summary_df = build_summary_df(source_bytes)
         overdue_df = build_sheet2_df(source_bytes)
+        cached_template_name = ""
+        if template_file and template_file.filename:
+            if not template_file.filename.lower().endswith((".xlsx", ".xlsm")):
+                raise ValueError("Template workbook must be an .xlsx file.")
+            cached_template_name = _save_persistent_template(
+                "cli_matrix",
+                template_file.filename,
+                await template_file.read(),
+            )
+        else:
+            _, cached_template_name = _load_persistent_template("cli_matrix")
         if inferred_date:
             _save_cli_matrix_snapshots(session, inferred_date, summary_df, overdue_df)
     except Exception as exc:
@@ -937,6 +957,7 @@ async def preview_cli_matrix(
                 request,
                 error=f"CLI Matrix preview failed: {exc}",
                 report_date=selected_date,
+                cached_template_name=cached_template_name if "cached_template_name" in locals() else "",
             ),
         )
 
@@ -947,6 +968,7 @@ async def preview_cli_matrix(
             report_date=selected_date,
             summary_rows=summary_df.to_dict(orient="records"),
             overdue_rows=overdue_df.to_dict(orient="records"),
+            cached_template_name=cached_template_name,
         ),
     )
 
@@ -960,7 +982,6 @@ async def generate_cli_matrix(
     session: Session = Depends(get_session),
 ):
     source_name = source_file.filename or ""
-    template_name = template_file.filename if template_file else ""
     inferred_date = coerce_report_date(report_date) or infer_report_date(source_name)
     selected_date = report_date_iso(inferred_date)
     if not source_name.lower().endswith((".xlsx", ".xlsm")):
@@ -970,21 +991,25 @@ async def generate_cli_matrix(
                 request,
                 error="Latest CLI Matrix must be an .xlsx file.",
                 report_date=selected_date,
-            ),
-        )
-    if not template_file or not template_name.lower().endswith((".xlsx", ".xlsm")):
-        return templates.TemplateResponse(
-            "cli_matrix.html",
-            _cli_matrix_context(
-                request,
-                error="Template workbook must be an .xlsx file.",
-                report_date=selected_date,
+                cached_template_name=_load_persistent_template("cli_matrix")[1],
             ),
         )
 
     try:
         source_bytes = await source_file.read()
-        template_bytes = await template_file.read()
+        if template_file and template_file.filename:
+            if not template_file.filename.lower().endswith((".xlsx", ".xlsm")):
+                raise ValueError("Template workbook must be an .xlsx file.")
+            template_bytes = await template_file.read()
+            cached_template_name = _save_persistent_template(
+                "cli_matrix",
+                template_file.filename,
+                template_bytes,
+            )
+        else:
+            template_bytes, cached_template_name = _load_persistent_template("cli_matrix")
+            if not template_bytes:
+                raise ValueError("Please upload the template workbook once before downloading.")
         summary_df = build_summary_df(source_bytes)
         overdue_df = build_sheet2_df(source_bytes)
         output = build_output_workbook(
@@ -1002,6 +1027,7 @@ async def generate_cli_matrix(
                 request,
                 error=f"CLI Matrix generation failed: {exc}",
                 report_date=selected_date,
+                cached_template_name=cached_template_name if "cached_template_name" in locals() else _load_persistent_template("cli_matrix")[1],
             ),
         )
 
@@ -1025,10 +1051,9 @@ def non_continuous_duty_page(
 ):
     variant_key = "non_sub"
     _cleanup_non_continuous_snapshots(session, variant_key)
-    _cleanup_non_continuous_template_cache()
     selected_date = coerce_report_date(report_date) or date.today()
     sign_on_rows, sign_off_rows = _load_non_continuous_snapshot(session, variant_key, selected_date)
-    _, cached_template_name = _load_non_continuous_template(template_token)
+    _, cached_template_name = _load_non_continuous_template(variant_key)
     saved_notice = ""
     if report_date and not sign_on_rows and not sign_off_rows:
         saved_notice = "No saved NON SUB NON CONTINUOUS DUTY snapshot found for the selected date."
@@ -1042,7 +1067,7 @@ def non_continuous_duty_page(
             sign_on_rows=sign_on_rows,
             sign_off_rows=sign_off_rows,
             saved_notice=saved_notice,
-            template_token=template_token or "",
+            template_token="saved" if cached_template_name else "",
             source_name=source_name or "",
             cached_template_name=cached_template_name,
         ),
@@ -1083,11 +1108,13 @@ async def preview_non_continuous_duty(
             if not template_file.filename.lower().endswith((".xlsx", ".xlsm")):
                 raise ValueError("Formal / template workbook must be an .xlsx file.")
             template_token, cached_template_name = _cache_non_continuous_template(
+                variant_key,
                 template_file.filename,
                 await template_file.read(),
             )
         else:
-            _, cached_template_name = _load_non_continuous_template(template_token)
+            _, cached_template_name = _load_non_continuous_template(variant_key)
+            template_token = "saved" if cached_template_name else ""
         sign_on_rows, sign_off_rows = _load_non_continuous_snapshot(
             session, variant_key, inferred_date or date.today()
         )
@@ -1099,8 +1126,9 @@ async def preview_non_continuous_duty(
                 variant_key,
                 error=f"NON CONTINUOUS DUTY preview failed: {exc}",
                 report_date=selected_date,
-                template_token=template_token or "",
+                template_token="saved" if ("cached_template_name" in locals() and cached_template_name) else "",
                 source_name=source_name,
+                cached_template_name=cached_template_name if "cached_template_name" in locals() else "",
             ),
         )
 
@@ -1171,9 +1199,10 @@ async def generate_non_continuous_duty(
             if not template_name.lower().endswith((".xlsx", ".xlsm")):
                 raise ValueError("Formal / template workbook must be an .xlsx file.")
             template_bytes = await template_file.read()
-            template_token, cached_template_name = _cache_non_continuous_template(template_name, template_bytes)
+            template_token, cached_template_name = _cache_non_continuous_template(variant_key, template_name, template_bytes)
         else:
-            template_bytes, cached_template_name = _load_non_continuous_template(template_token)
+            template_bytes, cached_template_name = _load_non_continuous_template(variant_key)
+            template_token = "saved" if cached_template_name else ""
             if not template_bytes:
                 raise ValueError("Please choose the formal / template workbook once before downloading.")
         sign_on_rows, sign_off_rows = _load_non_continuous_snapshot(
@@ -1262,10 +1291,9 @@ def sub_non_continuous_duty_page(
 ):
     variant_key = "sub"
     _cleanup_non_continuous_snapshots(session, variant_key)
-    _cleanup_non_continuous_template_cache()
     selected_date = coerce_report_date(report_date) or date.today()
     sign_on_rows, sign_off_rows = _load_non_continuous_snapshot(session, variant_key, selected_date)
-    _, cached_template_name = _load_non_continuous_template(template_token)
+    _, cached_template_name = _load_non_continuous_template(variant_key)
     saved_notice = ""
     if report_date and not sign_on_rows and not sign_off_rows:
         saved_notice = "No saved SUB NON CONTINUOUS DUTY snapshot found for the selected date."
@@ -1279,7 +1307,7 @@ def sub_non_continuous_duty_page(
             sign_on_rows=sign_on_rows,
             sign_off_rows=sign_off_rows,
             saved_notice=saved_notice,
-            template_token=template_token or "",
+            template_token="saved" if cached_template_name else "",
             source_name=source_name or "",
             cached_template_name=cached_template_name,
         ),
@@ -1320,11 +1348,13 @@ async def preview_sub_non_continuous_duty(
             if not template_file.filename.lower().endswith((".xlsx", ".xlsm")):
                 raise ValueError("Formal / template workbook must be an .xlsx file.")
             template_token, cached_template_name = _cache_non_continuous_template(
+                variant_key,
                 template_file.filename,
                 await template_file.read(),
             )
         else:
-            _, cached_template_name = _load_non_continuous_template(template_token)
+            _, cached_template_name = _load_non_continuous_template(variant_key)
+            template_token = "saved" if cached_template_name else ""
         sign_on_rows, sign_off_rows = _load_non_continuous_snapshot(
             session, variant_key, inferred_date or date.today()
         )
@@ -1336,8 +1366,9 @@ async def preview_sub_non_continuous_duty(
                 variant_key,
                 error=f"SUB NON CONTINUOUS DUTY preview failed: {exc}",
                 report_date=selected_date,
-                template_token=template_token or "",
+                template_token="saved" if ("cached_template_name" in locals() and cached_template_name) else "",
                 source_name=source_name,
+                cached_template_name=cached_template_name if "cached_template_name" in locals() else "",
             ),
         )
 
@@ -1408,9 +1439,10 @@ async def generate_sub_non_continuous_duty(
             if not template_name.lower().endswith((".xlsx", ".xlsm")):
                 raise ValueError("Formal / template workbook must be an .xlsx file.")
             template_bytes = await template_file.read()
-            template_token, cached_template_name = _cache_non_continuous_template(template_name, template_bytes)
+            template_token, cached_template_name = _cache_non_continuous_template(variant_key, template_name, template_bytes)
         else:
-            template_bytes, cached_template_name = _load_non_continuous_template(template_token)
+            template_bytes, cached_template_name = _load_non_continuous_template(variant_key)
+            template_token = "saved" if cached_template_name else ""
             if not template_bytes:
                 raise ValueError("Please choose the formal / template workbook once before downloading.")
         sign_on_rows, sign_off_rows = _load_non_continuous_snapshot(

@@ -50,6 +50,7 @@
           <p class="error-text">{{ error }}</p>
           {% endif %}
           <form id="cli-matrix-form" method="post" action="/cli-matrix/generate" enctype="multipart/form-data">
+            <input type="hidden" name="template_ready" value="{{ '1' if cached_template_name else '' }}" />
             <label>Latest CLI Matrix file
               <input id="source-file" type="file" name="source_file" accept=".xlsx,.xlsm" required />
             </label>
@@ -64,6 +65,9 @@
               Template file: workbook with the 5 sheets whose formatting should be preserved.
             </p>
             <p class="hint">The report date is auto-detected from the input filename when possible, and you can still adjust it manually.</p>
+            {% if cached_template_name %}
+            <p class="hint">Saved template ready: <strong>{{ cached_template_name }}</strong>. Upload a new template only when you want to replace the current format.</p>
+            {% endif %}
             <p class="hint">
               Output: Sheet 1 keeps FP overdue rows only, merges repeated CLI names, preserves template style, and writes the total in the FP Over Due column.
               Sheet 2 refreshes all overdue values by CLI and designation.
@@ -201,6 +205,7 @@
       const templateInput = document.querySelector('#template-file');
       const reportDateInput = document.querySelector('#report-date');
       const resetBtn = document.querySelector('#reset-cli-matrix');
+      const templateReadyInput = form ? form.querySelector('input[name="template_ready"]') : null;
 
       const inferDateFromName = (name) => {
         if (!name) return '';
@@ -235,6 +240,19 @@
 
       if (form) {
         form.addEventListener('submit', (event) => {
+          const hasTemplateFile = !!(templateInput && templateInput.files && templateInput.files.length);
+          const hasSavedTemplate = !!(templateReadyInput && templateReadyInput.value);
+          if (event.submitter && event.submitter.id === 'generate-cli-matrix' && !hasTemplateFile && !hasSavedTemplate) {
+            if (templateInput) {
+              templateInput.setCustomValidity('Please upload the template workbook once before downloading.');
+              templateInput.reportValidity();
+            }
+            event.preventDefault();
+            return;
+          }
+          if (templateInput) {
+            templateInput.setCustomValidity('');
+          }
           if (event.submitter && event.submitter.id === 'generate-cli-matrix') {
             window.setTimeout(clearFiles, 1200);
           }
