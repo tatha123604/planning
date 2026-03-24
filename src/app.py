@@ -34,7 +34,13 @@ from .models import (
     CliMatrixOverdueSnapshot,
     CliMatrixSummarySnapshot,
     Employee,
+    NonContinuousSignOffSnapshot,
+    NonContinuousSignOnSnapshot,
     Requirement,
+)
+from non_continuous_duty import (
+    build_non_continuous_workbook,
+    parse_non_continuous_source,
 )
 from .seed import seed_all
 from processor import (
@@ -652,6 +658,118 @@ def _load_cli_matrix_snapshots(session: Session, report_date_value: date) -> tup
     )
 
 
+def _non_continuous_context(
+    request: Request,
+    error: Optional[str] = None,
+    report_date: str = "",
+    sign_on_rows: Optional[list[dict]] = None,
+    sign_off_rows: Optional[list[dict]] = None,
+    saved_notice: str = "",
+):
+    return {
+        "request": request,
+        "active_page": "non_continuous_duty",
+        "role_order": ROLE_ORDER,
+        "error": error,
+        "report_date": report_date,
+        "sign_on_rows": sign_on_rows or [],
+        "sign_off_rows": sign_off_rows or [],
+        "saved_notice": saved_notice,
+    }
+
+
+def _cleanup_non_continuous_snapshots(session: Session) -> None:
+    cutoff_date = date.today() - timedelta(days=30)
+    for model in (NonContinuousSignOnSnapshot, NonContinuousSignOffSnapshot):
+        rows = session.exec(select(model).where(model.report_date < cutoff_date)).all()
+        for row in rows:
+            session.delete(row)
+    session.commit()
+
+
+def _replace_non_continuous_section(
+    session: Session,
+    model,
+    report_date_value: date,
+    rows: list[dict],
+) -> None:
+    existing = session.exec(
+        select(model).where(model.report_date == report_date_value)
+    ).all()
+    for row in existing:
+        session.delete(row)
+
+    for record in rows:
+        session.add(
+            model(
+                report_date=report_date_value,
+                row_no=int(record["SNO."]),
+                crew_id=record["CREW ID"] or None,
+                crew_name=record["CREW NAME"] or None,
+                desig=record["DESIG."] or None,
+                station=record["STATION"] or None,
+                event_time=record["EVENT TIME"] or None,
+                sup_id=record["SUP ID"] or None,
+                entry_point=record["ENTRY POINT"] or None,
+                train_no=record["TRAIN NO."] or None,
+                loco_no=record["LOCO NO."] or None,
+                duty_type=record["DUTY TYPE"] or None,
+                route_stn=record["ROUTE STN"] or None,
+                reason=record["REASON"] or None,
+            )
+        )
+
+
+def _save_non_continuous_snapshot(
+    session: Session,
+    report_date_value: date,
+    section: str,
+    rows: list[dict],
+) -> None:
+    _cleanup_non_continuous_snapshots(session)
+    model = NonContinuousSignOnSnapshot if section == "sign_on" else NonContinuousSignOffSnapshot
+    _replace_non_continuous_section(session, model, report_date_value, rows)
+    session.commit()
+
+
+def _load_non_continuous_snapshot(
+    session: Session,
+    report_date_value: date,
+) -> tuple[list[dict], list[dict]]:
+    sign_on_rows = session.exec(
+        select(NonContinuousSignOnSnapshot)
+        .where(NonContinuousSignOnSnapshot.report_date == report_date_value)
+        .order_by(NonContinuousSignOnSnapshot.row_no)
+    ).all()
+    sign_off_rows = session.exec(
+        select(NonContinuousSignOffSnapshot)
+        .where(NonContinuousSignOffSnapshot.report_date == report_date_value)
+        .order_by(NonContinuousSignOffSnapshot.row_no)
+    ).all()
+
+    def serialize(rows):
+        return [
+            {
+                "SNO.": row.row_no,
+                "CREW ID": row.crew_id or "",
+                "CREW NAME": row.crew_name or "",
+                "DESIG.": row.desig or "",
+                "STATION": row.station or "",
+                "EVENT TIME": row.event_time or "",
+                "SUP ID": row.sup_id or "",
+                "ENTRY POINT": row.entry_point or "",
+                "TRAIN NO.": row.train_no or "",
+                "LOCO NO.": row.loco_no or "",
+                "DUTY TYPE": row.duty_type or "",
+                "ROUTE STN": row.route_stn or "",
+                "REASON": row.reason or "",
+            }
+            for row in rows
+        ]
+
+    return serialize(sign_on_rows), serialize(sign_off_rows)
+
+
 @app.get("/cli-matrix")
 def cli_matrix_page(
     request: Request,
@@ -780,6 +898,147 @@ async def generate_cli_matrix(
         )
 
     base_name = source_name.rsplit(".", 1)[0] if "." in source_name else "CLI_Matrix"
+    filename = f"{base_name}_updated.xlsx"
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/non-continuous-duty")
+def non_continuous_duty_page(
+    request: Request,
+    error: Optional[str] = None,
+    report_date: Optional[str] = None,
+    session: Session = Depends(get_session),
+):
+    _cleanup_non_continuous_snapshots(session)
+    selected_date = coerce_report_date(report_date) or date.today()
+    sign_on_rows, sign_off_rows = _load_non_continuous_snapshot(session, selected_date)
+    saved_notice = ""
+    if report_date and not sign_on_rows and not sign_off_rows:
+        saved_notice = "No saved NON CONTINUOUS DUTY snapshot found for the selected date."
+    return templates.TemplateResponse(
+        "non_continuous_duty.html",
+        _non_continuous_context(
+            request,
+            error=error,
+            report_date=selected_date.isoformat(),
+            sign_on_rows=sign_on_rows,
+            sign_off_rows=sign_off_rows,
+            saved_notice=saved_notice,
+        ),
+    )
+
+
+@app.post("/non-continuous-duty/preview")
+async def preview_non_continuous_duty(
+    request: Request,
+    source_file: UploadFile = File(...),
+    report_date: Optional[str] = Form(None),
+    session: Session = Depends(get_session),
+):
+    source_name = source_file.filename or ""
+    inferred_date = coerce_report_date(report_date) or infer_report_date(source_name)
+    selected_date = report_date_iso(inferred_date)
+    if not source_name.lower().endswith((".xlsx", ".xlsm")):
+        return templates.TemplateResponse(
+            "non_continuous_duty.html",
+            _non_continuous_context(
+                request,
+                error="Source workbook must be an .xlsx file.",
+                report_date=selected_date,
+            ),
+        )
+
+    try:
+        source_bytes = await source_file.read()
+        section, rows = parse_non_continuous_source(source_bytes)
+        if inferred_date:
+            _save_non_continuous_snapshot(session, inferred_date, section, rows)
+        sign_on_rows, sign_off_rows = _load_non_continuous_snapshot(
+            session, inferred_date or date.today()
+        )
+    except Exception as exc:
+        return templates.TemplateResponse(
+            "non_continuous_duty.html",
+            _non_continuous_context(
+                request,
+                error=f"NON CONTINUOUS DUTY preview failed: {exc}",
+                report_date=selected_date,
+            ),
+        )
+
+    return templates.TemplateResponse(
+        "non_continuous_duty.html",
+        _non_continuous_context(
+            request,
+            report_date=selected_date,
+            sign_on_rows=sign_on_rows,
+            sign_off_rows=sign_off_rows,
+        ),
+    )
+
+
+@app.post("/non-continuous-duty/generate")
+async def generate_non_continuous_duty(
+    request: Request,
+    source_file: UploadFile = File(...),
+    template_file: Optional[UploadFile] = File(None),
+    report_date: Optional[str] = Form(None),
+    session: Session = Depends(get_session),
+):
+    source_name = source_file.filename or ""
+    template_name = template_file.filename if template_file else ""
+    inferred_date = coerce_report_date(report_date) or infer_report_date(source_name)
+    selected_date = report_date_iso(inferred_date)
+
+    if not source_name.lower().endswith((".xlsx", ".xlsm")):
+        return templates.TemplateResponse(
+            "non_continuous_duty.html",
+            _non_continuous_context(
+                request,
+                error="Source workbook must be an .xlsx file.",
+                report_date=selected_date,
+            ),
+        )
+    if not template_file or not template_name.lower().endswith((".xlsx", ".xlsm")):
+        return templates.TemplateResponse(
+            "non_continuous_duty.html",
+            _non_continuous_context(
+                request,
+                error="Formal / template workbook must be an .xlsx file.",
+                report_date=selected_date,
+            ),
+        )
+
+    try:
+        source_bytes = await source_file.read()
+        template_bytes = await template_file.read()
+        section, rows = parse_non_continuous_source(source_bytes)
+        if inferred_date:
+            _save_non_continuous_snapshot(session, inferred_date, section, rows)
+        sign_on_rows, sign_off_rows = _load_non_continuous_snapshot(
+            session, inferred_date or date.today()
+        )
+        output = build_non_continuous_workbook(
+            sign_on_rows,
+            sign_off_rows,
+            template_bytes,
+            inferred_date,
+        )
+    except Exception as exc:
+        return templates.TemplateResponse(
+            "non_continuous_duty.html",
+            _non_continuous_context(
+                request,
+                error=f"NON CONTINUOUS DUTY generation failed: {exc}",
+                report_date=selected_date,
+            ),
+        )
+
+    base_name = source_name.rsplit(".", 1)[0] if "." in source_name else "NON_CONTINUOUS_DUTY"
     filename = f"{base_name}_updated.xlsx"
     return StreamingResponse(
         iter([output.getvalue()]),

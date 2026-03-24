@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NON CONTINUOUS DUTY | SDAH Crew Planner</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="icon" type="image/svg+xml" href="/static/indian-railways-mark.svg" />
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <img class="brand-mark" src="/static/indian-railways-mark.svg" alt="Indian Railways" />
+        <span>SDAH Crew Planner</span>
+      </div>
+      <nav class="side-links">
+        <a class="{{ 'active' if active_page == 'dashboard' else '' }}" href="/">Dashboard</a>
+        <a class="{{ 'active' if active_page == 'employees' else '' }}" href="/employees">Employees</a>
+        <a class="{{ 'active' if active_page == 'uploads' else '' }}" href="/uploads">Uploads</a>
+        <a class="{{ 'active' if active_page == 'cli_matrix' else '' }}" href="/cli-matrix">CLI Matrix</a>
+        <a class="{{ 'active' if active_page == 'non_continuous_duty' else '' }}" href="/non-continuous-duty">NON CONT DUTY</a>
+        <a class="{{ 'active' if active_page == 'requirements' else '' }}" href="/requirements">Requirements</a>
+        <a class="{{ 'active' if active_page == 'reports' else '' }}" href="/reports">Reports</a>
+      </nav>
+      <div class="hierarchy">Hierarchy: LPM &gt; Motorman &gt; LPP &gt; LPG &gt; LPS (Shunter) &gt; ALP</div>
+    </aside>
+
+    <main class="content">
+      <header>
+        <div>
+          <h1>NON CONTINUOUS DUTY SIGN_ON/SIGN_OFF</h1>
+          <p>Upload a SIGN_ON or SIGN_OFF detail workbook, store that day's section, and generate the formal workbook tab from saved daily data.</p>
+        </div>
+        <div class="header-actions">
+          <a class="ghost small" href="/logout">Logout</a>
+        </div>
+      </header>
+
+      <section>
+        <div class="card">
+          <h2>Generate workbook</h2>
+          {% if error %}
+          <p class="error-text">{{ error }}</p>
+          {% endif %}
+          <form id="ncd-form" method="post" action="/non-continuous-duty/generate" enctype="multipart/form-data">
+            <label>Source SIGN_ON / SIGN_OFF file
+              <input id="ncd-source-file" type="file" name="source_file" accept=".xlsx,.xlsm" required />
+            </label>
+            <label>Formal / template workbook
+              <input id="ncd-template-file" type="file" name="template_file" accept=".xlsx,.xlsm" />
+            </label>
+            <label>Report date
+              <input id="ncd-report-date" type="date" name="report_date" value="{{ report_date or '' }}" />
+            </label>
+            <p class="hint">The uploaded report type is detected automatically. SIGN_ON uploads update the SIGN_ON section; SIGN_OFF uploads update the SIGN_OFF section for the chosen date.</p>
+            <div class="actions">
+              <button type="submit" class="ghost" formaction="/non-continuous-duty/preview" formmethod="post">Preview tables</button>
+              <button type="submit" id="generate-ncd">Generate and download</button>
+              <button type="button" class="ghost" id="reset-ncd">Reset files</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="card">
+          <h2>View saved daily data</h2>
+          {% if saved_notice %}
+          <p class="hint">{{ saved_notice }}</p>
+          {% endif %}
+          <form method="get" action="/non-continuous-duty" class="inline">
+            <label>Saved date
+              <input type="date" name="report_date" value="{{ report_date or '' }}" />
+            </label>
+            <div class="actions">
+              <button type="submit" class="ghost">Load saved data</button>
+            </div>
+          </form>
+          <p class="hint">Saved daily snapshots are kept for the latest 30 days.</p>
+        </div>
+
+        <section class="card collapsible">
+          <details open>
+            <summary>NON CONTINUOUS DUTY SIGN_ON</summary>
+            {% if sign_on_rows %}
+            <div class="table-wrap">
+              <table class="employee-table paged">
+                <thead>
+                  <tr>
+                    <th>SNO.</th>
+                    <th>CREW ID</th>
+                    <th>CREW NAME</th>
+                    <th>DESIG.</th>
+                    <th>SIGNON STTN</th>
+                    <th>SIGNON TIME</th>
+                    <th>SUP ID</th>
+                    <th>ENTRY POINT</th>
+                    <th>TRAIN NO.</th>
+                    <th>LOCO NO.</th>
+                    <th>DUTY TYPE</th>
+                    <th>TO STN</th>
+                    <th>REASON</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for row in sign_on_rows %}
+                  <tr>
+                    <td>{{ row["SNO."] }}</td>
+                    <td>{{ row["CREW ID"] }}</td>
+                    <td>{{ row["CREW NAME"] }}</td>
+                    <td>{{ row["DESIG."] }}</td>
+                    <td>{{ row["STATION"] }}</td>
+                    <td>{{ row["EVENT TIME"] }}</td>
+                    <td>{{ row["SUP ID"] }}</td>
+                    <td>{{ row["ENTRY POINT"] }}</td>
+                    <td>{{ row["TRAIN NO."] }}</td>
+                    <td>{{ row["LOCO NO."] }}</td>
+                    <td>{{ row["DUTY TYPE"] }}</td>
+                    <td>{{ row["ROUTE STN"] }}</td>
+                    <td>{{ row["REASON"] }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% else %}
+            <p class="hint">No saved SIGN_ON rows for this date yet.</p>
+            {% endif %}
+          </details>
+        </section>
+
+        <section class="card collapsible">
+          <details open>
+            <summary>NON CONTINUOUS DUTY SIGN_OFF</summary>
+            {% if sign_off_rows %}
+            <div class="table-wrap">
+              <table class="employee-table paged">
+                <thead>
+                  <tr>
+                    <th>SNO.</th>
+                    <th>CREW ID</th>
+                    <th>CREW NAME</th>
+                    <th>DESIG.</th>
+                    <th>SIGNOFF STTN</th>
+                    <th>SIGNOFF TIME</th>
+                    <th>SUP ID</th>
+                    <th>ENTRY POINT</th>
+                    <th>TRAIN NO.</th>
+                    <th>LOCO NO.</th>
+                    <th>DUTY TYPE</th>
+                    <th>FROM STN</th>
+                    <th>REASON</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for row in sign_off_rows %}
+                  <tr>
+                    <td>{{ row["SNO."] }}</td>
+                    <td>{{ row["CREW ID"] }}</td>
+                    <td>{{ row["CREW NAME"] }}</td>
+                    <td>{{ row["DESIG."] }}</td>
+                    <td>{{ row["STATION"] }}</td>
+                    <td>{{ row["EVENT TIME"] }}</td>
+                    <td>{{ row["SUP ID"] }}</td>
+                    <td>{{ row["ENTRY POINT"] }}</td>
+                    <td>{{ row["TRAIN NO."] }}</td>
+                    <td>{{ row["LOCO NO."] }}</td>
+                    <td>{{ row["DUTY TYPE"] }}</td>
+                    <td>{{ row["ROUTE STN"] }}</td>
+                    <td>{{ row["REASON"] }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% else %}
+            <p class="hint">No saved SIGN_OFF rows for this date yet.</p>
+            {% endif %}
+          </details>
+        </section>
+      </section>
+    </main>
+  </div>
+  <script>
+    (() => {
+      const brand = document.querySelector('.brand');
+      if (brand) {
+        brand.style.cursor = 'pointer';
+        brand.setAttribute('title', 'Click to hide/show navigation');
+        brand.setAttribute('tabindex', '0');
+        const toggle = () => document.body.classList.toggle('nav-hidden');
+        brand.addEventListener('click', toggle);
+        brand.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            toggle();
+          }
+        });
+        document.body.classList.remove('nav-hidden');
+      }
+
+      const form = document.querySelector('#ncd-form');
+      const sourceInput = document.querySelector('#ncd-source-file');
+      const templateInput = document.querySelector('#ncd-template-file');
+      const reportDateInput = document.querySelector('#ncd-report-date');
+      const resetBtn = document.querySelector('#reset-ncd');
+
+      const inferDateFromName = (name) => {
+        if (!name) return '';
+        const stem = name.replace(/\.[^.]+$/, '');
+        let match = stem.match(/(\d{2})[.\-_](\d{2})[.\-_](\d{4})/);
+        if (match) return `${match[3]}-${match[2]}-${match[1]}`;
+        match = stem.match(/(\d{4})[.\-_](\d{2})[.\-_](\d{2})/);
+        if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+        return '';
+      };
+
+      const clearFiles = () => {
+        if (sourceInput) sourceInput.value = '';
+        if (templateInput) templateInput.value = '';
+      };
+
+      if (resetBtn) {
+        resetBtn.addEventListener('click', () => {
+          clearFiles();
+          if (reportDateInput) reportDateInput.value = '';
+        });
+      }
+
+      if (sourceInput) {
+        sourceInput.addEventListener('change', () => {
+          const file = sourceInput.files && sourceInput.files[0];
+          if (!file || !reportDateInput) return;
+          const inferredDate = inferDateFromName(file.name);
+          if (inferredDate) reportDateInput.value = inferredDate;
+        });
+      }
+
+      if (form) {
+        form.addEventListener('submit', (event) => {
+          if (event.submitter && event.submitter.id === 'generate-ncd') {
+            window.setTimeout(clearFiles, 1200);
+          }
+        });
+      }
+    })();
+  </script>
+  <script src="/static/sidebar-toggle.js"></script>
+  <script src="/static/table-pager.js"></script>
+</body>
+</html>
+
