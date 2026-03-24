@@ -133,7 +133,7 @@
                     <td class="reason-cell">
                       {% if allow_reason_edit %}
                       <div class="reason-editor" data-section="sign_on" data-row-no="{{ row['SNO.'] }}" data-report-date="{{ report_date }}" data-save-url="{{ route_base }}/reason">
-                        <span class="reason-display">{{ row["REASON"] or "Double-click to add reason" }}</span>
+                        <span class="reason-display">{{ row["REASON"] or "" }}</span>
                         <div class="reason-edit-controls" hidden>
                           <input type="text" class="reason-input" value="{{ row['REASON'] }}" placeholder="Enter reason" />
                           <button type="button" class="ghost small reason-save">Save</button>
@@ -195,7 +195,7 @@
                     <td class="reason-cell">
                       {% if allow_reason_edit %}
                       <div class="reason-editor" data-section="sign_off" data-row-no="{{ row['SNO.'] }}" data-report-date="{{ report_date }}" data-save-url="{{ route_base }}/reason">
-                        <span class="reason-display">{{ row["REASON"] or "Double-click to add reason" }}</span>
+                        <span class="reason-display">{{ row["REASON"] or "" }}</span>
                         <div class="reason-edit-controls" hidden>
                           <input type="text" class="reason-input" value="{{ row['REASON'] }}" placeholder="Enter reason" />
                           <button type="button" class="ghost small reason-save">Save</button>
@@ -354,7 +354,7 @@
           const text = reasonText || '';
           input.value = text;
           input.defaultValue = text;
-          display.textContent = text || 'Double-click to add reason';
+          display.textContent = text;
           controls.hidden = true;
           display.hidden = false;
           editor.classList.remove('editing');
