@@ -94,6 +94,12 @@
               <button type="submit" class="ghost">Load saved data</button>
             </div>
           </form>
+          <form method="post" action="/cli-matrix/reset" class="inline danger-inline">
+            <input type="hidden" name="report_date" value="{{ report_date or '' }}" />
+            <div class="actions">
+              <button type="submit" class="danger">Reset saved table data</button>
+            </div>
+          </form>
           <p class="hint">Each preview or generated CLI Matrix snapshot is stored on the server for about 1 month, so you can reopen old daily values from here.</p>
         </div>
 

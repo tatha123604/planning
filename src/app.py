@@ -730,6 +730,14 @@ def _load_cli_matrix_snapshots(session: Session, report_date_value: date) -> tup
     )
 
 
+def _delete_cli_matrix_snapshots_for_date(session: Session, report_date_value: date) -> None:
+    for model in (CliMatrixSummarySnapshot, CliMatrixOverdueSnapshot):
+        rows = session.exec(select(model).where(model.report_date == report_date_value)).all()
+        for row in rows:
+            session.delete(row)
+    session.commit()
+
+
 def _non_continuous_context(
     request: Request,
     variant_key: str,
@@ -873,6 +881,19 @@ def _load_non_continuous_snapshot(
         ]
 
     return serialize(sign_on_rows), serialize(sign_off_rows)
+
+
+def _delete_non_continuous_snapshots_for_date(
+    session: Session,
+    variant_key: str,
+    report_date_value: date,
+) -> None:
+    config = NON_CONTINUOUS_VARIANTS[variant_key]
+    for model in (config["sign_on_model"], config["sign_off_model"]):
+        rows = session.exec(select(model).where(model.report_date == report_date_value)).all()
+        for row in rows:
+            session.delete(row)
+    session.commit()
 
 
 def _update_non_continuous_reason(
@@ -1051,6 +1072,26 @@ async def generate_cli_matrix(
         iter([output.getvalue()]),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.post("/cli-matrix/reset")
+async def reset_cli_matrix_data(
+    request: Request,
+    report_date: Optional[str] = Form(None),
+    session: Session = Depends(get_session),
+):
+    selected_date = coerce_report_date(report_date) or date.today()
+    _delete_cli_matrix_snapshots_for_date(session, selected_date)
+    _, cached_template_name = _load_persistent_template("cli_matrix")
+    return templates.TemplateResponse(
+        "cli_matrix.html",
+        _cli_matrix_context(
+            request,
+            report_date=selected_date.isoformat(),
+            saved_notice=f"Saved CLI Matrix data for {selected_date.strftime('%d-%m-%Y')} has been deleted.",
+            cached_template_name=cached_template_name,
+        ),
     )
 
 
@@ -1253,6 +1294,29 @@ async def generate_non_continuous_duty(
         iter([output.getvalue()]),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.post("/non-continuous-duty/reset")
+async def reset_non_continuous_duty_data(
+    request: Request,
+    report_date: Optional[str] = Form(None),
+    session: Session = Depends(get_session),
+):
+    variant_key = "non_sub"
+    selected_date = coerce_report_date(report_date) or date.today()
+    _delete_non_continuous_snapshots_for_date(session, variant_key, selected_date)
+    _, cached_template_name = _load_non_continuous_template(variant_key)
+    return templates.TemplateResponse(
+        "non_continuous_duty.html",
+        _non_continuous_context(
+            request,
+            variant_key,
+            report_date=selected_date.isoformat(),
+            saved_notice=f"Saved NON SUB data for {selected_date.strftime('%d-%m-%Y')} has been deleted.",
+            template_token="saved" if cached_template_name else "",
+            cached_template_name=cached_template_name,
+        ),
     )
 
 
@@ -1493,6 +1557,29 @@ async def generate_sub_non_continuous_duty(
         iter([output.getvalue()]),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.post("/sub-non-continuous-duty/reset")
+async def reset_sub_non_continuous_duty_data(
+    request: Request,
+    report_date: Optional[str] = Form(None),
+    session: Session = Depends(get_session),
+):
+    variant_key = "sub"
+    selected_date = coerce_report_date(report_date) or date.today()
+    _delete_non_continuous_snapshots_for_date(session, variant_key, selected_date)
+    _, cached_template_name = _load_non_continuous_template(variant_key)
+    return templates.TemplateResponse(
+        "non_continuous_duty.html",
+        _non_continuous_context(
+            request,
+            variant_key,
+            report_date=selected_date.isoformat(),
+            saved_notice=f"Saved SUB data for {selected_date.strftime('%d-%m-%Y')} has been deleted.",
+            template_token="saved" if cached_template_name else "",
+            cached_template_name=cached_template_name,
+        ),
     )
 
 

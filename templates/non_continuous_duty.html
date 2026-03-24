@@ -90,6 +90,12 @@
               <button type="submit" class="ghost">Load saved data</button>
             </div>
           </form>
+          <form method="post" action="{{ route_base }}/reset" class="inline danger-inline">
+            <input type="hidden" name="report_date" value="{{ report_date or '' }}" />
+            <div class="actions">
+              <button type="submit" class="danger">Reset saved table data</button>
+            </div>
+          </form>
           <p class="hint">Saved daily snapshots are kept for the latest 30 days.</p>
         </div>
 

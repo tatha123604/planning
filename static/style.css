@@ -135,6 +135,16 @@ input[type="date"]:focus {
   outline: 1px solid #f5d000;
   box-shadow: 0 0 0 2px rgba(245, 208, 0, 0.2);
 }
+.template-name-display {
+  margin-top: 8px;
+  background: rgba(255, 230, 102, 0.12);
+  border: 1px dashed rgba(255, 230, 102, 0.65);
+  color: #ffe45c;
+  font-weight: 700;
+}
+.template-name-display::placeholder {
+  color: rgba(255, 228, 92, 0.65);
+}
 button { background: linear-gradient(135deg, #12bde7, #66e1b6); color: #0b1220; border: none; cursor: pointer; font-weight: 600; }
 button:hover { filter: brightness(1.05); }
 .primary-action {
@@ -212,6 +222,7 @@ ul { padding-left: 18px; margin: 6px 0; }
 .employee-table .working-at-col { min-width: 120px; max-width: 160px; }
 .employee-table .actions-col { width: 1%; padding-left: 6px; padding-right: 6px; }
 .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+.danger-inline { margin-top: 10px; }
 .actions-cell { white-space: nowrap; min-width: 116px; }
 .ghost.small, .danger.small { padding: 6px 10px; font-size: 12px; }
 .danger { background: #ff6b6b; color: #0b1220; border: none; }
