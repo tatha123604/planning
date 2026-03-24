@@ -84,6 +84,20 @@ input, select, button {
 }
 form.inline input, form.inline select { width: 100%; }
 input:focus, select:focus { outline: 1px solid #12bde7; }
+input[type="date"] {
+  background: #ffe766;
+  color: #11192b;
+  border-color: #d4b400;
+  font-weight: 700;
+}
+input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  filter: contrast(1.2) saturate(1.1);
+}
+input[type="date"]:focus {
+  outline: 1px solid #f5d000;
+  box-shadow: 0 0 0 2px rgba(245, 208, 0, 0.2);
+}
 button { background: linear-gradient(135deg, #12bde7, #66e1b6); color: #0b1220; border: none; cursor: pointer; font-weight: 600; }
 button:hover { filter: brightness(1.05); }
 .ghost {
