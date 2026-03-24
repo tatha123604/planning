@@ -280,15 +280,18 @@ def build_non_continuous_workbook(
     sign_off_rows: list[dict],
     template_file,
     report_date_value=None,
+    sheet_title: str = TARGET_SHEET_TITLE,
+    output_sign_on_title: str = OUTPUT_SIGN_ON_TITLE,
+    output_sign_off_title: str = OUTPUT_SIGN_OFF_TITLE,
 ) -> BytesIO:
     workbook = load_workbook(_as_stream(template_file))
     if not workbook.sheetnames:
         raise ValueError("Template workbook must contain at least one sheet.")
 
-    if TARGET_SHEET_TITLE in workbook.sheetnames:
-        del workbook[TARGET_SHEET_TITLE]
+    if sheet_title in workbook.sheetnames:
+        del workbook[sheet_title]
     ws = workbook.copy_worksheet(_find_template_sheet(workbook, report_date_value))
-    ws.title = TARGET_SHEET_TITLE
+    ws.title = sheet_title
 
     sign_on_title_row = _find_row_by_text(ws, TEMPLATE_SIGN_ON_MARKER, 1)
     sign_off_title_row = _find_row_by_text(ws, TEMPLATE_SIGN_OFF_MARKER, sign_on_title_row + 1)
@@ -303,7 +306,7 @@ def build_non_continuous_workbook(
         ws,
         sign_on_rows,
         sign_on_title_row,
-        OUTPUT_SIGN_ON_TITLE,
+        output_sign_on_title,
         "SIGNON STTN",
         "To STN",
         block_end=sign_off_title_row - 1,
@@ -312,7 +315,7 @@ def build_non_continuous_workbook(
         ws,
         sign_off_rows,
         sign_off_title_row,
-        OUTPUT_SIGN_OFF_TITLE,
+        output_sign_off_title,
         "SIGNOFF STTN",
         "From STN",
     )

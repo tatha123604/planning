@@ -38,6 +38,8 @@ from .models import (
     NonContinuousSignOffSnapshot,
     NonContinuousSignOnSnapshot,
     Requirement,
+    SubNonContinuousSignOffSnapshot,
+    SubNonContinuousSignOnSnapshot,
 )
 from non_continuous_duty import (
     build_non_continuous_workbook,
@@ -56,6 +58,34 @@ from processor import (
 BASE_PATH = Path(__file__).resolve().parent.parent
 NON_CONTINUOUS_CACHE_DIR = DB_PATH.parent / "non_continuous_cache"
 NON_CONTINUOUS_CACHE_TTL = timedelta(days=2)
+NON_CONTINUOUS_VARIANTS = {
+    "non_sub": {
+        "active_page": "non_continuous_duty",
+        "page_title": "NON SUB NON CONTINUOUS DUTY",
+        "heading_title": "NON SUB NON CONTINUOUS DUTY SIGN_ON/SIGN_OFF",
+        "nav_label": "NON SUB NON CONT DUTY",
+        "route_base": "/non-continuous-duty",
+        "feature_name": "NON SUB NON CONTINUOUS DUTY",
+        "sign_on_label": "NON SUB NON CONTINUOUS DUTY SIGN_ON",
+        "sign_off_label": "NON SUB NON CONTINUOUS DUTY SIGN_OFF",
+        "sheet_title": "NON SUB NON CONT. DUTY",
+        "sign_on_model": NonContinuousSignOnSnapshot,
+        "sign_off_model": NonContinuousSignOffSnapshot,
+    },
+    "sub": {
+        "active_page": "sub_non_continuous_duty",
+        "page_title": "SUB NON CONTINUOUS DUTY",
+        "heading_title": "SUB NON CONTINUOUS DUTY SIGN_ON/SIGN_OFF",
+        "nav_label": "SUB NON CONT DUTY",
+        "route_base": "/sub-non-continuous-duty",
+        "feature_name": "SUB NON CONTINUOUS DUTY",
+        "sign_on_label": "SUB NON CONTINUOUS DUTY SIGN_ON",
+        "sign_off_label": "SUB NON CONTINUOUS DUTY SIGN_OFF",
+        "sheet_title": "SUB NON CONT. DUTY",
+        "sign_on_model": SubNonContinuousSignOnSnapshot,
+        "sign_off_model": SubNonContinuousSignOffSnapshot,
+    },
+}
 templates = Jinja2Templates(directory=str(BASE_PATH / "templates"))
 # Jinja filter for dd-mm-yyyy display
 def format_dmy(value):
@@ -663,6 +693,7 @@ def _load_cli_matrix_snapshots(session: Session, report_date_value: date) -> tup
 
 def _non_continuous_context(
     request: Request,
+    variant_key: str,
     error: Optional[str] = None,
     report_date: str = "",
     sign_on_rows: Optional[list[dict]] = None,
@@ -672,9 +703,10 @@ def _non_continuous_context(
     source_name: str = "",
     cached_template_name: str = "",
 ):
+    config = NON_CONTINUOUS_VARIANTS[variant_key]
     return {
         "request": request,
-        "active_page": "non_continuous_duty",
+        "active_page": config["active_page"],
         "role_order": ROLE_ORDER,
         "error": error,
         "report_date": report_date,
@@ -684,6 +716,12 @@ def _non_continuous_context(
         "template_token": template_token,
         "source_name": source_name,
         "cached_template_name": cached_template_name,
+        "page_title": config["page_title"],
+        "heading_title": config["heading_title"],
+        "route_base": config["route_base"],
+        "feature_name": config["feature_name"],
+        "sign_on_label": config["sign_on_label"],
+        "sign_off_label": config["sign_off_label"],
     }
 
 
@@ -719,9 +757,10 @@ def _load_non_continuous_template(token: str | None) -> tuple[bytes | None, str]
     return data_path.read_bytes(), template_name
 
 
-def _cleanup_non_continuous_snapshots(session: Session) -> None:
+def _cleanup_non_continuous_snapshots(session: Session, variant_key: str) -> None:
     cutoff_date = date.today() - timedelta(days=30)
-    for model in (NonContinuousSignOnSnapshot, NonContinuousSignOffSnapshot):
+    config = NON_CONTINUOUS_VARIANTS[variant_key]
+    for model in (config["sign_on_model"], config["sign_off_model"]):
         rows = session.exec(select(model).where(model.report_date < cutoff_date)).all()
         for row in rows:
             session.delete(row)
@@ -763,29 +802,33 @@ def _replace_non_continuous_section(
 
 def _save_non_continuous_snapshot(
     session: Session,
+    variant_key: str,
     report_date_value: date,
     section: str,
     rows: list[dict],
 ) -> None:
-    _cleanup_non_continuous_snapshots(session)
-    model = NonContinuousSignOnSnapshot if section == "sign_on" else NonContinuousSignOffSnapshot
+    _cleanup_non_continuous_snapshots(session, variant_key)
+    config = NON_CONTINUOUS_VARIANTS[variant_key]
+    model = config["sign_on_model"] if section == "sign_on" else config["sign_off_model"]
     _replace_non_continuous_section(session, model, report_date_value, rows)
     session.commit()
 
 
 def _load_non_continuous_snapshot(
     session: Session,
+    variant_key: str,
     report_date_value: date,
 ) -> tuple[list[dict], list[dict]]:
+    config = NON_CONTINUOUS_VARIANTS[variant_key]
     sign_on_rows = session.exec(
-        select(NonContinuousSignOnSnapshot)
-        .where(NonContinuousSignOnSnapshot.report_date == report_date_value)
-        .order_by(NonContinuousSignOnSnapshot.row_no)
+        select(config["sign_on_model"])
+        .where(config["sign_on_model"].report_date == report_date_value)
+        .order_by(config["sign_on_model"].row_no)
     ).all()
     sign_off_rows = session.exec(
-        select(NonContinuousSignOffSnapshot)
-        .where(NonContinuousSignOffSnapshot.report_date == report_date_value)
-        .order_by(NonContinuousSignOffSnapshot.row_no)
+        select(config["sign_off_model"])
+        .where(config["sign_off_model"].report_date == report_date_value)
+        .order_by(config["sign_off_model"].row_no)
     ).all()
 
     def serialize(rows):
@@ -956,18 +999,20 @@ def non_continuous_duty_page(
     template_token: Optional[str] = None,
     session: Session = Depends(get_session),
 ):
-    _cleanup_non_continuous_snapshots(session)
+    variant_key = "non_sub"
+    _cleanup_non_continuous_snapshots(session, variant_key)
     _cleanup_non_continuous_template_cache()
     selected_date = coerce_report_date(report_date) or date.today()
-    sign_on_rows, sign_off_rows = _load_non_continuous_snapshot(session, selected_date)
+    sign_on_rows, sign_off_rows = _load_non_continuous_snapshot(session, variant_key, selected_date)
     _, cached_template_name = _load_non_continuous_template(template_token)
     saved_notice = ""
     if report_date and not sign_on_rows and not sign_off_rows:
-        saved_notice = "No saved NON CONTINUOUS DUTY snapshot found for the selected date."
+        saved_notice = "No saved NON SUB NON CONTINUOUS DUTY snapshot found for the selected date."
     return templates.TemplateResponse(
         "non_continuous_duty.html",
         _non_continuous_context(
             request,
+            variant_key,
             error=error,
             report_date=selected_date.isoformat(),
             sign_on_rows=sign_on_rows,
@@ -989,6 +1034,7 @@ async def preview_non_continuous_duty(
     template_token: Optional[str] = Form(None),
     session: Session = Depends(get_session),
 ):
+    variant_key = "non_sub"
     source_name = source_file.filename or ""
     inferred_date = coerce_report_date(report_date) or infer_report_date(source_name)
     selected_date = report_date_iso(inferred_date)
@@ -997,6 +1043,7 @@ async def preview_non_continuous_duty(
             "non_continuous_duty.html",
             _non_continuous_context(
                 request,
+                variant_key,
                 error="Source workbook must be an .xlsx file.",
                 report_date=selected_date,
             ),
@@ -1006,7 +1053,7 @@ async def preview_non_continuous_duty(
         source_bytes = await source_file.read()
         section, rows = parse_non_continuous_source(source_bytes)
         if inferred_date:
-            _save_non_continuous_snapshot(session, inferred_date, section, rows)
+            _save_non_continuous_snapshot(session, variant_key, inferred_date, section, rows)
         cached_template_name = ""
         if template_file and template_file.filename:
             if not template_file.filename.lower().endswith((".xlsx", ".xlsm")):
@@ -1018,13 +1065,14 @@ async def preview_non_continuous_duty(
         else:
             _, cached_template_name = _load_non_continuous_template(template_token)
         sign_on_rows, sign_off_rows = _load_non_continuous_snapshot(
-            session, inferred_date or date.today()
+            session, variant_key, inferred_date or date.today()
         )
     except Exception as exc:
         return templates.TemplateResponse(
             "non_continuous_duty.html",
             _non_continuous_context(
                 request,
+                variant_key,
                 error=f"NON CONTINUOUS DUTY preview failed: {exc}",
                 report_date=selected_date,
                 template_token=template_token or "",
@@ -1036,6 +1084,7 @@ async def preview_non_continuous_duty(
         "non_continuous_duty.html",
         _non_continuous_context(
             request,
+            variant_key,
             report_date=selected_date,
             sign_on_rows=sign_on_rows,
             sign_off_rows=sign_off_rows,
@@ -1056,6 +1105,8 @@ async def generate_non_continuous_duty(
     source_name: Optional[str] = Form(None),
     session: Session = Depends(get_session),
 ):
+    variant_key = "non_sub"
+    variant_config = NON_CONTINUOUS_VARIANTS[variant_key]
     uploaded_source_name = source_file.filename if source_file and source_file.filename else ""
     template_name = template_file.filename if template_file else ""
     display_source_name = uploaded_source_name or source_name or ""
@@ -1067,6 +1118,7 @@ async def generate_non_continuous_duty(
             "non_continuous_duty.html",
             _non_continuous_context(
                 request,
+                variant_key,
                 error="Source workbook must be an .xlsx file.",
                 report_date=selected_date,
                 template_token=template_token or "",
@@ -1078,6 +1130,7 @@ async def generate_non_continuous_duty(
             "non_continuous_duty.html",
             _non_continuous_context(
                 request,
+                variant_key,
                 error="Please click Generate first or choose a source workbook before downloading.",
                 report_date=selected_date,
                 template_token=template_token or "",
@@ -1089,7 +1142,7 @@ async def generate_non_continuous_duty(
             source_bytes = await source_file.read()
             section, rows = parse_non_continuous_source(source_bytes)
             if inferred_date:
-                _save_non_continuous_snapshot(session, inferred_date, section, rows)
+                _save_non_continuous_snapshot(session, variant_key, inferred_date, section, rows)
         if template_file and template_name:
             if not template_name.lower().endswith((".xlsx", ".xlsm")):
                 raise ValueError("Formal / template workbook must be an .xlsx file.")
@@ -1100,7 +1153,7 @@ async def generate_non_continuous_duty(
             if not template_bytes:
                 raise ValueError("Please choose the formal / template workbook once before downloading.")
         sign_on_rows, sign_off_rows = _load_non_continuous_snapshot(
-            session, inferred_date or date.today()
+            session, variant_key, inferred_date or date.today()
         )
         if not sign_on_rows and not sign_off_rows:
             raise ValueError("No saved NON SUB NON CONTINUOUS DUTY data found for the selected date. Please click Generate first.")
@@ -1109,20 +1162,224 @@ async def generate_non_continuous_duty(
             sign_off_rows,
             template_bytes,
             inferred_date,
+            sheet_title=variant_config["sheet_title"],
+            output_sign_on_title=variant_config["sign_on_label"],
+            output_sign_off_title=variant_config["sign_off_label"],
         )
     except Exception as exc:
         return templates.TemplateResponse(
             "non_continuous_duty.html",
             _non_continuous_context(
                 request,
+                variant_key,
                 error=f"NON CONTINUOUS DUTY generation failed: {exc}",
+                report_date=selected_date,
+                template_token=template_token or "",
+                source_name=display_source_name,
+                cached_template_name=cached_template_name if 'cached_template_name' in locals() else "",
+            ),
+        )
+
+    base_name = display_source_name.rsplit(".", 1)[0] if "." in display_source_name else "NON_CONTINUOUS_DUTY"
+    filename = f"{base_name}_updated.xlsx"
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/sub-non-continuous-duty")
+def sub_non_continuous_duty_page(
+    request: Request,
+    error: Optional[str] = None,
+    report_date: Optional[str] = None,
+    source_name: Optional[str] = None,
+    template_token: Optional[str] = None,
+    session: Session = Depends(get_session),
+):
+    variant_key = "sub"
+    _cleanup_non_continuous_snapshots(session, variant_key)
+    _cleanup_non_continuous_template_cache()
+    selected_date = coerce_report_date(report_date) or date.today()
+    sign_on_rows, sign_off_rows = _load_non_continuous_snapshot(session, variant_key, selected_date)
+    _, cached_template_name = _load_non_continuous_template(template_token)
+    saved_notice = ""
+    if report_date and not sign_on_rows and not sign_off_rows:
+        saved_notice = "No saved SUB NON CONTINUOUS DUTY snapshot found for the selected date."
+    return templates.TemplateResponse(
+        "non_continuous_duty.html",
+        _non_continuous_context(
+            request,
+            variant_key,
+            error=error,
+            report_date=selected_date.isoformat(),
+            sign_on_rows=sign_on_rows,
+            sign_off_rows=sign_off_rows,
+            saved_notice=saved_notice,
+            template_token=template_token or "",
+            source_name=source_name or "",
+            cached_template_name=cached_template_name,
+        ),
+    )
+
+
+@app.post("/sub-non-continuous-duty/preview")
+async def preview_sub_non_continuous_duty(
+    request: Request,
+    source_file: UploadFile = File(...),
+    template_file: Optional[UploadFile] = File(None),
+    report_date: Optional[str] = Form(None),
+    template_token: Optional[str] = Form(None),
+    session: Session = Depends(get_session),
+):
+    variant_key = "sub"
+    source_name = source_file.filename or ""
+    inferred_date = coerce_report_date(report_date) or infer_report_date(source_name)
+    selected_date = report_date_iso(inferred_date)
+    if not source_name.lower().endswith((".xlsx", ".xlsm")):
+        return templates.TemplateResponse(
+            "non_continuous_duty.html",
+            _non_continuous_context(
+                request,
+                variant_key,
+                error="Source workbook must be an .xlsx file.",
+                report_date=selected_date,
+            ),
+        )
+
+    try:
+        source_bytes = await source_file.read()
+        section, rows = parse_non_continuous_source(source_bytes)
+        if inferred_date:
+            _save_non_continuous_snapshot(session, variant_key, inferred_date, section, rows)
+        cached_template_name = ""
+        if template_file and template_file.filename:
+            if not template_file.filename.lower().endswith((".xlsx", ".xlsm")):
+                raise ValueError("Formal / template workbook must be an .xlsx file.")
+            template_token, cached_template_name = _cache_non_continuous_template(
+                template_file.filename,
+                await template_file.read(),
+            )
+        else:
+            _, cached_template_name = _load_non_continuous_template(template_token)
+        sign_on_rows, sign_off_rows = _load_non_continuous_snapshot(
+            session, variant_key, inferred_date or date.today()
+        )
+    except Exception as exc:
+        return templates.TemplateResponse(
+            "non_continuous_duty.html",
+            _non_continuous_context(
+                request,
+                variant_key,
+                error=f"SUB NON CONTINUOUS DUTY preview failed: {exc}",
+                report_date=selected_date,
+                template_token=template_token or "",
+                source_name=source_name,
+            ),
+        )
+
+    return templates.TemplateResponse(
+        "non_continuous_duty.html",
+        _non_continuous_context(
+            request,
+            variant_key,
+            report_date=selected_date,
+            sign_on_rows=sign_on_rows,
+            sign_off_rows=sign_off_rows,
+            template_token=template_token or "",
+            source_name=source_name,
+            cached_template_name=cached_template_name,
+        ),
+    )
+
+
+@app.post("/sub-non-continuous-duty/generate")
+async def generate_sub_non_continuous_duty(
+    request: Request,
+    source_file: Optional[UploadFile] = File(None),
+    template_file: Optional[UploadFile] = File(None),
+    report_date: Optional[str] = Form(None),
+    template_token: Optional[str] = Form(None),
+    source_name: Optional[str] = Form(None),
+    session: Session = Depends(get_session),
+):
+    variant_key = "sub"
+    variant_config = NON_CONTINUOUS_VARIANTS[variant_key]
+    uploaded_source_name = source_file.filename if source_file and source_file.filename else ""
+    template_name = template_file.filename if template_file else ""
+    display_source_name = uploaded_source_name or source_name or ""
+    inferred_date = coerce_report_date(report_date) or infer_report_date(display_source_name)
+    selected_date = report_date_iso(inferred_date)
+
+    if uploaded_source_name and not uploaded_source_name.lower().endswith((".xlsx", ".xlsm")):
+        return templates.TemplateResponse(
+            "non_continuous_duty.html",
+            _non_continuous_context(
+                request,
+                variant_key,
+                error="Source workbook must be an .xlsx file.",
                 report_date=selected_date,
                 template_token=template_token or "",
                 source_name=display_source_name,
             ),
         )
+    if not uploaded_source_name and not display_source_name:
+        return templates.TemplateResponse(
+            "non_continuous_duty.html",
+            _non_continuous_context(
+                request,
+                variant_key,
+                error="Please click Generate first or choose a source workbook before downloading.",
+                report_date=selected_date,
+                template_token=template_token or "",
+            ),
+        )
 
-    base_name = display_source_name.rsplit(".", 1)[0] if "." in display_source_name else "NON_CONTINUOUS_DUTY"
+    try:
+        if uploaded_source_name:
+            source_bytes = await source_file.read()
+            section, rows = parse_non_continuous_source(source_bytes)
+            if inferred_date:
+                _save_non_continuous_snapshot(session, variant_key, inferred_date, section, rows)
+        if template_file and template_name:
+            if not template_name.lower().endswith((".xlsx", ".xlsm")):
+                raise ValueError("Formal / template workbook must be an .xlsx file.")
+            template_bytes = await template_file.read()
+            template_token, cached_template_name = _cache_non_continuous_template(template_name, template_bytes)
+        else:
+            template_bytes, cached_template_name = _load_non_continuous_template(template_token)
+            if not template_bytes:
+                raise ValueError("Please choose the formal / template workbook once before downloading.")
+        sign_on_rows, sign_off_rows = _load_non_continuous_snapshot(
+            session, variant_key, inferred_date or date.today()
+        )
+        if not sign_on_rows and not sign_off_rows:
+            raise ValueError("No saved SUB NON CONTINUOUS DUTY data found for the selected date. Please click Generate first.")
+        output = build_non_continuous_workbook(
+            sign_on_rows,
+            sign_off_rows,
+            template_bytes,
+            inferred_date,
+            sheet_title=variant_config["sheet_title"],
+            output_sign_on_title=variant_config["sign_on_label"],
+            output_sign_off_title=variant_config["sign_off_label"],
+        )
+    except Exception as exc:
+        return templates.TemplateResponse(
+            "non_continuous_duty.html",
+            _non_continuous_context(
+                request,
+                variant_key,
+                error=f"SUB NON CONTINUOUS DUTY generation failed: {exc}",
+                report_date=selected_date,
+                template_token=template_token or "",
+                source_name=display_source_name,
+                cached_template_name=cached_template_name if 'cached_template_name' in locals() else "",
+            ),
+        )
+
+    base_name = display_source_name.rsplit(".", 1)[0] if "." in display_source_name else "SUB_NON_CONTINUOUS_DUTY"
     filename = f"{base_name}_updated.xlsx"
     return StreamingResponse(
         iter([output.getvalue()]),

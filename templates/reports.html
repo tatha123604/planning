@@ -20,6 +20,7 @@
         <a class="{{ 'active' if active_page == 'uploads' else '' }}" href="/uploads">Uploads</a>
         <a class="{{ 'active' if active_page == 'cli_matrix' else '' }}" href="/cli-matrix">CLI Matrix</a>
         <a class="{{ 'active' if active_page == 'non_continuous_duty' else '' }}" href="/non-continuous-duty">NON SUB NON CONT DUTY</a>
+        <a class="{{ 'active' if active_page == 'sub_non_continuous_duty' else '' }}" href="/sub-non-continuous-duty">SUB NON CONT DUTY</a>
         <a class="{{ 'active' if active_page == 'requirements' else '' }}" href="/requirements">Requirements</a>
         <a class="{{ 'active' if active_page == 'reports' else '' }}" href="/reports">Reports</a>
       </nav>
@@ -89,6 +90,16 @@
           <div style="display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap;">
             <p>Upload the daily sign-on or sign-off workbook, store that date's snapshot, and generate the formal non-continuous duty workbook tab.</p>
             <a class="ghost" href="/non-continuous-duty">Open NON SUB NON CONT DUTY</a>
+          </div>
+        </details>
+      </section>
+
+      <section class="card collapsible">
+        <details>
+          <summary>SUB NON CONTINUOUS DUTY SIGN_ON/SIGN_OFF</summary>
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap;">
+            <p>Upload the daily sign-on or sign-off workbook, store that date's snapshot, and generate the formal sub non-continuous duty workbook tab.</p>
+            <a class="ghost" href="/sub-non-continuous-duty">Open SUB NON CONT DUTY</a>
           </div>
         </details>
       </section>

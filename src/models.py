@@ -94,3 +94,39 @@ class NonContinuousSignOffSnapshot(SQLModel, table=True):
     duty_type: str | None = None
     route_stn: str | None = None
     reason: str | None = None
+
+
+class SubNonContinuousSignOnSnapshot(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    report_date: date = Field(index=True)
+    row_no: int = Field(index=True)
+    crew_id: str | None = None
+    crew_name: str | None = None
+    desig: str | None = None
+    station: str | None = None
+    event_time: str | None = None
+    sup_id: str | None = None
+    entry_point: str | None = None
+    train_no: str | None = None
+    loco_no: str | None = None
+    duty_type: str | None = None
+    route_stn: str | None = None
+    reason: str | None = None
+
+
+class SubNonContinuousSignOffSnapshot(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    report_date: date = Field(index=True)
+    row_no: int = Field(index=True)
+    crew_id: str | None = None
+    crew_name: str | None = None
+    desig: str | None = None
+    station: str | None = None
+    event_time: str | None = None
+    sup_id: str | None = None
+    entry_point: str | None = None
+    train_no: str | None = None
+    loco_no: str | None = None
+    duty_type: str | None = None
+    route_stn: str | None = None
+    reason: str | None = None
