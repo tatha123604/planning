@@ -142,6 +142,14 @@ input[type="date"]:focus {
   color: #ffe45c;
   font-weight: 700;
 }
+.template-name-label {
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #ffe45c;
+  text-transform: uppercase;
+}
 .template-name-display::placeholder {
   color: rgba(255, 228, 92, 0.65);
 }
