@@ -43,6 +43,30 @@
         </div>
       </header>
 
+      <section class="card">
+        <h2>Google Sheet Sync</h2>
+        {% if sync_error %}
+        <p class="error-text">{{ sync_error }}</p>
+        {% endif %}
+        {% if sync_notice %}
+        <p class="hint success-text">{{ sync_notice }}</p>
+        {% endif %}
+        <p class="hint">One-way sync only: changes made in Google Sheet will update this project, but edits made here will not push back to Google Sheet.</p>
+        {% if google_sync_ready %}
+        <p class="hint">Configured range: <strong>{{ google_sync_range }}</strong></p>
+        <form method="post" action="/employees/sync-google" class="inline">
+          <div class="actions">
+            <button type="submit">Sync from Google Sheet</button>
+          </div>
+        </form>
+        {% else %}
+        <p class="hint">Google Sheet sync is not configured yet. Set the Google Sheet and service-account environment variables on the server, then this button will work.</p>
+        <div class="actions">
+          <button type="button" disabled>Sync from Google Sheet</button>
+        </div>
+        {% endif %}
+      </section>
+
       <section class="card collapsible" id="employees-card">
         <details {% if employees_open %}open{% endif %}>
           <summary>Employees</summary>

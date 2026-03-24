@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
+import json
 import math
+import os
 from io import BytesIO
 from pathlib import Path
 from typing import Optional
 import re
+from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, Form, Request, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
@@ -57,6 +60,7 @@ from processor import (
 BASE_PATH = Path(__file__).resolve().parent.parent
 TEMPLATE_STORE_DIR = DB_PATH.parent / "saved_templates"
 CLI_MATRIX_2026_03_24_CLEANUP_SENTINEL = DB_PATH.parent / ".cli_matrix_cleanup_2026_03_24.done"
+GOOGLE_SHEETS_READONLY_SCOPE = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 NON_CONTINUOUS_VARIANTS = {
     "non_sub": {
         "active_page": "non_continuous_duty",
@@ -338,6 +342,8 @@ def employees_page(
     roster_name: Optional[str] = None,
     roster_cli: Optional[str] = None,
     roster_gradation: Optional[str] = None,
+    sync_notice: Optional[str] = None,
+    sync_error: Optional[str] = None,
     session: Session = Depends(get_session),
 ):
     roster_filter_active = any([roster_name, roster_cli, roster_gradation])
@@ -426,8 +432,26 @@ def employees_page(
             "roster_gradation": roster_gradation or "",
             "employees_open": employees_open,
             "roster_open": roster_open,
+            "sync_notice": sync_notice or "",
+            "sync_error": sync_error or "",
+            "google_sync_ready": _google_sheet_sync_ready(),
+            "google_sync_range": os.getenv("GOOGLE_SHEETS_EMPLOYEE_RANGE", "").strip() or "Employees!A:ZZ",
         },
     )
+
+
+@app.post("/employees/sync-google")
+def sync_employees_from_google_sheet(session: Session = Depends(get_session)):
+    try:
+        rows, sheet_range = _fetch_google_employee_rows()
+        added, updated = _import_employee_rows(session, rows, source_label=f"Google Sheet ({sheet_range})")
+        message = quote(f"Google Sheet sync complete: {added} added, {updated} updated.")
+        return RedirectResponse(url=f"/employees?sync_notice={message}#employees-card", status_code=303)
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "Google Sheet sync failed."
+        return RedirectResponse(url=f"/employees?sync_error={quote(detail)}#employees-card", status_code=303)
+    except Exception as exc:
+        return RedirectResponse(url=f"/employees?sync_error={quote(str(exc))}#employees-card", status_code=303)
 
 
 @app.get("/employees/{emp_id}")
@@ -571,6 +595,275 @@ def _load_persistent_template(key: str) -> tuple[bytes | None, str]:
         return None, ""
     stored_name = name_path.read_text(encoding="utf-8").strip() if name_path.exists() else "template.xlsx"
     return data_path.read_bytes(), stored_name
+
+
+EMPLOYEE_ALIAS_MAP = {
+    "name": "name",
+    "sl": "name",
+    "slno": "name",
+    "n": "name",
+    "slname": "name",
+    "degn": "role",
+    "designation": "role",
+    "design": "role",
+    "role": "role",
+    "hiredate": "hire_date",
+    "dateofapptt": "hire_date",
+    "dateofappt": "hire_date",
+    "dateofappointment": "hire_date",
+    "doa": "doa",
+    "retirementdate": "retirement_date",
+    "dor": "retirement_date",
+    "promotionrole": "promotion_role",
+    "promotionreadydate": "promotion_ready_date",
+    "category": "category",
+    "pf": "pf_no",
+    "pfno": "pf_no",
+    "pfnolen": "pf_no",
+    "hrms": "hrms",
+    "hrmsid": "hrms",
+    "dob": "dob",
+    "doareport": "do_report",
+    "doreport": "do_report",
+    "status": "status",
+    "workingat": "working_at",
+    "lobby": "working_at",
+    "workingplace": "working_at",
+    "gradation": "gradation",
+    "cli": "cli",
+    "pme": "pme_due",
+    "pmedue": "pme_due",
+    "pme_due": "pme_due",
+    "technical": "technical_due",
+    "technicaldue": "technical_due",
+    "technical_due": "technical_due",
+    "transportation": "transportation_due",
+    "transportationdue": "transportation_due",
+    "transportation_due": "transportation_due",
+}
+
+
+def _employee_norm(value: object | None) -> str:
+    return "".join(ch for ch in str(value).lower() if ch.isalnum()) if value is not None else ""
+
+
+def _derive_hire_date(dob_val: date | None, retirement_val: date | None) -> date | None:
+    if dob_val:
+        try:
+            return dob_val.replace(year=dob_val.year + 25)
+        except ValueError:
+            return dob_val.replace(month=2, day=28, year=dob_val.year + 25)
+    if retirement_val:
+        return retirement_val - timedelta(days=35 * 365)
+    return None
+
+
+def _import_employee_rows(session: Session, rows: list[tuple | list], source_label: str = "sheet") -> tuple[int, int]:
+    if not rows:
+        raise HTTPException(status_code=400, detail=f"{source_label} is empty.")
+
+    header_raw = None
+    for r in rows:
+        if any(cell not in (None, "", " ") for cell in r):
+            header_raw = r
+            break
+    if header_raw is None:
+        raise HTTPException(status_code=400, detail=f"{source_label} appears empty (no header row).")
+
+    header_norm = [_employee_norm(h) for h in header_raw]
+    mapped_cols = [EMPLOYEE_ALIAS_MAP.get(h, "") for h in header_norm]
+
+    col_index: dict[str, int] = {}
+    for idx, canonical in enumerate(mapped_cols):
+        if canonical and canonical not in col_index:
+            col_index[canonical] = idx
+
+    required_cols = {"name", "role", "retirement_date"}
+    missing_required = required_cols - set(col_index)
+
+    if missing_required:
+        first_row = rows[rows.index(header_raw)]
+        if isinstance(first_row[0], (int, float)) and isinstance(first_row[1], str) and len(first_row) >= 14:
+            positional_map = {
+                "name": 1,
+                "role": 2,
+                "pf_no": 3,
+                "hrms": 4,
+                "category": 6,
+                "gradation": 7,
+                "working_at": 10,
+                "cli": 11,
+                "dob": 12,
+                "retirement_date": 13,
+                "pme_due": 14,
+                "technical_due": 15,
+                "transportation_due": 16,
+            }
+            for key, idx in positional_map.items():
+                if key not in col_index and idx < len(first_row):
+                    col_index[key] = idx
+            missing_required = required_cols - set(col_index)
+
+    if missing_required:
+        raise HTTPException(status_code=400, detail=f"Missing columns in {source_label}: {', '.join(sorted(missing_required))}")
+
+    added = 0
+    updated = 0
+
+    for row in rows[rows.index(header_raw) + 1 :]:
+        def get(col: str) -> object | None:
+            idx = col_index.get(col)
+            if idx is None or idx >= len(row):
+                return None
+            return row[idx]
+
+        name = get("name")
+        role_raw = get("role")
+        if name in (None, "") or role_raw in (None, ""):
+            continue
+
+        try:
+            hire_date = _excel_to_date(get("hire_date"))
+            retirement_date = _excel_to_date(get("retirement_date"))
+            promo_ready = _excel_to_date(get("promotion_ready_date")) if "promotion_ready_date" in col_index else None
+            dob = _excel_to_date(get("dob")) if "dob" in col_index else None
+            doa = _excel_to_date(get("doa")) if "doa" in col_index else None
+            do_report = _excel_to_date(get("do_report")) if "do_report" in col_index else None
+            pme_due = _excel_to_date(get("pme_due")) if "pme_due" in col_index else None
+            technical_due = _excel_to_date(get("technical_due")) if "technical_due" in col_index else None
+            transportation_due = _excel_to_date(get("transportation_due")) if "transportation_due" in col_index else None
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Date parse error in {source_label}: {exc}") from exc
+
+        if retirement_date is None:
+            raise HTTPException(status_code=400, detail=f"retirement_date is required in {source_label}.")
+        if hire_date is None:
+            hire_date = _derive_hire_date(dob, retirement_date)
+        if hire_date is None:
+            raise HTTPException(status_code=400, detail=f"hire_date missing in {source_label} and could not be derived.")
+
+        role = normalize_role(str(role_raw))
+        promo_role = normalize_role(str(get("promotion_role"))) if "promotion_role" in col_index else None
+        category = str(get("category")).strip() if "category" in col_index and get("category") else None
+        pf_no = str(get("pf_no")).strip() if "pf_no" in col_index and get("pf_no") else None
+        hrms = str(get("hrms")).strip() if "hrms" in col_index and get("hrms") else None
+        status_val = str(get("status")).strip() if "status" in col_index and get("status") else None
+        working_at = str(get("working_at")).strip() if "working_at" in col_index and get("working_at") else None
+
+        existing = None
+        if pf_no:
+            existing = session.exec(select(Employee).where(Employee.pf_no == pf_no)).first()
+        if existing is None and hrms:
+            existing = session.exec(select(Employee).where(Employee.hrms == hrms)).first()
+        if existing is None:
+            existing = session.exec(
+                select(Employee).where(Employee.name == str(name).strip(), Employee.role == role)
+            ).first()
+
+        if existing:
+            existing.hire_date = hire_date
+            existing.retirement_date = retirement_date
+            existing.promotion_role = promo_role
+            existing.promotion_ready_date = promo_ready
+            existing.category = category
+            existing.pf_no = pf_no
+            existing.hrms = hrms
+            existing.dob = dob
+            existing.doa = doa
+            existing.do_report = do_report
+            existing.status = status_val
+            existing.working_at = working_at
+            existing.gradation = str(get("gradation")).strip() if "gradation" in col_index and get("gradation") else existing.gradation
+            existing.cli = str(get("cli")).strip() if "cli" in col_index and get("cli") else existing.cli
+            existing.pme_due = pme_due if pme_due else existing.pme_due
+            existing.technical_due = technical_due if technical_due else existing.technical_due
+            existing.transportation_due = transportation_due if transportation_due else existing.transportation_due
+            updated += 1
+        else:
+            session.add(
+                Employee(
+                    name=str(name).strip(),
+                    role=role,
+                    hire_date=hire_date,
+                    retirement_date=retirement_date,
+                    promotion_role=promo_role,
+                    promotion_ready_date=promo_ready,
+                    category=category,
+                    pf_no=pf_no,
+                    hrms=hrms,
+                    dob=dob,
+                    doa=doa,
+                    do_report=do_report,
+                    status=status_val,
+                    working_at=working_at,
+                    gradation=str(get("gradation")).strip() if "gradation" in col_index and get("gradation") else None,
+                    cli=str(get("cli")).strip() if "cli" in col_index and get("cli") else None,
+                    pme_due=pme_due,
+                    technical_due=technical_due,
+                    transportation_due=transportation_due,
+                )
+            )
+            added += 1
+
+    session.commit()
+    if added == 0 and updated == 0:
+        raise HTTPException(status_code=400, detail=f"No rows imported from {source_label}. Check the sheet data or headers.")
+    return added, updated
+
+
+def _google_sheet_sync_ready() -> bool:
+    return bool(
+        os.getenv("GOOGLE_SHEETS_EMPLOYEE_SPREADSHEET_ID", "").strip()
+        and (
+            os.getenv("GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON", "").strip()
+            or os.getenv("GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE", "").strip()
+        )
+    )
+
+
+def _fetch_google_employee_rows() -> tuple[list[list[str]], str]:
+    spreadsheet_id = os.getenv("GOOGLE_SHEETS_EMPLOYEE_SPREADSHEET_ID", "").strip()
+    sheet_range = os.getenv("GOOGLE_SHEETS_EMPLOYEE_RANGE", "").strip() or "Employees!A:ZZ"
+    if not spreadsheet_id:
+        raise HTTPException(status_code=400, detail="Google Sheet sync is not configured: missing GOOGLE_SHEETS_EMPLOYEE_SPREADSHEET_ID.")
+
+    service_account_json = os.getenv("GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON", "").strip()
+    service_account_file = os.getenv("GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE", "").strip()
+    if not service_account_json and not service_account_file:
+        raise HTTPException(status_code=400, detail="Google Sheet sync is not configured: missing service account credentials.")
+
+    try:
+        from google.oauth2 import service_account
+        from googleapiclient.discovery import build
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Google Sheets client libraries are not installed on the server.") from exc
+
+    try:
+        if service_account_json:
+            info = json.loads(service_account_json)
+            credentials = service_account.Credentials.from_service_account_info(
+                info,
+                scopes=GOOGLE_SHEETS_READONLY_SCOPE,
+            )
+        else:
+            credentials = service_account.Credentials.from_service_account_file(
+                service_account_file,
+                scopes=GOOGLE_SHEETS_READONLY_SCOPE,
+            )
+        service = build("sheets", "v4", credentials=credentials, cache_discovery=False)
+        result = service.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id,
+            range=sheet_range,
+        ).execute()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Could not read Google Sheet: {exc}") from exc
+
+    rows = result.get("values", [])
+    if not rows:
+        raise HTTPException(status_code=400, detail="Google Sheet returned no rows.")
+    return rows, sheet_range
 
 
 def _run_one_time_cli_matrix_cleanup(session: Session) -> None:
@@ -1917,218 +2210,7 @@ async def upload_employees(
     wb = load_workbook(filename=BytesIO(content), data_only=True)
     ws = wb.active
     rows = list(ws.iter_rows(values_only=True))
-    if not rows:
-        raise HTTPException(status_code=400, detail="Workbook is empty.")
-
-    # Normalize headers and map common aliases (to support varied spreadsheets)
-    def norm(val: object | None) -> str:
-        return "".join(ch for ch in str(val).lower() if ch.isalnum()) if val is not None else ""
-
-    # find first non-empty row to use as header
-    header_raw = None
-    for r in rows:
-        if any(cell not in (None, "", " ") for cell in r):
-            header_raw = r
-            break
-    if header_raw is None:
-        raise HTTPException(status_code=400, detail="Workbook appears empty (no header row).")
-
-    header_norm = [norm(h) for h in header_raw]
-    alias_map = {
-        "name": "name",
-        "sl": "name",
-        "slno": "name",
-        "n": "name",
-        "slname": "name",
-        "degn": "role",
-        "designation": "role",
-        "design": "role",
-        "role": "role",
-        "hiredate": "hire_date",
-        "dateofapptt": "hire_date",
-        "dateofappt": "hire_date",
-        "dateofappointment": "hire_date",
-        "doa": "doa",
-        "retirementdate": "retirement_date",
-        "dor": "retirement_date",
-        "promotionrole": "promotion_role",
-        "promotionreadydate": "promotion_ready_date",
-        "category": "category",
-        "pf": "pf_no",
-        "pfno": "pf_no",
-        "pfnolen": "pf_no",
-        "hrms": "hrms",
-        "hrmsid": "hrms",
-        "dob": "dob",
-        "doareport": "do_report",
-        "doreport": "do_report",
-        "status": "status",
-        "workingat": "working_at",
-        "lobby": "working_at",
-        "workingplace": "working_at",
-        "gradation": "gradation",
-        "cli": "cli",
-        "pme": "pme_due",
-        "pmedue": "pme_due",
-        "pme_due": "pme_due",
-        "technical": "technical_due",
-        "technicaldue": "technical_due",
-        "technical_due": "technical_due",
-        "transportation": "transportation_due",
-        "transportationdue": "transportation_due",
-        "transportation_due": "transportation_due",
-    }
-
-    mapped_cols: list[str] = []
-    for h in header_norm:
-        mapped_cols.append(alias_map.get(h, ""))
-
-    col_index: dict[str, int] = {}
-    for idx, canonical in enumerate(mapped_cols):
-        if canonical and canonical not in col_index:
-            col_index[canonical] = idx
-
-    required_cols = {"name", "role", "retirement_date"}
-    missing_required = required_cols - set(col_index)
-
-    # Fallback: known North sheet positional layout when header row is missing but data present
-    if missing_required:
-        first_row = rows[rows.index(header_raw)]
-        if isinstance(first_row[0], (int, float)) and isinstance(first_row[1], str) and len(first_row) >= 14:
-            # assume order: SL, Name, Degn, PF, HRMS, Gender, Category, Gradation, mob, WhatsApp, LOBBY, CLI, DOB, DOR, PME, Technical, Transportation, Tr10...
-            positional_map = {
-                "name": 1,
-                "role": 2,
-                "pf_no": 3,
-                "hrms": 4,
-                "category": 6,
-                "gradation": 7,
-                "working_at": 10,
-                "cli": 11,
-                "dob": 12,
-                "retirement_date": 13,
-                "pme_due": 14,
-                "technical_due": 15,
-                "transportation_due": 16,
-            }
-            for key, idx in positional_map.items():
-                if key not in col_index and idx < len(first_row):
-                    col_index[key] = idx
-            missing_required = required_cols - set(col_index)
-
-    if missing_required:
-        raise HTTPException(status_code=400, detail=f"Missing columns: {', '.join(sorted(missing_required))}")
-    added = 0
-    updated = 0
-    def derive_hire_date(dob_val: date | None, retirement_val: date | None) -> date | None:
-        if dob_val:
-            try:
-                return dob_val.replace(year=dob_val.year + 25)
-            except ValueError:
-                # Feb 29 safety
-                return dob_val.replace(month=2, day=28, year=dob_val.year + 25)
-        if retirement_val:
-            return retirement_val - timedelta(days=35 * 365)
-        return None
-
-    for row in rows[rows.index(header_raw) + 1 :]:
-        def get(col: str) -> object | None:
-            idx = col_index.get(col)
-            if idx is None or idx >= len(row):
-                return None
-            return row[idx]
-
-        name = get("name")
-        role_raw = get("role")
-        if name in (None, "") or role_raw in (None, ""):
-            continue
-
-        try:
-            hire_date = _excel_to_date(get("hire_date"))
-            retirement_date = _excel_to_date(get("retirement_date"))
-            promo_ready = _excel_to_date(get("promotion_ready_date")) if "promotion_ready_date" in col_index else None
-            dob = _excel_to_date(get("dob")) if "dob" in col_index else None
-            doa = _excel_to_date(get("doa")) if "doa" in col_index else None
-            do_report = _excel_to_date(get("do_report")) if "do_report" in col_index else None
-            pme_due = _excel_to_date(get("pme_due")) if "pme_due" in col_index else None
-            technical_due = _excel_to_date(get("technical_due")) if "technical_due" in col_index else None
-            transportation_due = _excel_to_date(get("transportation_due")) if "transportation_due" in col_index else None
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=f"Date parse error: {exc}") from exc
-
-        if retirement_date is None:
-            raise HTTPException(status_code=400, detail="retirement_date is required in the sheet.")
-        if hire_date is None:
-            hire_date = derive_hire_date(dob, retirement_date)
-        if hire_date is None:
-            raise HTTPException(status_code=400, detail="hire_date missing and could not be derived (need hire_date or dob).")
-
-        role = normalize_role(str(role_raw))
-        promo_role = normalize_role(str(get("promotion_role"))) if "promotion_role" in col_index else None
-        category = str(get("category")).strip() if "category" in col_index and get("category") else None
-        pf_no = str(get("pf_no")).strip() if "pf_no" in col_index and get("pf_no") else None
-        hrms = str(get("hrms")).strip() if "hrms" in col_index and get("hrms") else None
-        status_val = str(get("status")).strip() if "status" in col_index and get("status") else None
-        working_at = str(get("working_at")).strip() if "working_at" in col_index and get("working_at") else None
-
-        # upsert by (name, role) to prevent duplicates
-        existing = None
-        if pf_no:
-            existing = session.exec(select(Employee).where(Employee.pf_no == pf_no)).first()
-        if existing is None and hrms:
-            existing = session.exec(select(Employee).where(Employee.hrms == hrms)).first()
-        if existing is None:
-            existing = session.exec(
-                select(Employee).where(Employee.name == str(name).strip(), Employee.role == role)
-            ).first()
-        if existing:
-            existing.hire_date = hire_date
-            existing.retirement_date = retirement_date
-            existing.promotion_role = promo_role
-            existing.promotion_ready_date = promo_ready
-            existing.category = category
-            existing.pf_no = pf_no
-            existing.hrms = hrms
-            existing.dob = dob
-            existing.doa = doa
-            existing.do_report = do_report
-            existing.status = status_val
-            existing.working_at = working_at
-            existing.gradation = str(get("gradation")).strip() if "gradation" in col_index and get("gradation") else existing.gradation
-            existing.cli = str(get("cli")).strip() if "cli" in col_index and get("cli") else existing.cli
-            existing.pme_due = pme_due if pme_due else existing.pme_due
-            existing.technical_due = technical_due if technical_due else existing.technical_due
-            existing.transportation_due = transportation_due if transportation_due else existing.transportation_due
-            updated += 1
-        else:
-            session.add(
-                Employee(
-                    name=str(name).strip(),
-                    role=role,
-                    hire_date=hire_date,
-                    retirement_date=retirement_date,
-                    promotion_role=promo_role,
-                    promotion_ready_date=promo_ready,
-                    category=category,
-                    pf_no=pf_no,
-                    hrms=hrms,
-                    dob=dob,
-                    doa=doa,
-                    do_report=do_report,
-                    status=status_val,
-                    working_at=working_at,
-                    gradation=str(get("gradation")).strip() if "gradation" in col_index and get("gradation") else None,
-                    cli=str(get("cli")).strip() if "cli" in col_index and get("cli") else None,
-                    pme_due=pme_due,
-                    technical_due=technical_due,
-                    transportation_due=transportation_due,
-                )
-            )
-            added += 1
-
-    session.commit()
-    if added == 0 and updated == 0:
-        raise HTTPException(status_code=400, detail="No rows imported. Check the sheet data or headers.")
+    _import_employee_rows(session, rows, source_label="uploaded workbook")
     return RedirectResponse("/", status_code=303)
 
 
