@@ -54,7 +54,7 @@
         <p class="hint" id="google-sync-live" role="status" aria-live="polite"></p>
         <p class="hint">One-way sync only: changes made in Google Sheet will update this project, but edits made here will not push back to Google Sheet.</p>
         {% if google_sync_ready %}
-        <p class="hint">Configured range: <strong>{{ google_sync_range }}</strong></p>
+        <p class="hint">Configured source: <strong>{{ google_sync_range }}</strong></p>
         <form method="post" action="/employees/sync-google" class="inline" data-google-sync-form>
           <div class="actions">
             <button type="submit" data-sync-button>Sync from Google Sheet</button>

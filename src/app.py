@@ -58,6 +58,7 @@ from processor import (
 )
 
 BASE_PATH = Path(__file__).resolve().parent.parent
+GOOGLE_EMPLOYEE_STATION_TABS = ["North", "South", "KOAA", "DDJ", "RHA", "NH", "BT"]
 TEMPLATE_STORE_DIR = DB_PATH.parent / "saved_templates"
 CLI_MATRIX_2026_03_24_CLEANUP_SENTINEL = DB_PATH.parent / ".cli_matrix_cleanup_2026_03_24.done"
 GOOGLE_SHEETS_READONLY_SCOPE = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
@@ -435,7 +436,7 @@ def employees_page(
             "sync_notice": sync_notice or "",
             "sync_error": sync_error or "",
             "google_sync_ready": _google_sheet_sync_ready(),
-            "google_sync_range": os.getenv("GOOGLE_SHEETS_EMPLOYEE_RANGE", "").strip() or "Employees!A:ZZ",
+            "google_sync_range": ", ".join(GOOGLE_EMPLOYEE_STATION_TABS),
         },
     )
 
@@ -444,9 +445,19 @@ def employees_page(
 def sync_employees_from_google_sheet(request: Request, session: Session = Depends(get_session)):
     wants_json = request.headers.get("x-requested-with", "").lower() == "fetch"
     try:
-        rows, sheet_range = _fetch_google_employee_rows()
-        added, updated = _import_employee_rows(session, rows, source_label=f"Google Sheet ({sheet_range})")
-        message_text = f"Google Sheet sync complete: {added} added, {updated} updated."
+        sources, source_label = _fetch_google_employee_rows()
+        added = 0
+        updated = 0
+        for rows, sheet_name, working_at in sources:
+            a, u = _import_employee_rows(
+                session,
+                rows,
+                source_label=f"Google Sheet ({sheet_name})",
+                working_at_override=working_at,
+            )
+            added += a
+            updated += u
+        message_text = f"Google Sheet sync complete: {added} added, {updated} updated from {source_label}."
         if wants_json:
             return JSONResponse({"ok": True, "message": message_text})
         message = quote(message_text)
@@ -666,7 +677,12 @@ def _derive_hire_date(dob_val: date | None, retirement_val: date | None) -> date
     return None
 
 
-def _import_employee_rows(session: Session, rows: list[tuple | list], source_label: str = "sheet") -> tuple[int, int]:
+def _import_employee_rows(
+    session: Session,
+    rows: list[tuple | list],
+    source_label: str = "sheet",
+    working_at_override: Optional[str] = None,
+) -> tuple[int, int]:
     if not rows:
         raise HTTPException(status_code=400, detail=f"{source_label} is empty.")
 
@@ -757,6 +773,8 @@ def _import_employee_rows(session: Session, rows: list[tuple | list], source_lab
         hrms = str(get("hrms")).strip() if "hrms" in col_index and get("hrms") else None
         status_val = str(get("status")).strip() if "status" in col_index and get("status") else None
         working_at = str(get("working_at")).strip() if "working_at" in col_index and get("working_at") else None
+        if working_at_override:
+            working_at = working_at_override
 
         existing = None
         if pf_no:
@@ -882,7 +900,16 @@ def _resolve_google_sheet_range(service, spreadsheet_id: str, requested_range: s
     return _normalize_google_sheet_range(f"{actual_title}!{cell_range}")
 
 
-def _fetch_google_employee_rows() -> tuple[list[list[str]], str]:
+def _list_google_sheet_titles(service, spreadsheet_id: str) -> list[str]:
+    metadata = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+    return [
+        sheet.get("properties", {}).get("title", "").strip()
+        for sheet in metadata.get("sheets", [])
+        if sheet.get("properties", {}).get("title")
+    ]
+
+
+def _fetch_google_employee_rows() -> tuple[list[tuple[list[list[str]], str, Optional[str]]], str]:
     spreadsheet_id = os.getenv("GOOGLE_SHEETS_EMPLOYEE_SPREADSHEET_ID", "").strip()
     requested_range = os.getenv("GOOGLE_SHEETS_EMPLOYEE_RANGE", "").strip() or "Employees!A:ZZ"
     if not spreadsheet_id:
@@ -912,6 +939,29 @@ def _fetch_google_employee_rows() -> tuple[list[list[str]], str]:
                 scopes=GOOGLE_SHEETS_READONLY_SCOPE,
             )
         service = build("sheets", "v4", credentials=credentials, cache_discovery=False)
+        titles = _list_google_sheet_titles(service, spreadsheet_id)
+        if not titles:
+            raise HTTPException(status_code=400, detail="Google Sheet has no visible tabs.")
+
+        title_map = {_sheet_name_key(title): title for title in titles}
+        sources: list[tuple[list[list[str]], str, Optional[str]]] = []
+
+        for station_name in GOOGLE_EMPLOYEE_STATION_TABS:
+            actual_title = title_map.get(_sheet_name_key(station_name))
+            if not actual_title:
+                continue
+            sheet_range = _normalize_google_sheet_range(f"{actual_title}!A:ZZ")
+            result = service.spreadsheets().values().get(
+                spreadsheetId=spreadsheet_id,
+                range=sheet_range,
+            ).execute()
+            rows = result.get("values", [])
+            if rows and len(rows) > 1:
+                sources.append((rows, actual_title, station_name))
+
+        if sources:
+            return sources, ", ".join(station for _, _, station in sources)
+
         sheet_range = _resolve_google_sheet_range(service, spreadsheet_id, requested_range)
         result = service.spreadsheets().values().get(
             spreadsheetId=spreadsheet_id,
@@ -925,7 +975,7 @@ def _fetch_google_employee_rows() -> tuple[list[list[str]], str]:
     rows = result.get("values", [])
     if not rows:
         raise HTTPException(status_code=400, detail="Google Sheet returned no rows.")
-    return rows, sheet_range
+    return [(rows, sheet_range, None)], sheet_range
 
 
 def _run_one_time_cli_matrix_cleanup(session: Session) -> None:
