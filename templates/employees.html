@@ -56,6 +56,10 @@
         {% endif %}
         <p class="hint" id="google-sync-live" role="status" aria-live="polite"></p>
         <p class="hint warning-text" id="google-sync-warning" role="status" aria-live="polite"></p>
+        <div id="google-sync-details-wrap" hidden>
+          <p class="hint success-text"><strong>Added / Updated records</strong></p>
+          <ul class="sync-warning-list" id="google-sync-details-list"></ul>
+        </div>
         <div id="google-sync-warning-wrap" hidden>
           <p class="hint warning-text"><strong>Mismatch / Auto-fixed records</strong></p>
           <ul class="sync-warning-list" id="google-sync-warning-list"></ul>
@@ -291,10 +295,12 @@
       const syncForm = document.querySelector('[data-google-sync-form]');
       const syncLive = document.getElementById('google-sync-live');
       const syncWarning = document.getElementById('google-sync-warning');
+      const syncDetailsWrap = document.getElementById('google-sync-details-wrap');
+      const syncDetailsList = document.getElementById('google-sync-details-list');
       const syncWarningWrap = document.getElementById('google-sync-warning-wrap');
       const syncWarningList = document.getElementById('google-sync-warning-list');
       const syncButton = document.querySelector('[data-sync-button]');
-      if (syncForm && syncLive && syncWarning && syncWarningWrap && syncWarningList && syncButton) {
+      if (syncForm && syncLive && syncWarning && syncDetailsWrap && syncDetailsList && syncWarningWrap && syncWarningList && syncButton) {
         syncForm.addEventListener('submit', async (event) => {
           event.preventDefault();
           syncButton.disabled = true;
@@ -303,6 +309,8 @@
           syncLive.className = 'hint';
           syncLive.textContent = 'Sync started...';
           syncWarning.textContent = '';
+          syncDetailsWrap.hidden = true;
+          syncDetailsList.innerHTML = '';
           syncWarningWrap.hidden = true;
           syncWarningList.innerHTML = '';
           try {
@@ -315,6 +323,16 @@
             syncLive.className = response.ok ? 'hint success-text' : 'error-text';
             syncWarning.textContent = data.warning_message || '';
             syncWarning.className = data.warning_message ? 'hint warning-text' : 'hint warning-text';
+            const syncDetails = Array.isArray(data.sync_details) ? data.sync_details : [];
+            if (syncDetails.length) {
+              syncDetailsWrap.hidden = false;
+              syncDetailsList.innerHTML = '';
+              syncDetails.forEach((item) => {
+                const li = document.createElement('li');
+                li.textContent = item;
+                syncDetailsList.appendChild(li);
+              });
+            }
             const warningDetails = Array.isArray(data.warning_details) ? data.warning_details : [];
             if (warningDetails.length) {
               syncWarningWrap.hidden = false;
@@ -329,6 +347,8 @@
             syncLive.textContent = 'Sync failed. Please try again.';
             syncLive.className = 'error-text';
             syncWarning.textContent = '';
+            syncDetailsWrap.hidden = true;
+            syncDetailsList.innerHTML = '';
             syncWarningWrap.hidden = true;
             syncWarningList.innerHTML = '';
           } finally {

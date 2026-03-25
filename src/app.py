@@ -451,6 +451,8 @@ def sync_employees_from_google_sheet(request: Request, session: Session = Depend
         added = 0
         updated = 0
         warnings: list[str] = []
+        sync_details: list[str] = []
+        sync_stats: dict[str, int] = {"unchanged": 0}
         for rows, sheet_name, working_at in sources:
             a, u = _import_employee_rows(
                 session,
@@ -458,10 +460,13 @@ def sync_employees_from_google_sheet(request: Request, session: Session = Depend
                 source_label=f"Google Sheet ({sheet_name})",
                 working_at_override=working_at,
                 warnings=warnings,
+                sync_details=sync_details,
+                sync_stats=sync_stats,
             )
             added += a
             updated += u
-        message_text = f"Google Sheet sync complete: {added} added, {updated} updated from {source_label}."
+        unchanged = sync_stats.get("unchanged", 0)
+        message_text = f"Google Sheet sync complete: {added} added, {updated} updated, {unchanged} unchanged from {source_label}."
         warning_text = ""
         if warnings:
             preview = "; ".join(warnings[:3])
@@ -475,6 +480,7 @@ def sync_employees_from_google_sheet(request: Request, session: Session = Depend
                     "message": message_text,
                     "warning_message": warning_text,
                     "warning_details": warnings,
+                    "sync_details": sync_details,
                 }
             )
         message = quote(message_text)
@@ -749,12 +755,23 @@ def _excel_to_date_with_correction(
         raise
 
 
+def _format_sync_value(value: object | None) -> str:
+    if isinstance(value, date):
+        return value.strftime("%d/%m/%Y")
+    if value is None:
+        return "blank"
+    text = str(value).strip()
+    return text if text else "blank"
+
+
 def _import_employee_rows(
     session: Session,
     rows: list[tuple | list],
     source_label: str = "sheet",
     working_at_override: Optional[str] = None,
     warnings: Optional[list[str]] = None,
+    sync_details: Optional[list[str]] = None,
+    sync_stats: Optional[dict[str, int]] = None,
 ) -> tuple[int, int]:
     if not rows:
         raise HTTPException(status_code=400, detail=f"{source_label} is empty.")
@@ -866,6 +883,35 @@ def _import_employee_rows(
             raise HTTPException(status_code=400, detail=f"hire_date missing in {source_label} and could not be derived.")
 
         if existing:
+            new_gradation = str(get("gradation")).strip() if "gradation" in col_index and get("gradation") else None
+            new_cli = str(get("cli")).strip() if "cli" in col_index and get("cli") else None
+            field_updates = [
+                ("Name", existing.name, str(name).strip()),
+                ("Designation", existing.role, role),
+                ("Hire Date", existing.hire_date, hire_date),
+                ("Retirement Date", existing.retirement_date, retirement_date),
+                ("Promotion Designation", existing.promotion_role, promo_role),
+                ("Promotion Ready Date", existing.promotion_ready_date, promo_ready),
+                ("Category", existing.category, category),
+                ("PF No", existing.pf_no, pf_no),
+                ("HRMS", existing.hrms, hrms),
+                ("DOB", existing.dob, dob),
+                ("DOA", existing.doa, doa),
+                ("DO Report", existing.do_report, do_report),
+                ("Status", existing.status, status_val),
+                ("Working At", existing.working_at, working_at),
+                ("Gradation", existing.gradation, new_gradation),
+                ("CLI", existing.cli, new_cli),
+                ("PME Due", existing.pme_due, pme_due),
+                ("Technical Due", existing.technical_due, technical_due),
+                ("Transportation Due", existing.transportation_due, transportation_due),
+            ]
+            changed_fields = [
+                f"{label}: {_format_sync_value(old_value)} -> {_format_sync_value(new_value)}"
+                for label, old_value, new_value in field_updates
+                if old_value != new_value
+            ]
+
             existing.name = str(name).strip()
             existing.role = role
             existing.hire_date = hire_date
@@ -880,12 +926,17 @@ def _import_employee_rows(
             existing.do_report = do_report
             existing.status = status_val
             existing.working_at = working_at
-            existing.gradation = str(get("gradation")).strip() if "gradation" in col_index and get("gradation") else None
-            existing.cli = str(get("cli")).strip() if "cli" in col_index and get("cli") else None
+            existing.gradation = new_gradation
+            existing.cli = new_cli
             existing.pme_due = pme_due
             existing.technical_due = technical_due
             existing.transportation_due = transportation_due
-            updated += 1
+            if changed_fields:
+                updated += 1
+                if sync_details is not None:
+                    sync_details.append(f"Updated {row_hint}: {'; '.join(changed_fields)}")
+            elif sync_stats is not None:
+                sync_stats["unchanged"] = sync_stats.get("unchanged", 0) + 1
         else:
             session.add(
                 Employee(
@@ -911,9 +962,14 @@ def _import_employee_rows(
                 )
             )
             added += 1
+            if sync_details is not None:
+                sync_details.append(
+                    f"Added {row_hint}: Designation {_format_sync_value(role)}; Working At {_format_sync_value(working_at)}"
+                )
 
     session.commit()
-    if added == 0 and updated == 0:
+    unchanged = sync_stats.get("unchanged", 0) if sync_stats is not None else 0
+    if added == 0 and updated == 0 and unchanged == 0:
         raise HTTPException(status_code=400, detail=f"No rows imported from {source_label}. Check the sheet data or headers.")
     return added, updated
 
