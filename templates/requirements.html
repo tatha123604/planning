@@ -43,14 +43,16 @@
         </div>
       </header>
 
-      <section class="card requirements-filter-card">
-        <form class="inline" method="get" action="/requirements">
-          <label>As of <input type="date" name="as_of" value="{{ as_of.isoformat() }}" /></label>
-          <input type="hidden" name="horizon_months" value="0" />
-          <input type="hidden" name="lead_time_days" value="0" />
-          <button type="submit">Recompute</button>
-        </form>
-      </section>
+      <div class="requirements-filter-row">
+        <section class="card requirements-filter-card">
+          <form class="inline" method="get" action="/requirements">
+            <label>As of <input type="date" name="as_of" value="{{ as_of.isoformat() }}" /></label>
+            <input type="hidden" name="horizon_months" value="0" />
+            <input type="hidden" name="lead_time_days" value="0" />
+            <button type="submit">Recompute</button>
+          </form>
+        </section>
+      </div>
 
       <section class="grid dashboard-grid">
         <div class="card dashboard-headcount-card">

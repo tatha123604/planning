@@ -192,16 +192,24 @@ button:hover { filter: brightness(1.05); }
 .dashboard-grid .dashboard-headcount-card {
   grid-column: 1 / -1;
 }
-.requirements-filter-card {
-  width: min(100%, 420px);
+.requirements-filter-row {
+  display: flex;
+  justify-content: flex-end;
   margin-bottom: 16px;
 }
+.requirements-filter-card {
+  width: min(100%, 340px);
+  margin-bottom: 0;
+}
 .requirements-filter-card form.inline {
-  gap: 12px;
+  gap: 10px;
 }
 .requirements-filter-card form.inline label {
-  flex: 1 1 180px;
+  flex: 1 1 auto;
   min-width: 0;
+}
+.requirements-filter-card form.inline button {
+  flex: 0 0 auto;
 }
 .card {
   background: rgba(17, 24, 39, 0.85);
@@ -440,6 +448,8 @@ ul { padding-left: 18px; margin: 6px 0; }
   .sidebar-toggle-btn:hover { box-shadow: 0 12px 26px rgba(0,0,0,0.4); }
   form.inline { gap: 10px; }
   form.inline label { flex: 1 1 140px; min-width: 120px; }
+  .requirements-filter-row { justify-content: stretch; }
+  .requirements-filter-card { width: 100%; }
   h1 { font-size: 22px; }
   h2 { font-size: 18px; }
   table { font-size: 13px; }
