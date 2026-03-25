@@ -469,7 +469,14 @@ def sync_employees_from_google_sheet(request: Request, session: Session = Depend
                 preview += f"; and {len(warnings) - 3} more"
             warning_text = f"Auto-corrected {len(warnings)} date value(s): {preview}"
         if wants_json:
-            return JSONResponse({"ok": True, "message": message_text, "warning_message": warning_text})
+            return JSONResponse(
+                {
+                    "ok": True,
+                    "message": message_text,
+                    "warning_message": warning_text,
+                    "warning_details": warnings,
+                }
+            )
         message = quote(message_text)
         redirect_url = f"/employees?sync_notice={message}#google-sync-card"
         if warning_text:

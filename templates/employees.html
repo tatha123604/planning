@@ -56,6 +56,10 @@
         {% endif %}
         <p class="hint" id="google-sync-live" role="status" aria-live="polite"></p>
         <p class="hint warning-text" id="google-sync-warning" role="status" aria-live="polite"></p>
+        <div id="google-sync-warning-wrap" hidden>
+          <p class="hint warning-text"><strong>Mismatch / Auto-fixed records</strong></p>
+          <ul class="sync-warning-list" id="google-sync-warning-list"></ul>
+        </div>
         <p class="hint">One-way sync only: changes made in Google Sheet will update this project, but edits made here will not push back to Google Sheet.</p>
         {% if google_sync_ready %}
         <p class="hint">Configured source: <strong>{{ google_sync_range }}</strong></p>
@@ -271,8 +275,10 @@
       const syncForm = document.querySelector('[data-google-sync-form]');
       const syncLive = document.getElementById('google-sync-live');
       const syncWarning = document.getElementById('google-sync-warning');
+      const syncWarningWrap = document.getElementById('google-sync-warning-wrap');
+      const syncWarningList = document.getElementById('google-sync-warning-list');
       const syncButton = document.querySelector('[data-sync-button]');
-      if (syncForm && syncLive && syncWarning && syncButton) {
+      if (syncForm && syncLive && syncWarning && syncWarningWrap && syncWarningList && syncButton) {
         syncForm.addEventListener('submit', async (event) => {
           event.preventDefault();
           syncButton.disabled = true;
@@ -281,6 +287,8 @@
           syncLive.className = 'hint';
           syncLive.textContent = 'Sync started...';
           syncWarning.textContent = '';
+          syncWarningWrap.hidden = true;
+          syncWarningList.innerHTML = '';
           try {
             const response = await fetch(syncForm.action, {
               method: 'POST',
@@ -291,10 +299,22 @@
             syncLive.className = response.ok ? 'hint success-text' : 'error-text';
             syncWarning.textContent = data.warning_message || '';
             syncWarning.className = data.warning_message ? 'hint warning-text' : 'hint warning-text';
+            const warningDetails = Array.isArray(data.warning_details) ? data.warning_details : [];
+            if (warningDetails.length) {
+              syncWarningWrap.hidden = false;
+              syncWarningList.innerHTML = '';
+              warningDetails.forEach((item) => {
+                const li = document.createElement('li');
+                li.textContent = item;
+                syncWarningList.appendChild(li);
+              });
+            }
           } catch (error) {
             syncLive.textContent = 'Sync failed. Please try again.';
             syncLive.className = 'error-text';
             syncWarning.textContent = '';
+            syncWarningWrap.hidden = true;
+            syncWarningList.innerHTML = '';
           } finally {
             syncButton.disabled = false;
             syncButton.textContent = originalText;
