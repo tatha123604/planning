@@ -775,7 +775,7 @@ def _import_employee_rows(
         if canonical and canonical not in col_index:
             col_index[canonical] = idx
 
-    required_cols = {"name", "role", "retirement_date"}
+    required_cols = {"name", "role"}
     missing_required = required_cols - set(col_index)
 
     if missing_required:
@@ -836,13 +836,6 @@ def _import_employee_rows(
         except Exception as exc:
             raise HTTPException(status_code=400, detail=f"Date parse error in {source_label}: {exc}") from exc
 
-        if retirement_date is None:
-            raise HTTPException(status_code=400, detail=f"retirement_date is required in {source_label}.")
-        if hire_date is None:
-            hire_date = _derive_hire_date(dob, retirement_date)
-        if hire_date is None:
-            raise HTTPException(status_code=400, detail=f"hire_date missing in {source_label} and could not be derived.")
-
         role = normalize_role(str(role_raw))
         promo_role = normalize_role(str(get("promotion_role"))) if "promotion_role" in col_index else None
         category = str(get("category")).strip() if "category" in col_index and get("category") else None
@@ -864,6 +857,13 @@ def _import_employee_rows(
             existing = session.exec(
                 select(Employee).where(Employee.name == str(name).strip(), Employee.role == role)
             ).first()
+
+        if hire_date is None:
+            hire_date = doa or _derive_hire_date(dob, retirement_date)
+        if hire_date is None and existing is not None:
+            hire_date = existing.hire_date
+        if hire_date is None:
+            raise HTTPException(status_code=400, detail=f"hire_date missing in {source_label} and could not be derived.")
 
         if existing:
             existing.name = str(name).strip()
