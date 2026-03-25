@@ -43,13 +43,13 @@
         </div>
       </header>
 
-      <section class="card">
+      <section class="card" id="google-sync-card">
         <h2>Google Sheet Sync</h2>
         {% if sync_error %}
-        <p class="error-text">{{ sync_error }}</p>
+        <p class="error-text" role="alert">{{ sync_error }}</p>
         {% endif %}
         {% if sync_notice %}
-        <p class="hint success-text">{{ sync_notice }}</p>
+        <p class="hint success-text" role="status">{{ sync_notice }}</p>
         {% endif %}
         <p class="hint">One-way sync only: changes made in Google Sheet will update this project, but edits made here will not push back to Google Sheet.</p>
         {% if google_sync_ready %}
