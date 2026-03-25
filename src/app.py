@@ -829,9 +829,27 @@ def _google_sheet_sync_ready() -> bool:
     )
 
 
+def _normalize_google_sheet_range(sheet_range: str) -> str:
+    raw = (sheet_range or "").strip()
+    if "!" not in raw:
+        return raw
+    sheet_name, cell_range = raw.split("!", 1)
+    sheet_name = sheet_name.strip()
+    if not sheet_name:
+        return raw
+    if sheet_name.startswith("'") and sheet_name.endswith("'"):
+        return f"{sheet_name}!{cell_range}"
+    if any(ch.isspace() for ch in sheet_name):
+        escaped = sheet_name.replace("'", "''")
+        return f"'{escaped}'!{cell_range}"
+    return f"{sheet_name}!{cell_range}"
+
+
 def _fetch_google_employee_rows() -> tuple[list[list[str]], str]:
     spreadsheet_id = os.getenv("GOOGLE_SHEETS_EMPLOYEE_SPREADSHEET_ID", "").strip()
-    sheet_range = os.getenv("GOOGLE_SHEETS_EMPLOYEE_RANGE", "").strip() or "Employees!A:ZZ"
+    sheet_range = _normalize_google_sheet_range(
+        os.getenv("GOOGLE_SHEETS_EMPLOYEE_RANGE", "").strip() or "Employees!A:ZZ"
+    )
     if not spreadsheet_id:
         raise HTTPException(status_code=400, detail="Google Sheet sync is not configured: missing GOOGLE_SHEETS_EMPLOYEE_SPREADSHEET_ID.")
 
