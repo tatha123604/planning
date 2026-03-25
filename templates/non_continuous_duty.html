@@ -91,7 +91,7 @@
               <button type="submit" class="ghost">Load saved data</button>
             </div>
           </form>
-          <form method="post" action="{{ route_base }}/reset" class="inline danger-inline">
+          <form method="post" action="{{ route_base }}/reset" class="inline danger-inline ncd-reset-form">
             <input type="hidden" name="report_date" value="{{ report_date or '' }}" />
             <div class="actions">
               <button type="submit" class="danger">Reset saved table data</button>
@@ -249,6 +249,7 @@
       const templateInput = document.querySelector('#ncd-template-file');
       const reportDateInput = document.querySelector('#ncd-report-date');
       const resetBtn = document.querySelector('#reset-ncd');
+      const resetSavedForm = document.querySelector('.ncd-reset-form');
       const templateTokenInput = form ? form.querySelector('input[name="template_token"]') : null;
       const sourceNameInput = form ? form.querySelector('input[name="source_name"]') : null;
       const templateNameDisplay = document.querySelector('#ncd-template-name-display');
@@ -271,8 +272,17 @@
 
       if (resetBtn) {
         resetBtn.addEventListener('click', () => {
+          if (!window.confirm('Reset selected source/template files and clear the report date?')) return;
           clearFiles();
           if (reportDateInput) reportDateInput.value = '';
+        });
+      }
+
+      if (resetSavedForm) {
+        resetSavedForm.addEventListener('submit', (event) => {
+          if (!window.confirm('Delete the saved table data for the selected date?')) {
+            event.preventDefault();
+          }
         });
       }
 
