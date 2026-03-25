@@ -845,11 +845,46 @@ def _normalize_google_sheet_range(sheet_range: str) -> str:
     return f"{sheet_name}!{cell_range}"
 
 
+def _sheet_name_key(value: str) -> str:
+    value = (value or "").strip()
+    if value.startswith("'") and value.endswith("'"):
+        value = value[1:-1].replace("''", "'")
+    return " ".join(value.split()).casefold()
+
+
+def _resolve_google_sheet_range(service, spreadsheet_id: str, requested_range: str) -> str:
+    raw = (requested_range or "").strip() or "Employees!A:ZZ"
+    if "!" in raw:
+        requested_name, cell_range = raw.split("!", 1)
+    else:
+        requested_name, cell_range = raw, "A:ZZ"
+    requested_name = requested_name.strip()
+    cell_range = cell_range.strip() or "A:ZZ"
+
+    metadata = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+    titles = [
+        sheet.get("properties", {}).get("title", "").strip()
+        for sheet in metadata.get("sheets", [])
+        if sheet.get("properties", {}).get("title")
+    ]
+    if not titles:
+        raise HTTPException(status_code=400, detail="Google Sheet has no visible tabs.")
+
+    wanted_key = _sheet_name_key(requested_name)
+    actual_title = next((title for title in titles if _sheet_name_key(title) == wanted_key), None)
+    if not actual_title:
+        available = ", ".join(titles)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Google Sheet tab '{requested_name}' was not found. Available tabs: {available}",
+        )
+
+    return _normalize_google_sheet_range(f"{actual_title}!{cell_range}")
+
+
 def _fetch_google_employee_rows() -> tuple[list[list[str]], str]:
     spreadsheet_id = os.getenv("GOOGLE_SHEETS_EMPLOYEE_SPREADSHEET_ID", "").strip()
-    sheet_range = _normalize_google_sheet_range(
-        os.getenv("GOOGLE_SHEETS_EMPLOYEE_RANGE", "").strip() or "Employees!A:ZZ"
-    )
+    requested_range = os.getenv("GOOGLE_SHEETS_EMPLOYEE_RANGE", "").strip() or "Employees!A:ZZ"
     if not spreadsheet_id:
         raise HTTPException(status_code=400, detail="Google Sheet sync is not configured: missing GOOGLE_SHEETS_EMPLOYEE_SPREADSHEET_ID.")
 
@@ -871,15 +906,16 @@ def _fetch_google_employee_rows() -> tuple[list[list[str]], str]:
                 info,
                 scopes=GOOGLE_SHEETS_READONLY_SCOPE,
             )
-        else:
-            credentials = service_account.Credentials.from_service_account_file(
-                service_account_file,
-                scopes=GOOGLE_SHEETS_READONLY_SCOPE,
-            )
-        service = build("sheets", "v4", credentials=credentials, cache_discovery=False)
-        result = service.spreadsheets().values().get(
-            spreadsheetId=spreadsheet_id,
-            range=sheet_range,
+          else:
+              credentials = service_account.Credentials.from_service_account_file(
+                  service_account_file,
+                  scopes=GOOGLE_SHEETS_READONLY_SCOPE,
+              )
+          service = build("sheets", "v4", credentials=credentials, cache_discovery=False)
+          sheet_range = _resolve_google_sheet_range(service, spreadsheet_id, requested_range)
+          result = service.spreadsheets().values().get(
+              spreadsheetId=spreadsheet_id,
+              range=sheet_range,
         ).execute()
     except HTTPException:
         raise
