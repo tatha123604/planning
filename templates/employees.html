@@ -51,12 +51,13 @@
         {% if sync_notice %}
         <p class="hint success-text" role="status">{{ sync_notice }}</p>
         {% endif %}
+        <p class="hint" id="google-sync-live" role="status" aria-live="polite"></p>
         <p class="hint">One-way sync only: changes made in Google Sheet will update this project, but edits made here will not push back to Google Sheet.</p>
         {% if google_sync_ready %}
         <p class="hint">Configured range: <strong>{{ google_sync_range }}</strong></p>
-        <form method="post" action="/employees/sync-google" class="inline">
+        <form method="post" action="/employees/sync-google" class="inline" data-google-sync-form>
           <div class="actions">
-            <button type="submit">Sync from Google Sheet</button>
+            <button type="submit" data-sync-button>Sync from Google Sheet</button>
           </div>
         </form>
         {% else %}
@@ -261,6 +262,36 @@
       if (sortSelect) {
         sortSelect.addEventListener('change', sync);
         sync();
+      }
+
+      const syncForm = document.querySelector('[data-google-sync-form]');
+      const syncLive = document.getElementById('google-sync-live');
+      const syncButton = document.querySelector('[data-sync-button]');
+      if (syncForm && syncLive && syncButton) {
+        syncForm.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          syncButton.disabled = true;
+          const originalText = syncButton.textContent;
+          syncButton.textContent = 'Syncing...';
+          syncLive.className = 'hint';
+          syncLive.textContent = 'Sync started...';
+          try {
+            const response = await fetch(syncForm.action, {
+              method: 'POST',
+              headers: { 'X-Requested-With': 'fetch' },
+            });
+            const data = await response.json();
+            syncLive.textContent = data.message || (response.ok ? 'Sync complete.' : 'Sync failed.');
+            syncLive.className = response.ok ? 'hint success-text' : 'error-text';
+          } catch (error) {
+            syncLive.textContent = 'Sync failed. Please try again.';
+            syncLive.className = 'error-text';
+          } finally {
+            syncButton.disabled = false;
+            syncButton.textContent = originalText;
+            window.location.hash = 'google-sync-card';
+          }
+        });
       }
     })();
   </script>

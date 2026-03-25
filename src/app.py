@@ -441,16 +441,24 @@ def employees_page(
 
 
 @app.post("/employees/sync-google")
-def sync_employees_from_google_sheet(session: Session = Depends(get_session)):
+def sync_employees_from_google_sheet(request: Request, session: Session = Depends(get_session)):
+    wants_json = request.headers.get("x-requested-with", "").lower() == "fetch"
     try:
         rows, sheet_range = _fetch_google_employee_rows()
         added, updated = _import_employee_rows(session, rows, source_label=f"Google Sheet ({sheet_range})")
-        message = quote(f"Google Sheet sync complete: {added} added, {updated} updated.")
+        message_text = f"Google Sheet sync complete: {added} added, {updated} updated."
+        if wants_json:
+            return JSONResponse({"ok": True, "message": message_text})
+        message = quote(message_text)
         return RedirectResponse(url=f"/employees?sync_notice={message}#google-sync-card", status_code=303)
     except HTTPException as exc:
         detail = exc.detail if isinstance(exc.detail, str) else "Google Sheet sync failed."
+        if wants_json:
+            return JSONResponse({"ok": False, "message": detail}, status_code=exc.status_code)
         return RedirectResponse(url=f"/employees?sync_error={quote(detail)}#google-sync-card", status_code=303)
     except Exception as exc:
+        if wants_json:
+            return JSONResponse({"ok": False, "message": str(exc)}, status_code=500)
         return RedirectResponse(url=f"/employees?sync_error={quote(str(exc))}#google-sync-card", status_code=303)
 
 
