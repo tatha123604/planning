@@ -466,7 +466,8 @@ def sync_employees_from_google_sheet(request: Request, session: Session = Depend
             added += a
             updated += u
         unchanged = sync_stats.get("unchanged", 0)
-        message_text = f"Google Sheet sync complete: {added} added, {updated} updated, {unchanged} unchanged from {source_label}."
+        skipped = sync_stats.get("skipped", 0)
+        message_text = f"Google Sheet sync complete: {added} added, {updated} updated, {unchanged} unchanged, {skipped} skipped from {source_label}."
         warning_text = ""
         if warnings:
             preview = "; ".join(warnings[:3])
@@ -869,14 +870,34 @@ def _import_employee_rows(
             working_at = working_at_override
 
         existing = None
-        if pf_no:
-            existing = session.exec(select(Employee).where(Employee.pf_no == pf_no)).first()
-        if existing is None and hrms:
-            existing = session.exec(select(Employee).where(Employee.hrms == hrms)).first()
-        if existing is None:
-            existing = session.exec(
+        pf_matches = session.exec(select(Employee).where(Employee.pf_no == pf_no)).all() if pf_no else []
+        hrms_matches = session.exec(select(Employee).where(Employee.hrms == hrms)).all() if hrms else []
+        if pf_matches and hrms_matches and pf_matches[0].id != hrms_matches[0].id:
+            if sync_stats is not None:
+                sync_stats["skipped"] = sync_stats.get("skipped", 0) + 1
+            if warnings is not None:
+                warnings.append(
+                    f"{source_label} {row_hint}: skipped because PF No {pf_no} and HRMS {hrms} point to different employees."
+                )
+            continue
+        if pf_matches:
+            existing = pf_matches[0]
+        elif hrms_matches:
+            existing = hrms_matches[0]
+        else:
+            exact_matches = session.exec(
                 select(Employee).where(Employee.name == str(name).strip(), Employee.role == role)
-            ).first()
+            ).all()
+            if len(exact_matches) == 1 and not exact_matches[0].pf_no and not exact_matches[0].hrms:
+                existing = exact_matches[0]
+            elif pf_no is None and hrms is None:
+                if sync_stats is not None:
+                    sync_stats["skipped"] = sync_stats.get("skipped", 0) + 1
+                if warnings is not None:
+                    warnings.append(
+                        f"{source_label} {row_hint}: skipped because both PF No and HRMS are blank and strict sync requires an identifier."
+                    )
+                continue
 
         if hire_date is None and (has_col("hire_date") or has_col("doa") or has_col("dob") or has_col("retirement_date")):
             hire_date = doa or _derive_hire_date(dob, retirement_date)
@@ -986,7 +1007,8 @@ def _import_employee_rows(
 
     session.commit()
     unchanged = sync_stats.get("unchanged", 0) if sync_stats is not None else 0
-    if added == 0 and updated == 0 and unchanged == 0:
+    skipped = sync_stats.get("skipped", 0) if sync_stats is not None else 0
+    if added == 0 and updated == 0 and unchanged == 0 and skipped == 0:
         raise HTTPException(status_code=400, detail=f"No rows imported from {source_label}. Check the sheet data or headers.")
     return added, updated
 
