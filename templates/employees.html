@@ -57,7 +57,10 @@
         <p class="hint" id="google-sync-live" role="status" aria-live="polite"></p>
         <p class="hint warning-text" id="google-sync-warning" role="status" aria-live="polite"></p>
         <div id="google-sync-details-wrap" hidden>
-          <p class="hint success-text"><strong>Added / Updated records</strong></p>
+          <div class="sync-list-header">
+            <p class="hint success-text"><strong>Last sync changed records</strong></p>
+            <button type="button" class="ghost small sync-list-toggle" id="google-sync-details-toggle" hidden aria-expanded="false">Show more</button>
+          </div>
           <ul class="sync-warning-list" id="google-sync-details-list"></ul>
         </div>
         <div id="google-sync-warning-wrap" hidden>
@@ -297,10 +300,41 @@
       const syncWarning = document.getElementById('google-sync-warning');
       const syncDetailsWrap = document.getElementById('google-sync-details-wrap');
       const syncDetailsList = document.getElementById('google-sync-details-list');
+      const syncDetailsToggle = document.getElementById('google-sync-details-toggle');
       const syncWarningWrap = document.getElementById('google-sync-warning-wrap');
       const syncWarningList = document.getElementById('google-sync-warning-list');
       const syncButton = document.querySelector('[data-sync-button]');
-      if (syncForm && syncLive && syncWarning && syncDetailsWrap && syncDetailsList && syncWarningWrap && syncWarningList && syncButton) {
+      if (syncForm && syncLive && syncWarning && syncDetailsWrap && syncDetailsList && syncDetailsToggle && syncWarningWrap && syncWarningList && syncButton) {
+        let syncDetailsExpanded = false;
+        let currentSyncDetails = [];
+        const renderSyncDetails = () => {
+          syncDetailsList.innerHTML = '';
+          if (!currentSyncDetails.length) {
+            syncDetailsWrap.hidden = true;
+            syncDetailsToggle.hidden = true;
+            syncDetailsToggle.setAttribute('aria-expanded', 'false');
+            return;
+          }
+          syncDetailsWrap.hidden = false;
+          const visibleItems = syncDetailsExpanded ? currentSyncDetails : currentSyncDetails.slice(0, 5);
+          visibleItems.forEach((item) => {
+            const li = document.createElement('li');
+            li.textContent = item;
+            syncDetailsList.appendChild(li);
+          });
+          if (currentSyncDetails.length > 5) {
+            syncDetailsToggle.hidden = false;
+            syncDetailsToggle.textContent = syncDetailsExpanded ? 'Show less' : `Show more (${currentSyncDetails.length - 5} more)`;
+            syncDetailsToggle.setAttribute('aria-expanded', syncDetailsExpanded ? 'true' : 'false');
+          } else {
+            syncDetailsToggle.hidden = true;
+            syncDetailsToggle.setAttribute('aria-expanded', 'false');
+          }
+        };
+        syncDetailsToggle.addEventListener('click', () => {
+          syncDetailsExpanded = !syncDetailsExpanded;
+          renderSyncDetails();
+        });
         syncForm.addEventListener('submit', async (event) => {
           event.preventDefault();
           syncButton.disabled = true;
@@ -309,8 +343,9 @@
           syncLive.className = 'hint';
           syncLive.textContent = 'Sync started...';
           syncWarning.textContent = '';
-          syncDetailsWrap.hidden = true;
-          syncDetailsList.innerHTML = '';
+          currentSyncDetails = [];
+          syncDetailsExpanded = false;
+          renderSyncDetails();
           syncWarningWrap.hidden = true;
           syncWarningList.innerHTML = '';
           try {
@@ -323,16 +358,9 @@
             syncLive.className = response.ok ? 'hint success-text' : 'error-text';
             syncWarning.textContent = data.warning_message || '';
             syncWarning.className = data.warning_message ? 'hint warning-text' : 'hint warning-text';
-            const syncDetails = Array.isArray(data.sync_details) ? data.sync_details : [];
-            if (syncDetails.length) {
-              syncDetailsWrap.hidden = false;
-              syncDetailsList.innerHTML = '';
-              syncDetails.forEach((item) => {
-                const li = document.createElement('li');
-                li.textContent = item;
-                syncDetailsList.appendChild(li);
-              });
-            }
+            currentSyncDetails = Array.isArray(data.sync_details) ? data.sync_details : [];
+            syncDetailsExpanded = false;
+            renderSyncDetails();
             const warningDetails = Array.isArray(data.warning_details) ? data.warning_details : [];
             if (warningDetails.length) {
               syncWarningWrap.hidden = false;
@@ -347,8 +375,9 @@
             syncLive.textContent = 'Sync failed. Please try again.';
             syncLive.className = 'error-text';
             syncWarning.textContent = '';
-            syncDetailsWrap.hidden = true;
-            syncDetailsList.innerHTML = '';
+            currentSyncDetails = [];
+            syncDetailsExpanded = false;
+            renderSyncDetails();
             syncWarningWrap.hidden = true;
             syncWarningList.innerHTML = '';
           } finally {
