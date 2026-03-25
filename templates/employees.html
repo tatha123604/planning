@@ -168,8 +168,8 @@
                   <td>{{ e.status or '' }}</td>
                   <td class="working-at-col">{{ e.working_at or '' }}</td>
                   <td class="actions-cell actions-col">
-                    <a class="ghost small" href="/employees/{{ e.id }}">Edit</a>
-                    <form method="post" action="/employees/{{ e.id }}/delete" onsubmit="return confirm('Delete {{ e.name }}?');" style="display:inline;">
+                    <a class="ghost small employee-edit-link" href="/employees/{{ e.id }}" data-employee-name="{{ e.name }}">Edit</a>
+                    <form method="post" action="/employees/{{ e.id }}/delete" class="employee-delete-form" data-employee-name="{{ e.name }}" style="display:inline;">
                       <button type="submit" class="danger small">Delete</button>
                     </form>
                   </td>
@@ -271,6 +271,24 @@
         sortSelect.addEventListener('change', sync);
         sync();
       }
+
+      document.querySelectorAll('.employee-edit-link').forEach((link) => {
+        link.addEventListener('click', (event) => {
+          const name = link.dataset.employeeName || 'this employee';
+          if (!window.confirm(`Open edit page for ${name}?`)) {
+            event.preventDefault();
+          }
+        });
+      });
+
+      document.querySelectorAll('.employee-delete-form').forEach((form) => {
+        form.addEventListener('submit', (event) => {
+          const name = form.dataset.employeeName || 'this employee';
+          if (!window.confirm(`Delete ${name}? This cannot be undone.`)) {
+            event.preventDefault();
+          }
+        });
+      });
 
       const syncForm = document.querySelector('[data-google-sync-form]');
       const syncLive = document.getElementById('google-sync-live');
