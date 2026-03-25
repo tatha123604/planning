@@ -306,9 +306,24 @@ ul { padding-left: 18px; margin: 6px 0; }
   font-weight: 700;
   color: #f1f4ff;
   margin: -8px 0 8px 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
 }
 .collapsible details {
   border: none;
+}
+.collapsible details > summary:hover {
+  background: rgba(255,255,255,0.06);
+  border-color: rgba(255,255,255,0.12);
+}
+.collapsible details[open] > summary {
+  background: linear-gradient(135deg, rgba(255, 230, 102, 0.16), rgba(18, 189, 231, 0.16));
+  border-color: rgba(255, 230, 102, 0.36);
+  box-shadow: inset 0 0 0 1px rgba(18, 189, 231, 0.2);
+  color: #fff2a0;
 }
 
 .sidebar { transition: width 0.25s ease, padding 0.25s ease, opacity 0.25s ease, flex-basis 0.25s ease; }
