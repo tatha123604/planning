@@ -241,6 +241,18 @@ ul { padding-left: 18px; margin: 6px 0; }
 .employee-table td { font-size: 13px; white-space: nowrap; }
 .employee-table th { position: sticky; top: 0; background: rgba(17,24,39,0.95); }
 .employee-table tr.active td { background: rgba(102, 225, 182, 0.15); }
+.metric-table tbody tr { cursor: pointer; }
+.metric-table tbody tr:hover td {
+  background: rgba(18, 189, 231, 0.14);
+  transition: background 0.15s ease;
+}
+.metric-table tbody tr.table-paged-active td,
+.metric-table tbody tr.table-paged-active-odd td,
+.metric-table tbody tr.table-paged-active-even td {
+  background: linear-gradient(135deg, rgba(255, 230, 102, 0.35), rgba(18, 189, 231, 0.28));
+  color: #f8fbff;
+  box-shadow: inset 0 0 0 2px rgba(255, 230, 102, 0.45);
+}
 .employee-table tr.total-highlight td {
   background: linear-gradient(135deg, rgba(255, 230, 102, 0.32), rgba(18, 189, 231, 0.18));
   color: #fff4a3;
