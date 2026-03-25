@@ -865,6 +865,8 @@ def _import_employee_rows(
             ).first()
 
         if existing:
+            existing.name = str(name).strip()
+            existing.role = role
             existing.hire_date = hire_date
             existing.retirement_date = retirement_date
             existing.promotion_role = promo_role
@@ -877,11 +879,11 @@ def _import_employee_rows(
             existing.do_report = do_report
             existing.status = status_val
             existing.working_at = working_at
-            existing.gradation = str(get("gradation")).strip() if "gradation" in col_index and get("gradation") else existing.gradation
-            existing.cli = str(get("cli")).strip() if "cli" in col_index and get("cli") else existing.cli
-            existing.pme_due = pme_due if pme_due else existing.pme_due
-            existing.technical_due = technical_due if technical_due else existing.technical_due
-            existing.transportation_due = transportation_due if transportation_due else existing.transportation_due
+            existing.gradation = str(get("gradation")).strip() if "gradation" in col_index and get("gradation") else None
+            existing.cli = str(get("cli")).strip() if "cli" in col_index and get("cli") else None
+            existing.pme_due = pme_due
+            existing.technical_due = technical_due
+            existing.transportation_due = transportation_due
             updated += 1
         else:
             session.add(
