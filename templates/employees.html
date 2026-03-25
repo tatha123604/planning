@@ -51,7 +51,11 @@
         {% if sync_notice %}
         <p class="hint success-text" role="status">{{ sync_notice }}</p>
         {% endif %}
+        {% if sync_warning %}
+        <p class="hint warning-text" role="status">{{ sync_warning }}</p>
+        {% endif %}
         <p class="hint" id="google-sync-live" role="status" aria-live="polite"></p>
+        <p class="hint warning-text" id="google-sync-warning" role="status" aria-live="polite"></p>
         <p class="hint">One-way sync only: changes made in Google Sheet will update this project, but edits made here will not push back to Google Sheet.</p>
         {% if google_sync_ready %}
         <p class="hint">Configured source: <strong>{{ google_sync_range }}</strong></p>
@@ -266,8 +270,9 @@
 
       const syncForm = document.querySelector('[data-google-sync-form]');
       const syncLive = document.getElementById('google-sync-live');
+      const syncWarning = document.getElementById('google-sync-warning');
       const syncButton = document.querySelector('[data-sync-button]');
-      if (syncForm && syncLive && syncButton) {
+      if (syncForm && syncLive && syncWarning && syncButton) {
         syncForm.addEventListener('submit', async (event) => {
           event.preventDefault();
           syncButton.disabled = true;
@@ -275,6 +280,7 @@
           syncButton.textContent = 'Syncing...';
           syncLive.className = 'hint';
           syncLive.textContent = 'Sync started...';
+          syncWarning.textContent = '';
           try {
             const response = await fetch(syncForm.action, {
               method: 'POST',
@@ -283,9 +289,12 @@
             const data = await response.json();
             syncLive.textContent = data.message || (response.ok ? 'Sync complete.' : 'Sync failed.');
             syncLive.className = response.ok ? 'hint success-text' : 'error-text';
+            syncWarning.textContent = data.warning_message || '';
+            syncWarning.className = data.warning_message ? 'hint warning-text' : 'hint warning-text';
           } catch (error) {
             syncLive.textContent = 'Sync failed. Please try again.';
             syncLive.className = 'error-text';
+            syncWarning.textContent = '';
           } finally {
             syncButton.disabled = false;
             syncButton.textContent = originalText;

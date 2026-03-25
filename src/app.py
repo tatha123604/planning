@@ -344,6 +344,7 @@ def employees_page(
     roster_cli: Optional[str] = None,
     roster_gradation: Optional[str] = None,
     sync_notice: Optional[str] = None,
+    sync_warning: Optional[str] = None,
     sync_error: Optional[str] = None,
     session: Session = Depends(get_session),
 ):
@@ -434,6 +435,7 @@ def employees_page(
             "employees_open": employees_open,
             "roster_open": roster_open,
             "sync_notice": sync_notice or "",
+            "sync_warning": sync_warning or "",
             "sync_error": sync_error or "",
             "google_sync_ready": _google_sheet_sync_ready(),
             "google_sync_range": ", ".join(GOOGLE_EMPLOYEE_STATION_TABS),
@@ -448,20 +450,31 @@ def sync_employees_from_google_sheet(request: Request, session: Session = Depend
         sources, source_label = _fetch_google_employee_rows()
         added = 0
         updated = 0
+        warnings: list[str] = []
         for rows, sheet_name, working_at in sources:
             a, u = _import_employee_rows(
                 session,
                 rows,
                 source_label=f"Google Sheet ({sheet_name})",
                 working_at_override=working_at,
+                warnings=warnings,
             )
             added += a
             updated += u
         message_text = f"Google Sheet sync complete: {added} added, {updated} updated from {source_label}."
+        warning_text = ""
+        if warnings:
+            preview = "; ".join(warnings[:3])
+            if len(warnings) > 3:
+                preview += f"; and {len(warnings) - 3} more"
+            warning_text = f"Auto-corrected {len(warnings)} date value(s): {preview}"
         if wants_json:
-            return JSONResponse({"ok": True, "message": message_text})
+            return JSONResponse({"ok": True, "message": message_text, "warning_message": warning_text})
         message = quote(message_text)
-        return RedirectResponse(url=f"/employees?sync_notice={message}#google-sync-card", status_code=303)
+        redirect_url = f"/employees?sync_notice={message}#google-sync-card"
+        if warning_text:
+            redirect_url = f"/employees?sync_notice={message}&sync_warning={quote(warning_text)}#google-sync-card"
+        return RedirectResponse(url=redirect_url, status_code=303)
     except HTTPException as exc:
         detail = exc.detail if isinstance(exc.detail, str) else "Google Sheet sync failed."
         if wants_json:
@@ -677,11 +690,63 @@ def _derive_hire_date(dob_val: date | None, retirement_val: date | None) -> date
     return None
 
 
+def _attempt_date_string_fix(value: str) -> tuple[date | None, str | None]:
+    s = (value or "").strip()
+    if not s:
+        return None, None
+    match = re.match(r"^\s*(\d{1,2})[./-](\d{1,2})[./-](\d{5})\s*$", s)
+    if not match:
+        return None, None
+    day, month, year = match.groups()
+    candidates: list[tuple[int, str]] = []
+    seen: set[str] = set()
+    for idx in range(len(year)):
+        trimmed = year[:idx] + year[idx + 1 :]
+        if len(trimmed) != 4 or trimmed in seen:
+            continue
+        seen.add(trimmed)
+        try:
+            parsed_year = int(trimmed)
+        except ValueError:
+            continue
+        if not (1900 <= parsed_year <= 2100):
+            continue
+        candidates.append((abs(parsed_year - date.today().year), trimmed))
+    candidates.sort(key=lambda item: item[0])
+    for _, trimmed in candidates:
+        candidate = f"{int(day):02d}/{int(month):02d}/{trimmed}"
+        try:
+            return datetime.strptime(candidate, "%d/%m/%Y").date(), candidate
+        except ValueError:
+            continue
+    return None, None
+
+
+def _excel_to_date_with_correction(
+    val: object,
+    warnings: Optional[list[str]],
+    source_label: str,
+    row_hint: str,
+    field_name: str,
+) -> date | None:
+    try:
+        return _excel_to_date(val)
+    except ValueError:
+        if isinstance(val, str):
+            fixed_date, fixed_text = _attempt_date_string_fix(val)
+            if fixed_date is not None:
+                if warnings is not None:
+                    warnings.append(f"{source_label} {row_hint}: {field_name} {val!r} -> {fixed_text}")
+                return fixed_date
+        raise
+
+
 def _import_employee_rows(
     session: Session,
     rows: list[tuple | list],
     source_label: str = "sheet",
     working_at_override: Optional[str] = None,
+    warnings: Optional[list[str]] = None,
 ) -> tuple[int, int]:
     if not rows:
         raise HTTPException(status_code=400, detail=f"{source_label} is empty.")
@@ -745,17 +810,21 @@ def _import_employee_rows(
         role_raw = get("role")
         if name in (None, "") or role_raw in (None, ""):
             continue
+        row_hint = str(name).strip()
+        raw_hrms = get("hrms")
+        if raw_hrms not in (None, ""):
+            row_hint = f"{row_hint} ({str(raw_hrms).strip()})"
 
         try:
-            hire_date = _excel_to_date(get("hire_date"))
-            retirement_date = _excel_to_date(get("retirement_date"))
-            promo_ready = _excel_to_date(get("promotion_ready_date")) if "promotion_ready_date" in col_index else None
-            dob = _excel_to_date(get("dob")) if "dob" in col_index else None
-            doa = _excel_to_date(get("doa")) if "doa" in col_index else None
-            do_report = _excel_to_date(get("do_report")) if "do_report" in col_index else None
-            pme_due = _excel_to_date(get("pme_due")) if "pme_due" in col_index else None
-            technical_due = _excel_to_date(get("technical_due")) if "technical_due" in col_index else None
-            transportation_due = _excel_to_date(get("transportation_due")) if "transportation_due" in col_index else None
+            hire_date = _excel_to_date_with_correction(get("hire_date"), warnings, source_label, row_hint, "hire_date")
+            retirement_date = _excel_to_date_with_correction(get("retirement_date"), warnings, source_label, row_hint, "retirement_date")
+            promo_ready = _excel_to_date_with_correction(get("promotion_ready_date"), warnings, source_label, row_hint, "promotion_ready_date") if "promotion_ready_date" in col_index else None
+            dob = _excel_to_date_with_correction(get("dob"), warnings, source_label, row_hint, "dob") if "dob" in col_index else None
+            doa = _excel_to_date_with_correction(get("doa"), warnings, source_label, row_hint, "doa") if "doa" in col_index else None
+            do_report = _excel_to_date_with_correction(get("do_report"), warnings, source_label, row_hint, "do_report") if "do_report" in col_index else None
+            pme_due = _excel_to_date_with_correction(get("pme_due"), warnings, source_label, row_hint, "pme_due") if "pme_due" in col_index else None
+            technical_due = _excel_to_date_with_correction(get("technical_due"), warnings, source_label, row_hint, "technical_due") if "technical_due" in col_index else None
+            transportation_due = _excel_to_date_with_correction(get("transportation_due"), warnings, source_label, row_hint, "transportation_due") if "transportation_due" in col_index else None
         except Exception as exc:
             raise HTTPException(status_code=400, detail=f"Date parse error in {source_label}: {exc}") from exc
 
