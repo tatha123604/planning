@@ -906,16 +906,16 @@ def _fetch_google_employee_rows() -> tuple[list[list[str]], str]:
                 info,
                 scopes=GOOGLE_SHEETS_READONLY_SCOPE,
             )
-          else:
-              credentials = service_account.Credentials.from_service_account_file(
-                  service_account_file,
-                  scopes=GOOGLE_SHEETS_READONLY_SCOPE,
-              )
-          service = build("sheets", "v4", credentials=credentials, cache_discovery=False)
-          sheet_range = _resolve_google_sheet_range(service, spreadsheet_id, requested_range)
-          result = service.spreadsheets().values().get(
-              spreadsheetId=spreadsheet_id,
-              range=sheet_range,
+        else:
+            credentials = service_account.Credentials.from_service_account_file(
+                service_account_file,
+                scopes=GOOGLE_SHEETS_READONLY_SCOPE,
+            )
+        service = build("sheets", "v4", credentials=credentials, cache_discovery=False)
+        sheet_range = _resolve_google_sheet_range(service, spreadsheet_id, requested_range)
+        result = service.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id,
+            range=sheet_range,
         ).execute()
     except HTTPException:
         raise
