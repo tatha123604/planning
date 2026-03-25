@@ -831,6 +831,9 @@ def _import_employee_rows(
                 return None
             return row[idx]
 
+        def has_col(col: str) -> bool:
+            return col in col_index
+
         name = get("name")
         role_raw = get("role")
         if name in (None, "") or role_raw in (None, ""):
@@ -841,25 +844,25 @@ def _import_employee_rows(
             row_hint = f"{row_hint} ({str(raw_hrms).strip()})"
 
         try:
-            hire_date = _excel_to_date_with_correction(get("hire_date"), warnings, source_label, row_hint, "hire_date")
-            retirement_date = _excel_to_date_with_correction(get("retirement_date"), warnings, source_label, row_hint, "retirement_date")
-            promo_ready = _excel_to_date_with_correction(get("promotion_ready_date"), warnings, source_label, row_hint, "promotion_ready_date") if "promotion_ready_date" in col_index else None
-            dob = _excel_to_date_with_correction(get("dob"), warnings, source_label, row_hint, "dob") if "dob" in col_index else None
-            doa = _excel_to_date_with_correction(get("doa"), warnings, source_label, row_hint, "doa") if "doa" in col_index else None
-            do_report = _excel_to_date_with_correction(get("do_report"), warnings, source_label, row_hint, "do_report") if "do_report" in col_index else None
-            pme_due = _excel_to_date_with_correction(get("pme_due"), warnings, source_label, row_hint, "pme_due") if "pme_due" in col_index else None
-            technical_due = _excel_to_date_with_correction(get("technical_due"), warnings, source_label, row_hint, "technical_due") if "technical_due" in col_index else None
-            transportation_due = _excel_to_date_with_correction(get("transportation_due"), warnings, source_label, row_hint, "transportation_due") if "transportation_due" in col_index else None
+            hire_date = _excel_to_date_with_correction(get("hire_date"), warnings, source_label, row_hint, "hire_date") if has_col("hire_date") else None
+            retirement_date = _excel_to_date_with_correction(get("retirement_date"), warnings, source_label, row_hint, "retirement_date") if has_col("retirement_date") else None
+            promo_ready = _excel_to_date_with_correction(get("promotion_ready_date"), warnings, source_label, row_hint, "promotion_ready_date") if has_col("promotion_ready_date") else None
+            dob = _excel_to_date_with_correction(get("dob"), warnings, source_label, row_hint, "dob") if has_col("dob") else None
+            doa = _excel_to_date_with_correction(get("doa"), warnings, source_label, row_hint, "doa") if has_col("doa") else None
+            do_report = _excel_to_date_with_correction(get("do_report"), warnings, source_label, row_hint, "do_report") if has_col("do_report") else None
+            pme_due = _excel_to_date_with_correction(get("pme_due"), warnings, source_label, row_hint, "pme_due") if has_col("pme_due") else None
+            technical_due = _excel_to_date_with_correction(get("technical_due"), warnings, source_label, row_hint, "technical_due") if has_col("technical_due") else None
+            transportation_due = _excel_to_date_with_correction(get("transportation_due"), warnings, source_label, row_hint, "transportation_due") if has_col("transportation_due") else None
         except Exception as exc:
             raise HTTPException(status_code=400, detail=f"Date parse error in {source_label}: {exc}") from exc
 
         role = normalize_role(str(role_raw))
-        promo_role = normalize_role(str(get("promotion_role"))) if "promotion_role" in col_index else None
-        category = str(get("category")).strip() if "category" in col_index and get("category") else None
-        pf_no = str(get("pf_no")).strip() if "pf_no" in col_index and get("pf_no") else None
-        hrms = str(get("hrms")).strip() if "hrms" in col_index and get("hrms") else None
-        status_val = str(get("status")).strip() if "status" in col_index and get("status") else None
-        working_at = str(get("working_at")).strip() if "working_at" in col_index and get("working_at") else None
+        promo_role = normalize_role(str(get("promotion_role"))) if has_col("promotion_role") and get("promotion_role") else None
+        category = str(get("category")).strip() if has_col("category") and get("category") else None
+        pf_no = str(get("pf_no")).strip() if has_col("pf_no") and get("pf_no") else None
+        hrms = str(get("hrms")).strip() if has_col("hrms") and get("hrms") else None
+        status_val = str(get("status")).strip() if has_col("status") and get("status") else None
+        working_at = str(get("working_at")).strip() if has_col("working_at") and get("working_at") else None
         if working_at:
             working_at = " ".join(working_at.split())
         elif working_at_override:
@@ -875,7 +878,7 @@ def _import_employee_rows(
                 select(Employee).where(Employee.name == str(name).strip(), Employee.role == role)
             ).first()
 
-        if hire_date is None:
+        if hire_date is None and (has_col("hire_date") or has_col("doa") or has_col("dob") or has_col("retirement_date")):
             hire_date = doa or _derive_hire_date(dob, retirement_date)
         if hire_date is None and existing is not None:
             hire_date = existing.hire_date
@@ -883,28 +886,42 @@ def _import_employee_rows(
             raise HTTPException(status_code=400, detail=f"hire_date missing in {source_label} and could not be derived.")
 
         if existing:
-            new_gradation = str(get("gradation")).strip() if "gradation" in col_index and get("gradation") else None
-            new_cli = str(get("cli")).strip() if "cli" in col_index and get("cli") else None
+            retirement_target = retirement_date if has_col("retirement_date") else existing.retirement_date
+            promo_role_target = promo_role if has_col("promotion_role") else existing.promotion_role
+            promo_ready_target = promo_ready if has_col("promotion_ready_date") else existing.promotion_ready_date
+            category_target = category if has_col("category") else existing.category
+            pf_no_target = pf_no if has_col("pf_no") else existing.pf_no
+            hrms_target = hrms if has_col("hrms") else existing.hrms
+            dob_target = dob if has_col("dob") else existing.dob
+            doa_target = doa if has_col("doa") else existing.doa
+            do_report_target = do_report if has_col("do_report") else existing.do_report
+            status_target = status_val if has_col("status") else existing.status
+            working_at_target = working_at if (has_col("working_at") or working_at_override is not None) else existing.working_at
+            new_gradation = str(get("gradation")).strip() if has_col("gradation") and get("gradation") else (None if has_col("gradation") else existing.gradation)
+            new_cli = str(get("cli")).strip() if has_col("cli") and get("cli") else (None if has_col("cli") else existing.cli)
+            pme_due_target = pme_due if has_col("pme_due") else existing.pme_due
+            technical_due_target = technical_due if has_col("technical_due") else existing.technical_due
+            transportation_due_target = transportation_due if has_col("transportation_due") else existing.transportation_due
             field_updates = [
                 ("Name", existing.name, str(name).strip()),
                 ("Designation", existing.role, role),
                 ("Hire Date", existing.hire_date, hire_date),
-                ("Retirement Date", existing.retirement_date, retirement_date),
-                ("Promotion Designation", existing.promotion_role, promo_role),
-                ("Promotion Ready Date", existing.promotion_ready_date, promo_ready),
-                ("Category", existing.category, category),
-                ("PF No", existing.pf_no, pf_no),
-                ("HRMS", existing.hrms, hrms),
-                ("DOB", existing.dob, dob),
-                ("DOA", existing.doa, doa),
-                ("DO Report", existing.do_report, do_report),
-                ("Status", existing.status, status_val),
-                ("Working At", existing.working_at, working_at),
+                ("Retirement Date", existing.retirement_date, retirement_target),
+                ("Promotion Designation", existing.promotion_role, promo_role_target),
+                ("Promotion Ready Date", existing.promotion_ready_date, promo_ready_target),
+                ("Category", existing.category, category_target),
+                ("PF No", existing.pf_no, pf_no_target),
+                ("HRMS", existing.hrms, hrms_target),
+                ("DOB", existing.dob, dob_target),
+                ("DOA", existing.doa, doa_target),
+                ("DO Report", existing.do_report, do_report_target),
+                ("Status", existing.status, status_target),
+                ("Working At", existing.working_at, working_at_target),
                 ("Gradation", existing.gradation, new_gradation),
                 ("CLI", existing.cli, new_cli),
-                ("PME Due", existing.pme_due, pme_due),
-                ("Technical Due", existing.technical_due, technical_due),
-                ("Transportation Due", existing.transportation_due, transportation_due),
+                ("PME Due", existing.pme_due, pme_due_target),
+                ("Technical Due", existing.technical_due, technical_due_target),
+                ("Transportation Due", existing.transportation_due, transportation_due_target),
             ]
             changed_fields = [
                 f"{label}: {_format_sync_value(old_value)} -> {_format_sync_value(new_value)}"
@@ -915,22 +932,22 @@ def _import_employee_rows(
             existing.name = str(name).strip()
             existing.role = role
             existing.hire_date = hire_date
-            existing.retirement_date = retirement_date
-            existing.promotion_role = promo_role
-            existing.promotion_ready_date = promo_ready
-            existing.category = category
-            existing.pf_no = pf_no
-            existing.hrms = hrms
-            existing.dob = dob
-            existing.doa = doa
-            existing.do_report = do_report
-            existing.status = status_val
-            existing.working_at = working_at
+            existing.retirement_date = retirement_target
+            existing.promotion_role = promo_role_target
+            existing.promotion_ready_date = promo_ready_target
+            existing.category = category_target
+            existing.pf_no = pf_no_target
+            existing.hrms = hrms_target
+            existing.dob = dob_target
+            existing.doa = doa_target
+            existing.do_report = do_report_target
+            existing.status = status_target
+            existing.working_at = working_at_target
             existing.gradation = new_gradation
             existing.cli = new_cli
-            existing.pme_due = pme_due
-            existing.technical_due = technical_due
-            existing.transportation_due = transportation_due
+            existing.pme_due = pme_due_target
+            existing.technical_due = technical_due_target
+            existing.transportation_due = transportation_due_target
             if changed_fields:
                 updated += 1
                 if sync_details is not None:
