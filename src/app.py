@@ -773,7 +773,9 @@ def _import_employee_rows(
         hrms = str(get("hrms")).strip() if "hrms" in col_index and get("hrms") else None
         status_val = str(get("status")).strip() if "status" in col_index and get("status") else None
         working_at = str(get("working_at")).strip() if "working_at" in col_index and get("working_at") else None
-        if working_at_override:
+        if working_at:
+            working_at = " ".join(working_at.split())
+        elif working_at_override:
             working_at = working_at_override
 
         existing = None
