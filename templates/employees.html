@@ -337,6 +337,9 @@
         });
         syncForm.addEventListener('submit', async (event) => {
           event.preventDefault();
+          if (!window.confirm('Sync employee data from Google Sheet now?')) {
+            return;
+          }
           syncButton.disabled = true;
           const originalText = syncButton.textContent;
           syncButton.textContent = 'Syncing...';
