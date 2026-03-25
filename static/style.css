@@ -189,6 +189,9 @@ button:hover { filter: brightness(1.05); }
   margin: 0 0 16px;
   align-items: start;
 }
+.dashboard-grid .dashboard-headcount-card {
+  grid-column: 1 / -1;
+}
 .card {
   background: rgba(17, 24, 39, 0.85);
   border: 1px solid rgba(255,255,255,0.06);
