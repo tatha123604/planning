@@ -638,10 +638,11 @@ def _load_persistent_template(key: str) -> tuple[bytes | None, str]:
 
 EMPLOYEE_ALIAS_MAP = {
     "name": "name",
-    "sl": "name",
-    "slno": "name",
-    "n": "name",
-    "slname": "name",
+    "employeename": "name",
+    "empname": "name",
+    "staffname": "name",
+    "crewname": "name",
+    "personname": "name",
     "degn": "role",
     "designation": "role",
     "design": "role",
