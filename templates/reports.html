@@ -112,7 +112,7 @@
       <section class="card collapsible">
         <details open>
           <summary>Staff Positions by Working Location</summary>
-          <p>Counts of employees per role grouped by <code>working_at</code>.</p>
+          <p>Counts of employees per designation grouped by <code>working_at</code>.</p>
           <div class="table-wrap">
             <table class="paged">
               <thead>
@@ -142,7 +142,7 @@
 
       <section class="card collapsible">
         <details open>
-          <summary>Retirements by Role</summary>
+          <summary>Retirements by Designation</summary>
           <form class="inline" method="get" action="/reports">
             <label>From <input type="date" name="start_date" value="{{ start_date.isoformat() }}" /></label>
             <label>To <input type="date" name="end_date" value="{{ end_date.isoformat() }}" /></label>
@@ -151,7 +151,7 @@
           </form>
           <table class="paged">
             <thead>
-              <tr><th>Role</th><th>Retirements</th></tr>
+              <tr><th>Designation</th><th>Retirements</th></tr>
             </thead>
             <tbody>
               {% for role, count in retirements.items() %}
@@ -169,20 +169,19 @@
         <details {% if not recalc %}open{% endif %}>
           <summary>Retirement Details{% if role_filter %} &mdash; {{ role_filter }}{% endif %}</summary>
           {% if role_filter %}
-            <p><a class="ghost small" href="/reports?start_date={{ start_date.isoformat() }}&end_date={{ end_date.isoformat() }}">Clear role filter</a></p>
+            <p><a class="ghost small" href="/reports?start_date={{ start_date.isoformat() }}&end_date={{ end_date.isoformat() }}">Clear designation filter</a></p>
           {% endif %}
           <div class="table-wrap">
             <table class="employee-table paged">
               <thead>
                 <tr>
                   <th>Name</th>
-                <th>Role</th>
+                <th>Designation</th>
                 <th>CLI</th>
                 <th>Gradation</th>
                 <th>Retirement Date</th>
                 <th>Hire By (30d before)</th>
                 <th>Working At</th>
-                <th>Status</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -196,7 +195,6 @@
                   <td>{{ e.retirement_date | dmy if e.retirement_date else '' }}</td>
                   <td>{{ (e.retirement_date | hire_by(30)) | dmy if e.retirement_date else '' }}</td>
                   <td>{{ e.working_at or '' }}</td>
-                  <td>{{ e.status or '' }}</td>
                   <td><a class="ghost small" href="/employees/{{ e.id }}">Edit</a></td>
                 </tr>
                 {% endfor %}

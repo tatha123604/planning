@@ -554,7 +554,7 @@ def update_employee(
     employee.doa = to_date(doa)
     employee.do_report = to_date(do_report)
     employee.seniority_rank = to_int(seniority_rank)
-    employee.status = status.strip() if status else None
+    employee.status = status.strip() if status else employee.status
     employee.working_at = working_at.strip() if working_at else None
     employee.gradation = gradation.strip() if gradation else None
     employee.cli = cli.strip() if cli else None
@@ -2288,7 +2288,7 @@ def add_employee(
         existing.doa = to_date(doa)
         existing.do_report = to_date(do_report)
         existing.seniority_rank = to_int(seniority_rank)
-        existing.status = status.strip() if status else None
+        existing.status = status.strip() if status else existing.status
         existing.working_at = working_at.strip() if working_at else None
         existing.gradation = gradation.strip() if gradation else None
         existing.cli = cli.strip() if cli else None
@@ -2310,7 +2310,7 @@ def add_employee(
         doa=to_date(doa),
         do_report=to_date(do_report),
         seniority_rank=to_int(seniority_rank),
-        status=status.strip() if status else None,
+        status=status.strip() if status else "ACTIVE",
         working_at=working_at.strip() if working_at else None,
         gradation=gradation.strip() if gradation else None,
         cli=cli.strip() if cli else None,
@@ -2393,7 +2393,7 @@ async def upload_employees(
     if not filename.lower().endswith((".xlsx", ".xlsm")):
         raise HTTPException(
             status_code=400,
-            detail="Upload an .xlsx file with columns: name, role, hire_date, retirement_date. Optional: promotion_role, promotion_ready_date, category, pf_no, hrms, dob, doa, do_report, status, working_at.",
+            detail="Upload an .xlsx file with columns: name, designation (role), hire_date, retirement_date. Optional: promotion designation (promotion_role), promotion_ready_date, category, pf_no, hrms, dob, doa, do_report, working_at.",
         )
 
     content = await file.read()
@@ -2411,7 +2411,7 @@ async def upload_seniority(
 ):
     filename = file.filename or ""
     if not filename.lower().endswith((".xlsx", ".xlsm")):
-        raise HTTPException(status_code=400, detail="Upload an .xlsx file with columns: name, role, seniority_rank (or seniority). Optional: promotion_role, promotion_ready_date.")
+        raise HTTPException(status_code=400, detail="Upload an .xlsx file with columns: name, designation (role), seniority_rank (or seniority). Optional: promotion designation (promotion_role), promotion_ready_date.")
 
     content = await file.read()
     wb = load_workbook(filename=BytesIO(content), data_only=True)
@@ -2471,5 +2471,5 @@ async def upload_seniority(
 
     session.commit()
     if updated == 0:
-        raise HTTPException(status_code=400, detail="No matching employees updated. Ensure names/roles match the roster.")
+        raise HTTPException(status_code=400, detail="No matching employees updated. Ensure names/designations match the roster.")
     return RedirectResponse("/", status_code=303)

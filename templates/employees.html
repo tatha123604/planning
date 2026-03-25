@@ -80,8 +80,8 @@
         <details {% if employees_open %}open{% endif %}>
           <summary>Employees</summary>
           <form class="inline" method="get" action="/employees#employees-card">
-            <label>Search <input name="q" value="{{ query }}" placeholder="Name or role" /></label>
-            <label>Role
+            <label>Search <input name="q" value="{{ query }}" placeholder="Name or designation" /></label>
+            <label>Designation
               <select name="role">
                 <option value="">All</option>
                 {% for role in role_order %}
@@ -115,7 +115,7 @@
             </label>
             <label>Sort
               <select name="sort" id="sort-select">
-                <option value="role" {% if sort == 'role' %}selected{% endif %}>Role, Name</option>
+                <option value="role" {% if sort == 'role' %}selected{% endif %}>Designation, Name</option>
                 <option value="name" {% if sort == 'name' %}selected{% endif %}>Name</option>
                 <option value="retirement" {% if sort == 'retirement' %}selected{% endif %}>Retirement date</option>
                 <option value="hire" {% if sort == 'hire' %}selected{% endif %}>Hire date</option>
@@ -133,7 +133,7 @@
                 <tr>
                   <th>Sl No.</th>
                   <th>Name</th>
-                  <th>Role</th>
+                  <th>Designation</th>
                 <th>Retirement</th>
                 <th>PME Due</th>
                 <th>Technical Due</th>
@@ -144,7 +144,6 @@
                   <th>Gradation</th>
                   <th>CLI</th>
                   <th>DOB</th>
-                  <th>Status</th>
                   <th class="working-at-col">Working At</th>
                   <th class="actions-col">Actions</th>
                 </tr>
@@ -165,7 +164,6 @@
                   <td>{{ e.gradation or '' }}</td>
                   <td>{{ e.cli or '' }}</td>
                   <td>{{ e.dob | dmy }}</td>
-                  <td>{{ e.status or '' }}</td>
                   <td class="working-at-col">{{ e.working_at or '' }}</td>
                   <td class="actions-cell actions-col">
                     <a class="ghost small employee-edit-link" href="/employees/{{ e.id }}" data-employee-name="{{ e.name }}">Edit</a>
@@ -219,7 +217,7 @@
                 <tr>
                   <th>CLI</th>
                   <th>Name</th>
-                  <th>Role</th>
+                  <th>Designation</th>
                   <th>Gradation</th>
                 </tr>
               </thead>

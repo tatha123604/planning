@@ -48,14 +48,14 @@
           <h2>Add Employee (manual)</h2>
           <form method="post" action="/employees">
             <label>Name <input name="name" required /></label>
-            <label>Role
+            <label>Designation
               <select name="role" required>
                 {% for role in role_order %}<option value="{{ role }}">{{ role }}</option>{% endfor %}
               </select>
             </label>
             <label>Hire date <input type="date" name="hire_date" required /></label>
             <label>Retirement date <input type="date" name="retirement_date" required /></label>
-            <label>Promotion role
+            <label>Promotion designation
               <select name="promotion_role">
                 <option value=""></option>
                 {% for role in role_order %}<option value="{{ role }}">{{ role }}</option>{% endfor %}
@@ -71,13 +71,6 @@
             <label>PME Due <input type="date" name="pme_due" /></label>
             <label>Technical Due <input type="date" name="technical_due" /></label>
             <label>Transportation Due <input type="date" name="transportation_due" /></label>
-            <label>Status
-              <select name="status">
-                <option value=""></option>
-                <option value="ACTIVE">ACTIVE</option>
-                <option value="INACTIVE">INACTIVE</option>
-              </select>
-            </label>
             <label>Working at <input name="working_at" /></label>
             <button type="submit">Add</button>
           </form>
@@ -90,8 +83,8 @@
               <input type="file" name="file" accept=".xlsx,.xlsm" required />
             </label>
             <p class="hint">
-              Required columns: <code>name</code>, <code>role</code>, <code>hire_date</code>, <code>retirement_date</code>.
-              Optional: <code>promotion_role</code>, <code>promotion_ready_date</code>, <code>category</code>, <code>pf_no</code>, <code>hrms</code>, <code>dob</code>, <code>doa</code>, <code>do_report</code>, <code>status</code>, <code>working_at</code>, <code>gradation</code>, <code>cli</code>, <code>pme_due</code>, <code>technical_due</code>, <code>transportation_due</code>.
+              Required columns: <code>name</code>, <code>designation (role)</code>, <code>hire_date</code>, <code>retirement_date</code>.
+              Optional: <code>promotion designation (promotion_role)</code>, <code>promotion_ready_date</code>, <code>category</code>, <code>pf_no</code>, <code>hrms</code>, <code>dob</code>, <code>doa</code>, <code>do_report</code>, <code>working_at</code>, <code>gradation</code>, <code>cli</code>, <code>pme_due</code>, <code>technical_due</code>, <code>transportation_due</code>.
               Dates may be ISO (YYYY-MM-DD) or Excel date cells.
             </p>
             <button type="submit">Upload</button>
@@ -104,7 +97,7 @@
             <label>Excel file
               <input type="file" name="file" accept=".xlsx,.xlsm" required />
             </label>
-            <p class="hint">Columns: name, role, seniority_rank (or seniority). Optional: promotion_role, promotion_ready_date. Rows update existing employees; names/roles must match the roster.</p>
+            <p class="hint">Columns: name, designation (role), seniority_rank (or seniority). Optional: promotion designation (promotion_role), promotion_ready_date. Rows update existing employees; names/designations must match the roster.</p>
             <button type="submit">Upload</button>
           </form>
         </div>
