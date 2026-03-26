@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from datetime import date, datetime, timedelta
 import json
 import math
@@ -426,6 +427,8 @@ def _render_video_signal_preview_artifacts(
     output_fps: float,
     preview_scale: float,
     auto_trim_padding: float,
+    clip_start_raw: float | None = None,
+    clip_duration_raw: float | None = None,
 ) -> dict[str, object]:
     raw_markers = payload.get("markers")
     if not isinstance(raw_markers, list) or not raw_markers:
@@ -469,8 +472,8 @@ def _render_video_signal_preview_artifacts(
     clip_start, clip_duration = resolve_clip_range(
         full_duration=full_duration,
         cues=cues,
-        clip_start_raw=None,
-        clip_duration_raw=None,
+        clip_start_raw=clip_start_raw,
+        clip_duration_raw=clip_duration_raw,
         auto_trim_padding=float(auto_trim_padding or 0.6),
         only_labels=[cue.label for cue in cues],
     )
@@ -566,6 +569,8 @@ async def video_signal_lab_render_preview(
     output_fps: float = Form(12.0),
     preview_scale: float = Form(0.5),
     auto_trim_padding: float = Form(0.6),
+    clip_start: float | None = Form(None),
+    clip_duration: float | None = Form(None),
 ):
     try:
         payload = json.loads(cue_json)
@@ -584,6 +589,8 @@ async def video_signal_lab_render_preview(
             output_fps,
             preview_scale,
             auto_trim_padding,
+            clip_start,
+            clip_duration,
         )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -1158,8 +1165,20 @@ def _import_employee_rows(
 
     added = 0
     updated = 0
+    data_rows = rows[rows.index(header_raw) + 1 :]
+    source_pf_counts: Counter[str] = Counter()
+    source_hrms_counts: Counter[str] = Counter()
+    for row in data_rows:
+        if "pf_no" in col_index:
+            idx = col_index["pf_no"]
+            if idx < len(row) and row[idx] not in (None, ""):
+                source_pf_counts[str(row[idx]).strip()] += 1
+        if "hrms" in col_index:
+            idx = col_index["hrms"]
+            if idx < len(row) and row[idx] not in (None, ""):
+                source_hrms_counts[str(row[idx]).strip()] += 1
 
-    for row in rows[rows.index(header_raw) + 1 :]:
+    for row in data_rows:
         def get(col: str) -> object | None:
             idx = col_index.get(col)
             if idx is None or idx >= len(row):
@@ -1204,8 +1223,40 @@ def _import_employee_rows(
             working_at = working_at_override
 
         existing = None
+        if pf_no and source_pf_counts.get(pf_no, 0) > 1:
+            if sync_stats is not None:
+                sync_stats["skipped"] = sync_stats.get("skipped", 0) + 1
+            if warnings is not None:
+                warnings.append(
+                    f"{source_label} {row_hint}: skipped because PF No {pf_no} appears multiple times in the Google Sheet."
+                )
+            continue
+        if hrms and source_hrms_counts.get(hrms, 0) > 1:
+            if sync_stats is not None:
+                sync_stats["skipped"] = sync_stats.get("skipped", 0) + 1
+            if warnings is not None:
+                warnings.append(
+                    f"{source_label} {row_hint}: skipped because HRMS {hrms} appears multiple times in the Google Sheet."
+                )
+            continue
         pf_matches = session.exec(select(Employee).where(Employee.pf_no == pf_no)).all() if pf_no else []
         hrms_matches = session.exec(select(Employee).where(Employee.hrms == hrms)).all() if hrms else []
+        if len(pf_matches) > 1:
+            if sync_stats is not None:
+                sync_stats["skipped"] = sync_stats.get("skipped", 0) + 1
+            if warnings is not None:
+                warnings.append(
+                    f"{source_label} {row_hint}: skipped because PF No {pf_no} matches multiple employees in the current database."
+                )
+            continue
+        if len(hrms_matches) > 1:
+            if sync_stats is not None:
+                sync_stats["skipped"] = sync_stats.get("skipped", 0) + 1
+            if warnings is not None:
+                warnings.append(
+                    f"{source_label} {row_hint}: skipped because HRMS {hrms} matches multiple employees in the current database."
+                )
+            continue
         if pf_matches and hrms_matches and pf_matches[0].id != hrms_matches[0].id:
             if sync_stats is not None:
                 sync_stats["skipped"] = sync_stats.get("skipped", 0) + 1
@@ -1214,7 +1265,10 @@ def _import_employee_rows(
                     f"{source_label} {row_hint}: skipped because PF No {pf_no} and HRMS {hrms} point to different employees."
                 )
             continue
-        if pf_matches:
+        both_matches = [employee for employee in pf_matches if hrms and employee.hrms == hrms] if pf_matches and hrms else []
+        if len(both_matches) == 1:
+            existing = both_matches[0]
+        elif pf_matches:
             existing = pf_matches[0]
         elif hrms_matches:
             existing = hrms_matches[0]
