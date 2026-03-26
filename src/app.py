@@ -791,6 +791,32 @@ def sync_employees_from_google_sheet(request: Request, session: Session = Depend
         warnings: list[str] = []
         sync_details: list[str] = []
         sync_stats: dict[str, int] = {"unchanged": 0}
+        global_pf_counts: Counter[str] = Counter()
+        global_hrms_counts: Counter[str] = Counter()
+
+        for rows, _, _ in sources:
+            if not rows:
+                continue
+            header_raw = next((r for r in rows if any(cell not in (None, "", " ") for cell in r)), None)
+            if header_raw is None:
+                continue
+            header_norm = [_employee_norm(h) for h in header_raw]
+            mapped_cols = [EMPLOYEE_ALIAS_MAP.get(h, "") for h in header_norm]
+            col_index: dict[str, int] = {}
+            for idx, canonical in enumerate(mapped_cols):
+                if canonical and canonical not in col_index:
+                    col_index[canonical] = idx
+
+            for row in rows[rows.index(header_raw) + 1 :]:
+                if "pf_no" in col_index:
+                    idx = col_index["pf_no"]
+                    if idx < len(row) and row[idx] not in (None, ""):
+                        global_pf_counts[str(row[idx]).strip()] += 1
+                if "hrms" in col_index:
+                    idx = col_index["hrms"]
+                    if idx < len(row) and row[idx] not in (None, ""):
+                        global_hrms_counts[str(row[idx]).strip()] += 1
+
         for rows, sheet_name, working_at in sources:
             a, u = _import_employee_rows(
                 session,
@@ -800,6 +826,8 @@ def sync_employees_from_google_sheet(request: Request, session: Session = Depend
                 warnings=warnings,
                 sync_details=sync_details,
                 sync_stats=sync_stats,
+                global_pf_counts=global_pf_counts,
+                global_hrms_counts=global_hrms_counts,
             )
             added += a
             updated += u
@@ -1114,6 +1142,8 @@ def _import_employee_rows(
     warnings: Optional[list[str]] = None,
     sync_details: Optional[list[str]] = None,
     sync_stats: Optional[dict[str, int]] = None,
+    global_pf_counts: Optional[Counter[str]] = None,
+    global_hrms_counts: Optional[Counter[str]] = None,
 ) -> tuple[int, int]:
     if not rows:
         raise HTTPException(status_code=400, detail=f"{source_label} is empty.")
@@ -1162,6 +1192,11 @@ def _import_employee_rows(
 
     if missing_required:
         raise HTTPException(status_code=400, detail=f"Missing columns in {source_label}: {', '.join(sorted(missing_required))}")
+
+    if global_pf_counts is None:
+        global_pf_counts = Counter()
+    if global_hrms_counts is None:
+        global_hrms_counts = Counter()
 
     added = 0
     updated = 0
@@ -1223,7 +1258,7 @@ def _import_employee_rows(
             working_at = working_at_override
 
         existing = None
-        if pf_no and source_pf_counts.get(pf_no, 0) > 1:
+        if pf_no and (source_pf_counts.get(pf_no, 0) > 1 or global_pf_counts.get(pf_no, 0) > 1):
             if sync_stats is not None:
                 sync_stats["skipped"] = sync_stats.get("skipped", 0) + 1
             if warnings is not None:
@@ -1231,7 +1266,7 @@ def _import_employee_rows(
                     f"{source_label} {row_hint}: skipped because PF No {pf_no} appears multiple times in the Google Sheet."
                 )
             continue
-        if hrms and source_hrms_counts.get(hrms, 0) > 1:
+        if hrms and (source_hrms_counts.get(hrms, 0) > 1 or global_hrms_counts.get(hrms, 0) > 1):
             if sync_stats is not None:
                 sync_stats["skipped"] = sync_stats.get("skipped", 0) + 1
             if warnings is not None:
