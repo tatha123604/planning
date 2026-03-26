@@ -29,7 +29,7 @@
         <a class="{{ 'active' if active_page == 'requirements' else '' }}" href="/requirements">Requirements</a>
         <a class="{{ 'active' if active_page == 'reports' else '' }}" href="/reports">Reports</a>
       </nav>
-      <div class="hierarchy">Hierarchy: LPM &gt; Motorman &gt; LPP &gt; LPG &gt; LPS (Shunter) &gt; ALP</div>
+      <div class="hierarchy">Hierarchy: LPM &gt; Motorman &gt; LPP &gt; LPG &gt; LPS/SHT &gt; ALP</div>
     </aside>
 
     <main class="content">
@@ -140,6 +140,7 @@
                 <tr>
                   <th>Sl No.</th>
                   <th>Name</th>
+                  <th>CREW ID</th>
                   <th>Designation</th>
                 <th>Retirement</th>
                 <th>PME Due</th>
@@ -147,7 +148,6 @@
                 <th>Transportation Due</th>
                   <th>Category</th>
                   <th>PF No</th>
-                  <th>HRMS</th>
                   <th>Gradation</th>
                   <th>CLI</th>
                   <th>DOB</th>
@@ -160,6 +160,7 @@
                 <tr>
                   <td>{{ loop.index }}</td>
                   <td>{{ e.name }}</td>
+                  <td>{{ e.hrms or '' }}</td>
                   <td>{{ e.role }}</td>
                 <td>{{ e.retirement_date | dmy if e.retirement_date else '' }}</td>
                 <td>{{ e.pme_due | dmy }}</td>
@@ -167,7 +168,6 @@
                 <td>{{ e.transportation_due | dmy }}</td>
                   <td>{{ e.category or '' }}</td>
                   <td>{{ e.pf_no or '' }}</td>
-                  <td>{{ e.hrms or '' }}</td>
                   <td>{{ e.gradation or '' }}</td>
                   <td>{{ e.cli or '' }}</td>
                   <td>{{ e.dob | dmy }}</td>
@@ -396,6 +396,7 @@
   <script src="/static/table-pager.js"></script>
 </body>
 </html>
+
 
 
 

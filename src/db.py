@@ -39,6 +39,42 @@ def init_db() -> None:
         ]:
             if col not in names:
                 conn.execute(text(f"ALTER TABLE employee ADD COLUMN {col} {ddl};"))
+        conn.execute(text(
+            """
+            UPDATE employee
+            SET role = 'LPS/SHT'
+            WHERE role IN ('LPS', 'SHT', 'SHUNTER', 'LPS(SHUNTER)');
+            """
+        ))
+        conn.execute(text(
+            """
+            UPDATE employee
+            SET promotion_role = 'LPS/SHT'
+            WHERE promotion_role IN ('LPS', 'SHT', 'SHUNTER', 'LPS(SHUNTER)');
+            """
+        ))
+        req_total = conn.execute(
+            text(
+                """
+                SELECT COALESCE(SUM(needed), 0)
+                FROM requirement
+                WHERE role IN ('LPS/SHT', 'LPS', 'SHT', 'SHUNTER', 'LPS(SHUNTER)');
+                """
+            )
+        ).scalar()
+        if req_total:
+            conn.execute(
+                text(
+                    """
+                    DELETE FROM requirement
+                    WHERE role IN ('LPS/SHT', 'LPS', 'SHT', 'SHUNTER', 'LPS(SHUNTER)');
+                    """
+                )
+            )
+            conn.execute(
+                text("INSERT INTO requirement (role, needed) VALUES ('LPS/SHT', :needed);"),
+                {"needed": int(req_total)},
+            )
         conn.execute(text("UPDATE employee SET status = 'ACTIVE' WHERE status IS NULL OR TRIM(status) = '';"))
         # If retirement_date is NOT NULL, rebuild table to allow NULL and normalize placeholder date
         retirement_col = next((c for c in cols if c[1] == "retirement_date"), None)
