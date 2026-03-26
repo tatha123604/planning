@@ -44,6 +44,50 @@
       </header>
 
       <section class="grid">
+        <div class="card" style="grid-column: 1 / -1;">
+          <h2>Update Employee Table from Service Particulars + CMS Other Bio Data</h2>
+          {% if update_error %}
+          <p class="error-text" role="alert">{{ update_error }}</p>
+          {% endif %}
+          {% if update_notice %}
+          <p class="hint success-text" role="status">{{ update_notice }}</p>
+          {% endif %}
+          {% if update_warning %}
+          <p class="hint warning-text" role="status">{{ update_warning }}</p>
+          {% endif %}
+          {% if update_details %}
+          <div class="sync-list-header">
+            <p class="hint success-text"><strong>Last update records</strong></p>
+          </div>
+          <ul class="sync-warning-list">
+            {% for item in update_details %}
+            <li>{{ item }}</li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+          {% if warning_details %}
+          <p class="hint warning-text"><strong>Mismatch / Auto-fixed records</strong></p>
+          <ul class="sync-warning-list">
+            {% for item in warning_details %}
+            <li>{{ item }}</li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+          <form method="post" action="/uploads/employee-master-sync" enctype="multipart/form-data">
+            <label>Service Particulars (.xlsx)
+              <input type="file" name="service_file" accept=".xlsx,.xlsm" required />
+            </label>
+            <label>CMS other bio data (.csv)
+              <input type="file" name="cms_file" accept=".csv" required />
+            </label>
+            <p class="hint">
+              Employee table update uses <code>EMP NO / Employee No</code> as the primary unique id and merges CMS bio data using <code>CREW ID</code>.
+              Duplicate or mismatched rows are skipped and listed below this card.
+            </p>
+            <button type="submit">Update Employee Table</button>
+          </form>
+        </div>
+
         <div class="card">
           <h2>Add Employee (manual)</h2>
           <form method="post" action="/employees">

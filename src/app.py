@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from collections import Counter
+import csv
 from datetime import date, datetime, timedelta
 import json
 import math
 import os
-from io import BytesIO
+from io import BytesIO, StringIO
 from pathlib import Path
 from typing import Optional
 import re
@@ -616,15 +617,31 @@ def delete_employee(emp_id: int, session: Session = Depends(get_session)):
     return RedirectResponse("/", status_code=303)
 
 
+def _uploads_context(
+    request: Request,
+    update_error: Optional[str] = None,
+    update_notice: str = "",
+    update_warning: str = "",
+    update_details: Optional[list[str]] = None,
+    warning_details: Optional[list[str]] = None,
+):
+    return {
+        "request": request,
+        "active_page": "uploads",
+        "role_order": ROLE_ORDER,
+        "update_error": update_error,
+        "update_notice": update_notice,
+        "update_warning": update_warning,
+        "update_details": update_details or [],
+        "warning_details": warning_details or [],
+    }
+
+
 @app.get("/uploads")
 def uploads_page(request: Request):
     return templates.TemplateResponse(
         "uploads.html",
-        {
-            "request": request,
-            "active_page": "uploads",
-            "role_order": ROLE_ORDER,
-        },
+        _uploads_context(request),
     )
 
 
@@ -2566,6 +2583,410 @@ def _to_int(val: object | None) -> int | None:
             return int(float(val))
         except Exception as exc:
             raise ValueError(f"Invalid integer value: {val!r}") from exc
+
+
+def _clean_import_text(value: object | None, *, blank_na: bool = False) -> str | None:
+    if value is None:
+        return None
+    text = " ".join(str(value).strip().split())
+    if not text:
+        return None
+    if text in {"-", "--"}:
+        return None
+    if blank_na and text.upper() in {"NA", "N/A"}:
+        return None
+    return text
+
+
+def _decode_uploaded_text(content: bytes) -> str:
+    for encoding in ("utf-8-sig", "utf-8", "cp1252", "latin1"):
+        try:
+            return content.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return content.decode("utf-8", errors="replace")
+
+
+def _build_service_particular_records(
+    content: bytes,
+    warnings: list[str],
+) -> tuple[dict[str, dict[str, object]], dict[str, str]]:
+    wb = load_workbook(filename=BytesIO(content), data_only=True)
+    ws = wb.active
+    rows = list(ws.iter_rows(values_only=True))
+    if not rows:
+        raise HTTPException(status_code=400, detail="Service Particulars workbook is empty.")
+
+    header_row = next((row for row in rows if any(cell not in (None, "", " ") for cell in row)), None)
+    if header_row is None:
+        raise HTTPException(status_code=400, detail="Service Particulars workbook has no header row.")
+
+    header = {_employee_norm(cell): idx for idx, cell in enumerate(header_row) if cell not in (None, "")}
+    required = {
+        "crewname": "CREW NAME",
+        "crewdesg": "CREW DESG",
+        "crewid": "CREW ID",
+        "empno": "EMP NO",
+        "birthdate": "BIRTH DATE",
+        "appointdate": "APPOINT DATE",
+        "retirementdate": "RETIREMENT DATE",
+    }
+    missing = [label for key, label in required.items() if key not in header]
+    if missing:
+        raise HTTPException(status_code=400, detail=f"Service Particulars is missing columns: {', '.join(missing)}")
+
+    records: dict[str, dict[str, object]] = {}
+    hrms_to_emp: dict[str, str] = {}
+    duplicate_emp: set[str] = set()
+    duplicate_hrms: set[str] = set()
+
+    for row in rows[rows.index(header_row) + 1 :]:
+        if not any(cell not in (None, "", " ") for cell in row):
+            continue
+
+        emp_no = _clean_import_text(row[header["empno"]])
+        hrms = _clean_import_text(row[header["crewid"]])
+        name = _clean_import_text(row[header["crewname"]])
+        role_raw = _clean_import_text(row[header["crewdesg"]])
+        row_hint = name or hrms or emp_no or "Unknown row"
+
+        if not emp_no:
+            warnings.append(f"Service Particulars {row_hint}: skipped because EMP NO is blank.")
+            continue
+        if emp_no in records:
+            duplicate_emp.add(emp_no)
+            continue
+        if hrms and hrms in hrms_to_emp:
+            duplicate_hrms.add(hrms)
+            continue
+
+        try:
+            dob = _excel_to_date_with_correction(row[header["birthdate"]], warnings, "Service Particulars", row_hint, "birth_date")
+            hire_date = _excel_to_date_with_correction(row[header["appointdate"]], warnings, "Service Particulars", row_hint, "appoint_date")
+            retirement_date = _excel_to_date_with_correction(row[header["retirementdate"]], warnings, "Service Particulars", row_hint, "retirement_date")
+            promotion_ready = None
+            if "promotiondate" in header:
+                promotion_ready = _excel_to_date_with_correction(row[header["promotiondate"]], warnings, "Service Particulars", row_hint, "promotion_date")
+        except Exception as exc:
+            warnings.append(f"Service Particulars {row_hint}: skipped because {exc}.")
+            continue
+
+        role = normalize_role(role_raw or "")
+        if not name or not role or not hire_date:
+            warnings.append(f"Service Particulars {row_hint}: skipped because name, designation, or appoint date is missing.")
+            continue
+
+        records[emp_no] = {
+            "row_hint": row_hint,
+            "name": name,
+            "role": role,
+            "pf_no": emp_no,
+            "hrms": hrms,
+            "dob": dob,
+            "hire_date": hire_date,
+            "doa": hire_date,
+            "retirement_date": retirement_date,
+            "promotion_ready_date": promotion_ready,
+            "present_fields": {
+                "name",
+                "role",
+                "pf_no",
+                "hrms",
+                "dob",
+                "hire_date",
+                "doa",
+                "retirement_date",
+                "promotion_ready_date",
+            },
+        }
+        if hrms:
+            hrms_to_emp[hrms] = emp_no
+
+    for emp_no in sorted(duplicate_emp):
+        warnings.append(f"Service Particulars duplicate EMP NO skipped: {emp_no}")
+        records.pop(emp_no, None)
+    for hrms in sorted(duplicate_hrms):
+        emp_no = hrms_to_emp.get(hrms)
+        if emp_no:
+            records.pop(emp_no, None)
+        warnings.append(f"Service Particulars duplicate CREW ID skipped: {hrms}")
+
+    if not records:
+        raise HTTPException(status_code=400, detail="Service Particulars did not produce any usable employee rows.")
+    return records, hrms_to_emp
+
+
+def _merge_cms_other_bio(
+    records: dict[str, dict[str, object]],
+    hrms_to_emp: dict[str, str],
+    content: bytes,
+    warnings: list[str],
+) -> None:
+    text = _decode_uploaded_text(content)
+    reader = csv.DictReader(StringIO(text))
+    if not reader.fieldnames:
+        raise HTTPException(status_code=400, detail="CMS other bio data file has no header row.")
+
+    normalized_header = {_employee_norm(name): name for name in reader.fieldnames if name}
+    if "crewid" not in normalized_header:
+        raise HTTPException(status_code=400, detail="CMS other bio data is missing column: CREWID")
+
+    seen_hrms: set[str] = set()
+    for row in reader:
+        hrms_key = normalized_header["crewid"]
+        hrms = _clean_import_text(row.get(hrms_key))
+        row_hint = _clean_import_text(row.get(normalized_header.get("crewname", hrms_key))) or hrms or "Unknown row"
+        if not hrms:
+            warnings.append("CMS other bio data row skipped because CREWID is blank.")
+            continue
+        if hrms in seen_hrms:
+            warnings.append(f"CMS other bio data duplicate CREWID skipped: {hrms}")
+            continue
+        seen_hrms.add(hrms)
+
+        emp_no = hrms_to_emp.get(hrms)
+        if not emp_no or emp_no not in records:
+            warnings.append(f"CMS other bio data {row_hint} ({hrms}): no matching Service Particulars row found.")
+            continue
+
+        record = records[emp_no]
+        present_fields: set[str] = record["present_fields"]  # type: ignore[assignment]
+        name = _clean_import_text(row.get(normalized_header.get("crewname", "")))
+        if name:
+            record["name"] = name
+            record["row_hint"] = f"{name} ({hrms})"
+            present_fields.add("name")
+
+        role_raw = _clean_import_text(row.get(normalized_header.get("desig", "")))
+        if role_raw:
+            record["role"] = normalize_role(role_raw)
+            present_fields.add("role")
+
+        category = _clean_import_text(row.get(normalized_header.get("category", "")), blank_na=True)
+        if "category" in normalized_header:
+            record["category"] = category
+            present_fields.add("category")
+
+        try:
+            retirement_raw = row.get(normalized_header["retirementdate"]) if "retirementdate" in normalized_header else None
+            if _clean_import_text(retirement_raw) is not None:
+                record["retirement_date"] = _excel_to_date_with_correction(
+                    retirement_raw,
+                    warnings,
+                    "CMS other bio data",
+                    str(record["row_hint"]),
+                    "retirement_date",
+                )
+                present_fields.add("retirement_date")
+            appoint_raw = row.get(normalized_header["appointmentdate"]) if "appointmentdate" in normalized_header else None
+            if _clean_import_text(appoint_raw) is not None:
+                appoint_date = _excel_to_date_with_correction(
+                    appoint_raw,
+                    warnings,
+                    "CMS other bio data",
+                    str(record["row_hint"]),
+                    "appointment_date",
+                )
+                record["hire_date"] = appoint_date
+                record["doa"] = appoint_date
+                present_fields.update({"hire_date", "doa"})
+            pme_raw = row.get(normalized_header["pmedue"]) if "pmedue" in normalized_header else None
+            if _clean_import_text(pme_raw) is not None:
+                record["pme_due"] = _excel_to_date_with_correction(
+                    pme_raw,
+                    warnings,
+                    "CMS other bio data",
+                    str(record["row_hint"]),
+                    "pme_due",
+                )
+                present_fields.add("pme_due")
+        except Exception as exc:
+            warnings.append(f"CMS other bio data {record['row_hint']}: {exc}")
+
+
+def _upsert_employee_master_records(
+    session: Session,
+    records: dict[str, dict[str, object]],
+    warnings: list[str],
+    sync_details: list[str],
+) -> tuple[int, int, int, int]:
+    added = 0
+    updated = 0
+    unchanged = 0
+    skipped = 0
+
+    for emp_no, record in records.items():
+        row_hint = str(record.get("row_hint") or record.get("name") or emp_no)
+        name = _clean_import_text(record.get("name"))
+        role = _clean_import_text(record.get("role"))
+        hire_date = record.get("hire_date")
+        present_fields = set(record.get("present_fields") or set())
+
+        if not name or not role or not isinstance(hire_date, date):
+            warnings.append(f"{row_hint}: skipped because name, designation, or appoint date is missing after merge.")
+            skipped += 1
+            continue
+
+        pf_matches = session.exec(select(Employee).where(Employee.pf_no == emp_no)).all()
+        if len(pf_matches) > 1:
+            warnings.append(f"{row_hint}: skipped because EMP NO {emp_no} matches multiple employees in the current database.")
+            skipped += 1
+            continue
+
+        existing = pf_matches[0] if pf_matches else None
+        hrms = _clean_import_text(record.get("hrms"))
+        if existing is None and hrms:
+            hrms_matches = session.exec(select(Employee).where(Employee.hrms == hrms)).all()
+            if len(hrms_matches) > 1:
+                warnings.append(f"{row_hint}: skipped because CREW ID {hrms} matches multiple employees in the current database.")
+                skipped += 1
+                continue
+            if len(hrms_matches) == 1:
+                existing = hrms_matches[0]
+                if existing.pf_no and existing.pf_no != emp_no:
+                    warnings.append(f"{row_hint}: skipped because EMP NO {emp_no} conflicts with existing employee EMP NO {existing.pf_no}.")
+                    skipped += 1
+                    continue
+
+        if existing and hrms:
+            conflict = session.exec(select(Employee).where(Employee.hrms == hrms, Employee.id != existing.id)).first()
+            if conflict:
+                warnings.append(f"{row_hint}: skipped because CREW ID {hrms} already belongs to another employee.")
+                skipped += 1
+                continue
+
+        record_values = {
+            "name": name,
+            "role": normalize_role(role),
+            "hire_date": hire_date,
+            "doa": record.get("doa"),
+            "retirement_date": record.get("retirement_date"),
+            "promotion_ready_date": record.get("promotion_ready_date"),
+            "category": record.get("category"),
+            "pf_no": emp_no,
+            "hrms": hrms,
+            "dob": record.get("dob"),
+            "pme_due": record.get("pme_due"),
+        }
+
+        if existing:
+            field_labels = {
+                "name": "Name",
+                "role": "Designation",
+                "hire_date": "Hire Date",
+                "doa": "DOA",
+                "retirement_date": "Retirement Date",
+                "promotion_ready_date": "Promotion Date",
+                "category": "Category",
+                "pf_no": "EMP NO",
+                "hrms": "CREW ID",
+                "dob": "DOB",
+                "pme_due": "PME Due",
+            }
+            changed_fields: list[str] = []
+            for field_name, label in field_labels.items():
+                if field_name not in present_fields and field_name != "pf_no":
+                    continue
+                old_value = getattr(existing, field_name)
+                new_value = record_values[field_name]
+                if old_value != new_value:
+                    changed_fields.append(
+                        f"{label}: {_format_sync_value(old_value)} -> {_format_sync_value(new_value)}"
+                    )
+                    setattr(existing, field_name, new_value)
+            if changed_fields:
+                updated += 1
+                sync_details.append(f"Updated {row_hint}: {'; '.join(changed_fields)}")
+            else:
+                unchanged += 1
+        else:
+            employee = Employee(
+                name=record_values["name"],
+                role=record_values["role"],
+                hire_date=record_values["hire_date"],
+                retirement_date=record_values["retirement_date"],
+                promotion_ready_date=record_values["promotion_ready_date"],
+                category=record_values["category"],
+                pf_no=record_values["pf_no"],
+                hrms=record_values["hrms"],
+                dob=record_values["dob"],
+                doa=record_values["doa"],
+                pme_due=record_values["pme_due"],
+                status="ACTIVE",
+            )
+            session.add(employee)
+            added += 1
+            sync_details.append(
+                f"Added {row_hint}: EMP NO {_format_sync_value(emp_no)}; CREW ID {_format_sync_value(hrms)}"
+            )
+
+    session.commit()
+    return added, updated, unchanged, skipped
+
+
+@app.post("/uploads/employee-master-sync")
+async def upload_employee_master_sync(
+    request: Request,
+    service_file: UploadFile = File(...),
+    cms_file: UploadFile = File(...),
+    session: Session = Depends(get_session),
+):
+    try:
+        service_name = service_file.filename or ""
+        cms_name = cms_file.filename or ""
+        if not service_name.lower().endswith((".xlsx", ".xlsm")):
+            raise HTTPException(status_code=400, detail="Service Particulars file must be an .xlsx workbook.")
+        if not cms_name.lower().endswith(".csv"):
+            raise HTTPException(status_code=400, detail="CMS other bio data file must be a .csv file.")
+
+        service_content = await service_file.read()
+        cms_content = await cms_file.read()
+        warnings: list[str] = []
+        sync_details: list[str] = []
+
+        records, hrms_to_emp = _build_service_particular_records(service_content, warnings)
+        _merge_cms_other_bio(records, hrms_to_emp, cms_content, warnings)
+        added, updated, unchanged, skipped = _upsert_employee_master_records(
+            session,
+            records,
+            warnings,
+            sync_details,
+        )
+
+        if added == 0 and updated == 0 and skipped == 0:
+            notice = "No change found"
+        else:
+            notice = (
+                "Employee table update complete: "
+                f"{added} added, {updated} updated, {unchanged} unchanged, {skipped} skipped."
+            )
+        warning_text = ""
+        if warnings:
+            warning_text = f"Mismatch / auto-fixed records: {len(warnings)}"
+
+        return templates.TemplateResponse(
+            "uploads.html",
+            _uploads_context(
+                request,
+                update_notice=notice,
+                update_warning=warning_text,
+                update_details=sync_details,
+                warning_details=warnings,
+            ),
+        )
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "Employee table update failed."
+        return templates.TemplateResponse(
+            "uploads.html",
+            _uploads_context(request, update_error=detail),
+            status_code=exc.status_code,
+        )
+    except Exception as exc:
+        return templates.TemplateResponse(
+            "uploads.html",
+            _uploads_context(request, update_error=str(exc)),
+            status_code=500,
+        )
 
 
 @app.post("/upload")
