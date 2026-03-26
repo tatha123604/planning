@@ -16,6 +16,7 @@ class Employee(SQLModel, table=True):
     category: str | None = None
     pf_no: str | None = None
     hrms: str | None = None
+    crew_id: str | None = None
     dob: date | None = None
     doa: date | None = None
     do_report: date | None = None

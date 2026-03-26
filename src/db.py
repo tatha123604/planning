@@ -26,6 +26,7 @@ def init_db() -> None:
             ("category", "TEXT"),
             ("pf_no", "TEXT"),
             ("hrms", "TEXT"),
+            ("crew_id", "TEXT"),
             ("dob", "DATE"),
             ("doa", "DATE"),
             ("do_report", "DATE"),
@@ -96,6 +97,7 @@ def init_db() -> None:
                     category TEXT,
                     pf_no TEXT,
                     hrms TEXT,
+                    crew_id TEXT,
                     dob DATE,
                     doa DATE,
                     do_report DATE,
@@ -119,7 +121,7 @@ def init_db() -> None:
                 SELECT
                     id, name, role, hire_date,
                     CASE WHEN retirement_date = '2026-03-18' THEN NULL ELSE retirement_date END,
-                    promotion_role, promotion_ready_date, seniority_rank, category, pf_no, hrms,
+                    promotion_role, promotion_ready_date, seniority_rank, category, pf_no, hrms, crew_id,
                     dob, doa, do_report, status, working_at, gradation, cli, pme_due,
                     technical_due, transportation_due
                 FROM employee_old;

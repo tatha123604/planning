@@ -59,6 +59,7 @@ def seed_employees(session: Session) -> None:
                         category=row.get("category") or None,
                         pf_no=row.get("pf_no") or None,
                         hrms=row.get("hrms") or None,
+                        crew_id=row.get("crew_id") or None,
                         dob=_parse_date(row.get("dob", "")),
                         doa=_parse_date(row.get("doa", "")),
                         do_report=_parse_date(row.get("do_report", "")),
@@ -88,6 +89,7 @@ def sync_bootstrap(session: Session) -> None:
 
         by_pf = {e.pf_no: e for e in employees if e.pf_no}
         by_hrms = {e.hrms: e for e in employees if e.hrms}
+        by_crew_id = {e.crew_id: e for e in employees if e.crew_id}
         by_name_role = {(e.name, e.role): e for e in employees}
 
         employee_cols = [
@@ -101,6 +103,7 @@ def sync_bootstrap(session: Session) -> None:
             "category",
             "pf_no",
             "hrms",
+            "crew_id",
             "dob",
             "doa",
             "do_report",
@@ -115,7 +118,7 @@ def sync_bootstrap(session: Session) -> None:
 
         rows = cur.execute(
             "SELECT name, role, hire_date, retirement_date, promotion_role, promotion_ready_date, "
-            "seniority_rank, category, pf_no, hrms, dob, doa, do_report, status, working_at, "
+            "seniority_rank, category, pf_no, hrms, crew_id, dob, doa, do_report, status, working_at, "
             "gradation, cli, pme_due, technical_due, transportation_due FROM employee"
         ).fetchall()
 
@@ -131,6 +134,7 @@ def sync_bootstrap(session: Session) -> None:
                 "category": row["category"],
                 "pf_no": row["pf_no"],
                 "hrms": row["hrms"],
+                "crew_id": row["crew_id"],
                 "dob": _parse_optional_date(row["dob"]),
                 "doa": _parse_optional_date(row["doa"]),
                 "do_report": _parse_optional_date(row["do_report"]),
@@ -148,6 +152,8 @@ def sync_bootstrap(session: Session) -> None:
                 existing = by_pf.get(payload["pf_no"])
             if existing is None and payload["hrms"]:
                 existing = by_hrms.get(payload["hrms"])
+            if existing is None and payload["crew_id"]:
+                existing = by_crew_id.get(payload["crew_id"])
             if existing is None:
                 existing = by_name_role.get((payload["name"], payload["role"]))
 
@@ -158,6 +164,8 @@ def sync_bootstrap(session: Session) -> None:
                     by_pf[employee.pf_no] = employee
                 if employee.hrms:
                     by_hrms[employee.hrms] = employee
+                if employee.crew_id:
+                    by_crew_id[employee.crew_id] = employee
                 by_name_role[(employee.name, employee.role)] = employee
                 continue
 

@@ -140,6 +140,7 @@
                 <tr>
                   <th>Sl No.</th>
                   <th>Name</th>
+                  <th>HRMS ID</th>
                   <th>CREW ID</th>
                   <th>Designation</th>
                 <th>Retirement</th>
@@ -161,6 +162,7 @@
                   <td>{{ loop.index }}</td>
                   <td>{{ e.name }}</td>
                   <td>{{ e.hrms or '' }}</td>
+                  <td>{{ e.crew_id or '' }}</td>
                   <td>{{ e.role }}</td>
                 <td>{{ e.retirement_date | dmy if e.retirement_date else '' }}</td>
                 <td>{{ e.pme_due | dmy }}</td>

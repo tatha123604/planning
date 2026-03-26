@@ -560,6 +560,7 @@ def update_employee(
     category: Optional[str] = Form(None),
     pf_no: Optional[str] = Form(None),
     hrms: Optional[str] = Form(None),
+    crew_id: Optional[str] = Form(None),
     dob: Optional[str] = Form(None),
     doa: Optional[str] = Form(None),
     do_report: Optional[str] = Form(None),
@@ -590,6 +591,7 @@ def update_employee(
     employee.category = category.strip() if category else None
     employee.pf_no = pf_no.strip() if pf_no else None
     employee.hrms = hrms.strip() if hrms else None
+    employee.crew_id = crew_id.strip() if crew_id else None
     employee.dob = to_date(dob)
     employee.doa = to_date(doa)
     employee.do_report = to_date(do_report)
@@ -718,6 +720,8 @@ EMPLOYEE_ALIAS_MAP = {
     "pfnolen": "pf_no",
     "hrms": "hrms",
     "hrmsid": "hrms",
+    "crewid": "crew_id",
+    "crewidno": "crew_id",
     "dob": "dob",
     "doareport": "do_report",
     "doreport": "do_report",
@@ -911,6 +915,9 @@ def _import_employee_rows(
         raw_hrms = get("hrms")
         if raw_hrms not in (None, ""):
             row_hint = f"{row_hint} ({str(raw_hrms).strip()})"
+        raw_crew_id = get("crew_id")
+        if raw_crew_id not in (None, "") and raw_hrms in (None, ""):
+            row_hint = f"{row_hint} ({str(raw_crew_id).strip()})"
 
         try:
             hire_date = _excel_to_date_with_correction(get("hire_date"), warnings, source_label, row_hint, "hire_date") if has_col("hire_date") else None
@@ -930,6 +937,7 @@ def _import_employee_rows(
         category = str(get("category")).strip() if has_col("category") and get("category") else None
         pf_no = str(get("pf_no")).strip() if has_col("pf_no") and get("pf_no") else None
         hrms = str(get("hrms")).strip() if has_col("hrms") and get("hrms") else None
+        crew_id = str(get("crew_id")).strip() if has_col("crew_id") and get("crew_id") else None
         status_val = str(get("status")).strip() if has_col("status") and get("status") else None
         working_at = str(get("working_at")).strip() if has_col("working_at") and get("working_at") else None
         if working_at:
@@ -1016,6 +1024,7 @@ def _import_employee_rows(
             category_target = category if has_col("category") else existing.category
             pf_no_target = pf_no if has_col("pf_no") else existing.pf_no
             hrms_target = hrms if has_col("hrms") else existing.hrms
+            crew_id_target = crew_id if has_col("crew_id") else existing.crew_id
             dob_target = dob if has_col("dob") else existing.dob
             doa_target = doa if has_col("doa") else existing.doa
             do_report_target = do_report if has_col("do_report") else existing.do_report
@@ -1035,7 +1044,8 @@ def _import_employee_rows(
                 ("Promotion Ready Date", existing.promotion_ready_date, promo_ready_target),
                 ("Category", existing.category, category_target),
                 ("PF No", existing.pf_no, pf_no_target),
-                ("HRMS", existing.hrms, hrms_target),
+                ("HRMS ID", existing.hrms, hrms_target),
+                ("CREW ID", existing.crew_id, crew_id_target),
                 ("DOB", existing.dob, dob_target),
                 ("DOA", existing.doa, doa_target),
                 ("DO Report", existing.do_report, do_report_target),
@@ -1062,6 +1072,7 @@ def _import_employee_rows(
             existing.category = category_target
             existing.pf_no = pf_no_target
             existing.hrms = hrms_target
+            existing.crew_id = crew_id_target
             existing.dob = dob_target
             existing.doa = doa_target
             existing.do_report = do_report_target
@@ -1090,6 +1101,7 @@ def _import_employee_rows(
                     category=category,
                     pf_no=pf_no,
                     hrms=hrms,
+                    crew_id=crew_id,
                     dob=dob,
                     doa=doa,
                     do_report=do_report,
@@ -2454,6 +2466,7 @@ def add_employee(
     category: Optional[str] = Form(None),
     pf_no: Optional[str] = Form(None),
     hrms: Optional[str] = Form(None),
+    crew_id: Optional[str] = Form(None),
     dob: Optional[str] = Form(None),
     doa: Optional[str] = Form(None),
     do_report: Optional[str] = Form(None),
@@ -2485,6 +2498,7 @@ def add_employee(
         existing.category = category.strip() if category else None
         existing.pf_no = pf_no.strip() if pf_no else None
         existing.hrms = hrms.strip() if hrms else None
+        existing.crew_id = crew_id.strip() if crew_id else None
         existing.dob = to_date(dob)
         existing.doa = to_date(doa)
         existing.do_report = to_date(do_report)
@@ -2507,6 +2521,7 @@ def add_employee(
         category=category.strip() if category else None,
         pf_no=pf_no.strip() if pf_no else None,
         hrms=hrms.strip() if hrms else None,
+        crew_id=crew_id.strip() if crew_id else None,
         dob=to_date(dob),
         doa=to_date(doa),
         do_report=to_date(do_report),
@@ -2636,19 +2651,19 @@ def _build_service_particular_records(
         raise HTTPException(status_code=400, detail=f"Service Particulars is missing columns: {', '.join(missing)}")
 
     records: dict[str, dict[str, object]] = {}
-    hrms_to_emp: dict[str, str] = {}
+    crew_to_emp: dict[str, str] = {}
     duplicate_emp: set[str] = set()
-    duplicate_hrms: set[str] = set()
+    duplicate_crew: set[str] = set()
 
     for row in rows[rows.index(header_row) + 1 :]:
         if not any(cell not in (None, "", " ") for cell in row):
             continue
 
         emp_no = _clean_import_text(row[header["empno"]])
-        hrms = _clean_import_text(row[header["crewid"]])
+        crew_id = _clean_import_text(row[header["crewid"]])
         name = _clean_import_text(row[header["crewname"]])
         role_raw = _clean_import_text(row[header["crewdesg"]])
-        row_hint = name or hrms or emp_no or "Unknown row"
+        row_hint = name or crew_id or emp_no or "Unknown row"
 
         if not emp_no:
             warnings.append(f"Service Particulars {row_hint}: skipped because EMP NO is blank.")
@@ -2656,8 +2671,8 @@ def _build_service_particular_records(
         if emp_no in records:
             duplicate_emp.add(emp_no)
             continue
-        if hrms and hrms in hrms_to_emp:
-            duplicate_hrms.add(hrms)
+        if crew_id and crew_id in crew_to_emp:
+            duplicate_crew.add(crew_id)
             continue
 
         try:
@@ -2681,7 +2696,7 @@ def _build_service_particular_records(
             "name": name,
             "role": role,
             "pf_no": emp_no,
-            "hrms": hrms,
+            "crew_id": crew_id,
             "dob": dob,
             "hire_date": hire_date,
             "doa": hire_date,
@@ -2691,7 +2706,7 @@ def _build_service_particular_records(
                 "name",
                 "role",
                 "pf_no",
-                "hrms",
+                "crew_id",
                 "dob",
                 "hire_date",
                 "doa",
@@ -2699,26 +2714,26 @@ def _build_service_particular_records(
                 "promotion_ready_date",
             },
         }
-        if hrms:
-            hrms_to_emp[hrms] = emp_no
+        if crew_id:
+            crew_to_emp[crew_id] = emp_no
 
     for emp_no in sorted(duplicate_emp):
         warnings.append(f"Service Particulars duplicate EMP NO skipped: {emp_no}")
         records.pop(emp_no, None)
-    for hrms in sorted(duplicate_hrms):
-        emp_no = hrms_to_emp.get(hrms)
+    for crew_id in sorted(duplicate_crew):
+        emp_no = crew_to_emp.get(crew_id)
         if emp_no:
             records.pop(emp_no, None)
-        warnings.append(f"Service Particulars duplicate CREW ID skipped: {hrms}")
+        warnings.append(f"Service Particulars duplicate CREW ID skipped: {crew_id}")
 
     if not records:
         raise HTTPException(status_code=400, detail="Service Particulars did not produce any usable employee rows.")
-    return records, hrms_to_emp
+    return records, crew_to_emp
 
 
 def _merge_cms_other_bio(
     records: dict[str, dict[str, object]],
-    hrms_to_emp: dict[str, str],
+    crew_to_emp: dict[str, str],
     content: bytes,
     warnings: list[str],
 ) -> None:
@@ -2744,7 +2759,7 @@ def _merge_cms_other_bio(
             continue
         seen_hrms.add(hrms)
 
-        emp_no = hrms_to_emp.get(hrms)
+        emp_no = crew_to_emp.get(hrms)
         if not emp_no or emp_no not in records:
             warnings.append(f"CMS other bio data {row_hint} ({hrms}): no matching Service Particulars row found.")
             continue
@@ -2834,24 +2849,24 @@ def _upsert_employee_master_records(
             continue
 
         existing = pf_matches[0] if pf_matches else None
-        hrms = _clean_import_text(record.get("hrms"))
-        if existing is None and hrms:
-            hrms_matches = session.exec(select(Employee).where(Employee.hrms == hrms)).all()
-            if len(hrms_matches) > 1:
-                warnings.append(f"{row_hint}: skipped because CREW ID {hrms} matches multiple employees in the current database.")
+        crew_id = _clean_import_text(record.get("crew_id"))
+        if existing is None and crew_id:
+            crew_matches = session.exec(select(Employee).where(Employee.crew_id == crew_id)).all()
+            if len(crew_matches) > 1:
+                warnings.append(f"{row_hint}: skipped because CREW ID {crew_id} matches multiple employees in the current database.")
                 skipped += 1
                 continue
-            if len(hrms_matches) == 1:
-                existing = hrms_matches[0]
+            if len(crew_matches) == 1:
+                existing = crew_matches[0]
                 if existing.pf_no and existing.pf_no != emp_no:
                     warnings.append(f"{row_hint}: skipped because EMP NO {emp_no} conflicts with existing employee EMP NO {existing.pf_no}.")
                     skipped += 1
                     continue
 
-        if existing and hrms:
-            conflict = session.exec(select(Employee).where(Employee.hrms == hrms, Employee.id != existing.id)).first()
+        if existing and crew_id:
+            conflict = session.exec(select(Employee).where(Employee.crew_id == crew_id, Employee.id != existing.id)).first()
             if conflict:
-                warnings.append(f"{row_hint}: skipped because CREW ID {hrms} already belongs to another employee.")
+                warnings.append(f"{row_hint}: skipped because CREW ID {crew_id} already belongs to another employee.")
                 skipped += 1
                 continue
 
@@ -2864,7 +2879,7 @@ def _upsert_employee_master_records(
             "promotion_ready_date": record.get("promotion_ready_date"),
             "category": record.get("category"),
             "pf_no": emp_no,
-            "hrms": hrms,
+            "crew_id": crew_id,
             "dob": record.get("dob"),
             "pme_due": record.get("pme_due"),
         }
@@ -2879,7 +2894,7 @@ def _upsert_employee_master_records(
                 "promotion_ready_date": "Promotion Date",
                 "category": "Category",
                 "pf_no": "EMP NO",
-                "hrms": "CREW ID",
+                "crew_id": "CREW ID",
                 "dob": "DOB",
                 "pme_due": "PME Due",
             }
@@ -2908,7 +2923,7 @@ def _upsert_employee_master_records(
                 promotion_ready_date=record_values["promotion_ready_date"],
                 category=record_values["category"],
                 pf_no=record_values["pf_no"],
-                hrms=record_values["hrms"],
+                crew_id=record_values["crew_id"],
                 dob=record_values["dob"],
                 doa=record_values["doa"],
                 pme_due=record_values["pme_due"],
@@ -2917,7 +2932,7 @@ def _upsert_employee_master_records(
             session.add(employee)
             added += 1
             sync_details.append(
-                f"Added {row_hint}: EMP NO {_format_sync_value(emp_no)}; CREW ID {_format_sync_value(hrms)}"
+                f"Added {row_hint}: EMP NO {_format_sync_value(emp_no)}; CREW ID {_format_sync_value(crew_id)}"
             )
 
     session.commit()

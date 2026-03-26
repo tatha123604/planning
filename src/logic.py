@@ -76,6 +76,7 @@ def apply_promotions(employees: Iterable[Employee], as_of: date) -> List[Employe
                 category=e.category,
                 pf_no=e.pf_no,
                 hrms=e.hrms,
+                crew_id=e.crew_id,
                 dob=e.dob,
                 doa=e.doa,
                 do_report=e.do_report,
