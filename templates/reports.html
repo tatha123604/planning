@@ -93,7 +93,7 @@
             <tbody>
               {% for role, count in retirements.items() %}
               <tr>
-                <td><a href="/reports?start_date={{ start_date.isoformat() }}&end_date={{ end_date.isoformat() }}&role={{ role }}">{{ role }}</a></td>
+                <td><a class="cli-roster-link" href="/reports?start_date={{ start_date.isoformat() }}&end_date={{ end_date.isoformat() }}&role={{ role }}">{{ role }}</a></td>
                 <td>{{ count }}</td>
               </tr>
               {% endfor %}
