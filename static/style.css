@@ -739,6 +739,12 @@ ul { padding-left: 18px; margin: 6px 0; }
   transform: rotate(180deg);
   color: #dff6ff;
 }
+#employees-card details > summary:hover {
+  box-shadow: inset 0 0 0 1px rgba(123, 215, 255, 0.18), 0 14px 30px rgba(18, 189, 231, 0.16);
+}
+#employees-card details[open] > summary {
+  box-shadow: inset 0 0 0 1px rgba(123, 215, 255, 0.16), 0 14px 30px rgba(18, 189, 231, 0.1);
+}
 
 .sidebar { transition: width 0.25s ease, padding 0.25s ease, opacity 0.25s ease, flex-basis 0.25s ease; }
 .nav-hidden .sidebar {
