@@ -657,6 +657,15 @@ def _uploads_context(
     extra_review_groups: Optional[list[dict[str, object]]] = None,
     extra_review_details: Optional[list[str]] = None,
 ):
+    snapshot_ready = EMPLOYEE_MASTER_SOURCE_SNAPSHOT_FILE.exists()
+    snapshot_saved_at = ""
+    if snapshot_ready:
+        try:
+            snapshot_saved_at = datetime.fromtimestamp(
+                EMPLOYEE_MASTER_SOURCE_SNAPSHOT_FILE.stat().st_mtime
+            ).strftime("%d/%m/%Y %I:%M %p")
+        except Exception:
+            snapshot_saved_at = ""
     return {
         "request": request,
         "active_page": "uploads",
@@ -677,6 +686,8 @@ def _uploads_context(
         "extra_review_summary": extra_review_summary or {},
         "extra_review_groups": extra_review_groups or [],
         "extra_review_details": extra_review_details or [],
+        "source_snapshot_ready": snapshot_ready,
+        "source_snapshot_saved_at": snapshot_saved_at,
     }
 
 

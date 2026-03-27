@@ -270,6 +270,11 @@
             <code>CMS other bio data</code> upload. We can then <strong>Merge</strong>, <strong>Delete</strong>,
             or <strong>Keep</strong> them manually.
           </p>
+          <p class="hint">
+            Last source snapshot:
+            <strong>{% if source_snapshot_ready %}Available{% else %}Not available yet{% endif %}</strong>
+            {% if source_snapshot_saved_at %}<span> - saved on {{ source_snapshot_saved_at }}</span>{% endif %}
+          </p>
           {% if extra_review_error %}
           <p class="error-text" role="alert">{{ extra_review_error }}</p>
           {% endif %}
