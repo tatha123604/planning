@@ -377,7 +377,11 @@ tr.warn td { background: rgba(255, 149, 128, 0.08); }
   background: #05070d;
   color: #fff6a1;
 }
-.table-paged-active-even td { color: #0b1630; }
+.table-paged-active-even td {
+  background: linear-gradient(135deg, rgba(21, 54, 84, 0.96), rgba(12, 32, 51, 0.98));
+  color: #eefbff;
+  box-shadow: inset 0 0 0 2px rgba(123, 215, 255, 0.2);
+}
 ul { padding-left: 18px; margin: 6px 0; }
 .hint { font-size: 12px; color: #8b92a8; margin: 6px 0; }
 .error-text { color: #ff9a9a; margin-bottom: 12px; }
