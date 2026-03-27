@@ -70,12 +70,12 @@
         <p class="hint">One-way sync only: changes made in Google Sheet will update this project, but edits made here will not push back to Google Sheet.</p>
         {% if google_sync_ready %}
         <p class="hint">Configured source: <strong>{{ google_sync_range }}</strong></p>
-        <form method="post" action="/employees/sync-google" class="inline sensitive-inline-form" data-google-sync-form>
+        <form method="post" action="/employees/sync-google" class="inline sensitive-inline-form" data-google-sync-form data-password-gated-form>
           <label class="site-password-label compact-site-password">Site Password
-            <input class="site-password-input compact-site-password-input" type="password" name="action_password" autocomplete="current-password" required />
+            <input class="site-password-input compact-site-password-input" type="password" name="action_password" autocomplete="current-password" required data-password-gated-input />
           </label>
           <div class="actions">
-            <button type="submit" data-sync-button>Sync from Google Sheet</button>
+            <button type="submit" data-sync-button data-password-gated-button disabled>Sync from Google Sheet</button>
           </div>
         </form>
         {% else %}
@@ -302,6 +302,19 @@
             event.preventDefault();
           }
         });
+      });
+
+      document.querySelectorAll('[data-password-gated-form]').forEach((form) => {
+        const passwordInput = form.querySelector('[data-password-gated-input]');
+        const submitButton = form.querySelector('[data-password-gated-button]');
+        if (!passwordInput || !submitButton) return;
+
+        const syncButtonState = () => {
+          submitButton.disabled = passwordInput.value.trim().length === 0;
+        };
+
+        passwordInput.addEventListener('input', syncButtonState);
+        syncButtonState();
       });
 
       const syncForm = document.querySelector('[data-google-sync-form]');
