@@ -17,6 +17,8 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Stre
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from openpyxl import load_workbook, Workbook
+from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.utils import get_column_letter
 import pandas as pd
 from sqlmodel import Session, select
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -250,6 +252,28 @@ def filter_hire_by(value, days: int = 30):
     except Exception:
         return None
 templates.env.filters["hire_by"] = filter_hire_by
+
+
+def _sanitize_export_title(value: object | None) -> str:
+    text = re.sub(r"\s+", " ", str(value or "").strip())
+    return text or "Table Export"
+
+
+def _sanitize_excel_sheet_title(value: object | None) -> str:
+    text = _sanitize_export_title(value)
+    text = re.sub(r'[\[\]\*:/\\?]', " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text[:31] or "Table Export"
+
+
+def _sanitize_export_filename(value: object | None, suffix: str) -> str:
+    title = _sanitize_export_title(value)
+    slug = re.sub(r"[^A-Za-z0-9]+", "_", title).strip("_").lower() or "table_export"
+    return f"{slug}.{suffix}"
+
+
+def _normalize_export_text(value: object | None) -> str:
+    return re.sub(r"\s+", " ", str(value or "").strip())
 
 ADMIN_USER = "admin"
 ADMIN_PASS = "sdah1234"
@@ -3243,6 +3267,71 @@ def download_cli_distribution(session: Session = Depends(get_session)):
         stream,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@app.post("/exports/table.xlsx")
+async def export_table_xlsx(request: Request):
+    try:
+        payload = await request.json()
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail="Invalid export payload.") from exc
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Export payload must be an object.")
+
+    headers_payload = payload.get("headers")
+    rows_payload = payload.get("rows")
+    if not isinstance(headers_payload, list) or not headers_payload:
+        raise HTTPException(status_code=400, detail="Export requires at least one column.")
+    if rows_payload is not None and not isinstance(rows_payload, list):
+        raise HTTPException(status_code=400, detail="Export rows payload is invalid.")
+
+    title = _sanitize_export_title(payload.get("title"))
+    headers = [
+        _normalize_export_text(header) or f"Column {index + 1}"
+        for index, header in enumerate(headers_payload)
+    ]
+    width = len(headers)
+    rows: list[list[str]] = []
+    for raw_row in rows_payload or []:
+        if not isinstance(raw_row, list):
+            continue
+        normalized = [_normalize_export_text(cell) for cell in raw_row[:width]]
+        if len(normalized) < width:
+            normalized.extend([""] * (width - len(normalized)))
+        rows.append(normalized)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = _sanitize_excel_sheet_title(title)
+    ws.append(headers)
+    for row in rows:
+        ws.append(row)
+
+    header_fill = PatternFill(fill_type="solid", fgColor="16314C")
+    header_font = Font(bold=True, color="F3FBFF")
+    header_alignment = Alignment(horizontal="center", vertical="center")
+    for cell in ws[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = header_alignment
+
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = ws.dimensions
+    for column_index, header in enumerate(headers, start=1):
+        max_length = len(header)
+        for row in rows:
+            max_length = max(max_length, len(row[column_index - 1]))
+        ws.column_dimensions[get_column_letter(column_index)].width = min(max(max_length + 2, 10), 42)
+
+    stream = BytesIO()
+    wb.save(stream)
+    stream.seek(0)
+    filename = _sanitize_export_filename(title, "xlsx")
+    return StreamingResponse(
+        stream,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
     )
 
 
