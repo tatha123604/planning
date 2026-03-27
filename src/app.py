@@ -140,7 +140,7 @@ def _sensitive_action_password() -> str:
 
 def _validate_sensitive_action_password(password: str | None) -> None:
     if (password or "") != _sensitive_action_password():
-        raise HTTPException(status_code=403, detail="Password validation failed. Enter the current action code to continue.")
+        raise HTTPException(status_code=403, detail="Code validation failed. Enter the current action code to continue.")
 
 def _parse_as_of(request: Request, as_of: Optional[str]) -> date:
     """Resolve as_of date from query or cookie; fallback to today."""
