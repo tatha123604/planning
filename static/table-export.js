@@ -283,11 +283,27 @@
 
     pdfButton.addEventListener("click", () => {
       const snapshot = buildSnapshot(table, tableIndex);
+      const confirmed = window.confirm(
+        `Generate PDF for "${snapshot.title}"?\nRows: ${snapshot.rows.length}`
+      );
+      if (!confirmed) {
+        setStatus("PDF export cancelled.");
+        window.setTimeout(() => setStatus(""), 1800);
+        return;
+      }
       printSnapshot(snapshot, setStatus);
     });
 
     excelButton.addEventListener("click", async () => {
       const snapshot = buildSnapshot(table, tableIndex);
+      const confirmed = window.confirm(
+        `Download Excel for "${snapshot.title}"?\nRows: ${snapshot.rows.length}`
+      );
+      if (!confirmed) {
+        setStatus("Excel export cancelled.");
+        window.setTimeout(() => setStatus(""), 1800);
+        return;
+      }
       try {
         setStatus("Preparing Excel...");
         excelButton.disabled = true;
