@@ -283,12 +283,24 @@ ul { padding-left: 18px; margin: 6px 0; }
   color: #f8fbff;
   box-shadow: inset 0 0 0 2px rgba(255, 230, 102, 0.45);
 }
-.employee-table tr.total-highlight td {
+.employee-table tr.total-highlight td,
+.table tr.total-highlight td,
+.paged tr.total-highlight td {
   background: linear-gradient(135deg, rgba(255, 230, 102, 0.32), rgba(18, 189, 231, 0.18));
   color: #fff4a3;
   font-weight: 800;
   border-top: 1px solid rgba(255, 230, 102, 0.5);
   border-bottom: 1px solid rgba(255, 230, 102, 0.5);
+}
+.clickable-table tbody tr[data-href] td {
+  transition: background 0.16s ease, color 0.16s ease;
+}
+.clickable-table tbody tr[data-href]:hover td {
+  background: rgba(18, 189, 231, 0.14);
+}
+.clickable-table tbody tr[data-href] a {
+  color: inherit;
+  text-decoration: none;
 }
 .employee-table .working-at-col { min-width: 120px; max-width: 160px; }
 .employee-table .actions-col { width: 1%; padding-left: 6px; padding-right: 6px; }

@@ -114,7 +114,7 @@
             <a class="ghost" href="/reports/cli-distribution.xlsx">Download Excel</a>
           </div>
           <div class="table-wrap">
-            <table class="paged">
+            <table class="paged clickable-table" id="cli-distribution-table">
               <thead>
                 <tr>
                   <th>CLI</th>
@@ -126,8 +126,8 @@
               </thead>
               <tbody>
                 {% for row in cli_distribution %}
-                <tr>
-                  <td>{{ row.cli }}</td>
+                <tr{% if row.selected %} class="table-paged-active-odd"{% endif %} data-href="{{ row.detail_href }}">
+                  <td><a href="{{ row.detail_href }}">{{ row.cli }}</a></td>
                   <td>{{ row.A }}</td>
                   <td>{{ row.B }}</td>
                   <td>{{ row.C }}</td>
@@ -139,6 +139,46 @@
           </div>
         </details>
       </section>
+
+      {% if cli_distribution_breakdown %}
+      <section class="card collapsible" id="cli-distribution-detail">
+        <details open>
+          <summary>CLI Detail - {{ cli_distribution_detail_label }}</summary>
+          <p class="hint">Designation-wise gradation breakup for <strong>{{ cli_distribution_detail_label }}</strong>.</p>
+          <div class="table-wrap">
+            <table class="paged">
+              <thead>
+                <tr>
+                  <th>Designation</th>
+                  <th>Gradation A</th>
+                  <th>Gradation B</th>
+                  <th>Gradation C</th>
+                  <th>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in cli_distribution_breakdown %}
+                <tr>
+                  <td>{{ row.designation }}</td>
+                  <td>{{ row.A }}</td>
+                  <td>{{ row.B }}</td>
+                  <td>{{ row.C }}</td>
+                  <td>{{ row.total }}</td>
+                </tr>
+                {% endfor %}
+                <tr class="total-highlight">
+                  <td>TOTAL</td>
+                  <td>{{ cli_distribution_totals.get('A', 0) }}</td>
+                  <td>{{ cli_distribution_totals.get('B', 0) }}</td>
+                  <td>{{ cli_distribution_totals.get('C', 0) }}</td>
+                  <td>{{ cli_distribution_totals.get('total', 0) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </details>
+      </section>
+      {% endif %}
 
       <section class="card collapsible" id="cli-roster">
         <details {% if roster_open %}open{% else %}open{% endif %}>
@@ -266,6 +306,17 @@
         });
         renderWarnings();
       }
+
+      document.querySelectorAll('#cli-distribution-table tbody tr[data-href]').forEach((row) => {
+        row.style.cursor = 'pointer';
+        row.addEventListener('click', (event) => {
+          if (event.target.closest('a')) return;
+          const href = row.dataset.href;
+          if (href) {
+            window.location.href = href;
+          }
+        });
+      });
     })();
   </script>
   <script src="/static/sidebar-toggle.js"></script>

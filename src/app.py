@@ -61,6 +61,7 @@ from processor import (
 
 BASE_PATH = Path(__file__).resolve().parent.parent
 GOOGLE_EMPLOYEE_STATION_TABS = ["North", "South", "KOAA", "DDJ", "RHA", "NH", "BT"]
+CLI_DISTRIBUTION_ROLE_ORDER = ["Motorman", "LPG", "LPM", "LPS/SHT", "LPP"]
 TEMPLATE_STORE_DIR = DB_PATH.parent / "saved_templates"
 CLI_MATRIX_2026_03_24_CLEANUP_SENTINEL = DB_PATH.parent / ".cli_matrix_cleanup_2026_03_24.done"
 EMPLOYEE_MASTER_SMART_CLEANUP_SENTINEL = DB_PATH.parent / ".employee_master_smart_cleanup_2026_03_27.done"
@@ -243,6 +244,50 @@ def build_cli_distribution(employees: list[Employee]) -> list[dict[str, int | st
     ]
 
 
+def build_cli_distribution_role_breakdown(
+    employees: list[Employee],
+    selected_cli: str | None,
+) -> tuple[str, list[dict[str, int | str]], dict[str, int] | None]:
+    selected_text = (selected_cli or "").strip()
+    if not selected_text:
+        return "", [], None
+
+    selected_key = selected_text.lower()
+    filtered = [e for e in employees if (e.cli or "").strip().lower() == selected_key]
+    if not filtered:
+        return "", [], None
+
+    cli_label = (filtered[0].cli or "").strip() or selected_text
+    rows: list[dict[str, int | str]] = []
+    totals = {"A": 0, "B": 0, "C": 0, "total": 0}
+
+    for role in CLI_DISTRIBUTION_ROLE_ORDER:
+        role_counts = {"A": 0, "B": 0, "C": 0, "total": 0}
+        for employee in filtered:
+            if normalize_role(employee.role) != role:
+                continue
+            grad = (employee.gradation or "").strip().upper()
+            grad_key = grad[0] if grad else ""
+            if grad_key in ("A", "B", "C"):
+                role_counts[grad_key] += 1
+                role_counts["total"] += 1
+        totals["A"] += role_counts["A"]
+        totals["B"] += role_counts["B"]
+        totals["C"] += role_counts["C"]
+        totals["total"] += role_counts["total"]
+        rows.append(
+            {
+                "designation": role,
+                "A": role_counts["A"],
+                "B": role_counts["B"],
+                "C": role_counts["C"],
+                "total": role_counts["total"],
+            }
+        )
+
+    return cli_label, rows, totals
+
+
 @app.on_event("startup")
 def on_startup() -> None:
     init_db()
@@ -354,6 +399,7 @@ def _cli_page_context(
     roster_name: Optional[str] = None,
     roster_cli: Optional[str] = None,
     roster_gradation: Optional[str] = None,
+    distribution_cli: Optional[str] = None,
     grading_update_notice: str = "",
     grading_update_warning: str = "",
     grading_update_error: Optional[str] = None,
@@ -361,7 +407,16 @@ def _cli_page_context(
     grading_warning_details: Optional[list[str]] = None,
 ) -> dict[str, object]:
     employees_all = session.exec(select(Employee)).all()
+    selected_distribution_cli = (distribution_cli or "").strip()
     cli_distribution = build_cli_distribution(employees_all)
+    for row in cli_distribution:
+        cli_text = str(row["cli"])
+        row["detail_href"] = f"/cli?distribution_cli={quote(cli_text, safe='')}#cli-distribution-detail"
+        row["selected"] = bool(selected_distribution_cli) and cli_text.strip().lower() == selected_distribution_cli.lower()
+    detail_cli_label, cli_distribution_breakdown, cli_distribution_totals = build_cli_distribution_role_breakdown(
+        employees_all,
+        selected_distribution_cli,
+    )
     grading_meta = _load_li_grading_metadata()
     grading_report_date = coerce_report_date(grading_meta.get("report_date"))
     grading_saved_at = ""
@@ -403,6 +458,10 @@ def _cli_page_context(
         "roster_cli": roster_cli or "",
         "roster_gradation": roster_gradation or "",
         "roster_open": roster_filter_active,
+        "distribution_cli": selected_distribution_cli,
+        "cli_distribution_detail_label": detail_cli_label,
+        "cli_distribution_breakdown": cli_distribution_breakdown,
+        "cli_distribution_totals": cli_distribution_totals or {},
         "grading_source_name": grading_meta.get("filename", ""),
         "grading_report_date": grading_report_date.strftime("%d-%m-%Y") if grading_report_date else "",
         "grading_saved_at": grading_saved_at,
@@ -420,6 +479,7 @@ def cli_page(
     roster_name: Optional[str] = None,
     roster_cli: Optional[str] = None,
     roster_gradation: Optional[str] = None,
+    distribution_cli: Optional[str] = None,
     session: Session = Depends(get_session),
 ):
     return templates.TemplateResponse(
@@ -430,6 +490,7 @@ def cli_page(
             roster_name=roster_name,
             roster_cli=roster_cli,
             roster_gradation=roster_gradation,
+            distribution_cli=distribution_cli,
         ),
     )
 
