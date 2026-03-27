@@ -176,19 +176,23 @@
               <thead>
                 <tr>
                   <th>Name</th>
-                <th>Designation</th>
-                <th>CLI</th>
-                <th>Gradation</th>
-                <th>Retirement Date</th>
-                <th>Hire By (30d before)</th>
-                <th>Working At</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
+                  <th>HRMS ID</th>
+                  <th>CREW ID</th>
+                  <th>Designation</th>
+                  <th>CLI</th>
+                  <th>Gradation</th>
+                  <th>Retirement Date</th>
+                  <th>Hire By (30d before)</th>
+                  <th>Working At</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
               <tbody>
                 {% for e in retiring_list %}
                 <tr>
                   <td>{{ e.name }}</td>
+                  <td>{{ e.hrms or '' }}</td>
+                  <td>{{ e.crew_id or '' }}</td>
                   <td>{{ e.role }}</td>
                   <td>{{ e.cli or '' }}</td>
                   <td>{{ e.gradation or '' }}</td>

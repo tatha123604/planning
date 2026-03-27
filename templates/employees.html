@@ -226,6 +226,8 @@
                 <tr>
                   <th>CLI</th>
                   <th>Name</th>
+                  <th>HRMS ID</th>
+                  <th>CREW ID</th>
                   <th>Designation</th>
                   <th>Gradation</th>
                 </tr>
@@ -235,6 +237,8 @@
                 <tr>
                   <td>{{ e.cli }}</td>
                   <td><a href="/employees/{{ e.id }}">{{ e.name }}</a></td>
+                  <td>{{ e.hrms or '' }}</td>
+                  <td>{{ e.crew_id or '' }}</td>
                   <td>{{ e.role }}</td>
                   <td>{{ e.gradation or '' }}</td>
                 </tr>
