@@ -77,10 +77,10 @@
         </details>
       </section>
 
-      <section class="card collapsible">
+      <section class="card collapsible" id="retirements-by-designation-card">
         <details open>
           <summary>Retirements by Designation</summary>
-          <form class="inline" method="get" action="/reports">
+          <form class="inline" method="get" action="/reports#retirements-by-designation-card">
             <label>From <input type="date" name="start_date" value="{{ start_date.isoformat() }}" /></label>
             <label>To <input type="date" name="end_date" value="{{ end_date.isoformat() }}" /></label>
             <button type="submit">Recalculate</button>
