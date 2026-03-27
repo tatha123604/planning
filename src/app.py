@@ -626,6 +626,12 @@ def _uploads_context(
     update_warning: str = "",
     update_details: Optional[list[str]] = None,
     warning_details: Optional[list[str]] = None,
+    cleanup_notice: str = "",
+    cleanup_error: Optional[str] = None,
+    cleanup_summary: Optional[dict[str, int]] = None,
+    cleanup_plan: Optional[list[dict[str, object]]] = None,
+    cleanup_conflicts: Optional[list[dict[str, object]]] = None,
+    cleanup_details: Optional[list[str]] = None,
 ):
     return {
         "request": request,
@@ -636,6 +642,12 @@ def _uploads_context(
         "update_warning": update_warning,
         "update_details": update_details or [],
         "warning_details": warning_details or [],
+        "cleanup_notice": cleanup_notice,
+        "cleanup_error": cleanup_error,
+        "cleanup_summary": cleanup_summary or {},
+        "cleanup_plan": cleanup_plan or [],
+        "cleanup_conflicts": cleanup_conflicts or [],
+        "cleanup_details": cleanup_details or [],
     }
 
 
@@ -644,6 +656,56 @@ def uploads_page(request: Request):
     return templates.TemplateResponse(
         "uploads.html",
         _uploads_context(request),
+    )
+
+
+@app.post("/uploads/employee-master-cleanup-preview")
+def preview_employee_master_cleanup(request: Request, session: Session = Depends(get_session)):
+    plan, conflicts, summary = _build_duplicate_cleanup_plan(session)
+    notice = "No cleanup candidate found" if not plan and not conflicts else ""
+    return templates.TemplateResponse(
+        "uploads.html",
+        _uploads_context(
+            request,
+            cleanup_notice=notice,
+            cleanup_summary=summary,
+            cleanup_plan=plan,
+            cleanup_conflicts=conflicts,
+        ),
+    )
+
+
+@app.post("/uploads/employee-master-cleanup-apply")
+def apply_employee_master_cleanup(request: Request, session: Session = Depends(get_session)):
+    plan, conflicts, summary = _build_duplicate_cleanup_plan(session)
+    if not plan:
+        notice = "No cleanup candidate found"
+        return templates.TemplateResponse(
+            "uploads.html",
+            _uploads_context(
+                request,
+                cleanup_notice=notice,
+                cleanup_summary=summary,
+                cleanup_conflicts=conflicts,
+            ),
+        )
+
+    cleanup_details: list[str] = []
+    removed = _apply_duplicate_cleanup_plan(session, plan, cleanup_details)
+    notice = f"Smart cleanup complete: {removed} duplicate row(s) deleted."
+    return templates.TemplateResponse(
+        "uploads.html",
+        _uploads_context(
+            request,
+            cleanup_notice=notice,
+            cleanup_summary={
+                "merge_groups": len(plan),
+                "rows_to_delete": removed,
+                "conflict_groups": len(conflicts),
+            },
+            cleanup_conflicts=conflicts,
+            cleanup_details=cleanup_details,
+        ),
     )
 
 
@@ -2785,6 +2847,172 @@ def _dedupe_uploaded_employee_rows(session: Session, sync_details: list[str]) ->
                     f"Deduplicated {keeper.name}: kept 1 row for EMP NO {_format_sync_value(keeper.pf_no)} at {location}; removed {merged_count} duplicate row(s)."
                 )
 
+    return removed
+
+
+def _cleanup_row_payload(employee: Employee) -> dict[str, object]:
+    return {
+        "id": employee.id,
+        "name": employee.name,
+        "designation": employee.role,
+        "dob": employee.dob.strftime("%d/%m/%Y") if employee.dob else "",
+        "emp_no": employee.pf_no or "",
+        "working_at": employee.working_at or "",
+        "crew_id": employee.crew_id or "",
+        "hrms": employee.hrms or "",
+    }
+
+
+def _build_duplicate_cleanup_plan(session: Session) -> tuple[list[dict[str, object]], list[dict[str, object]], dict[str, int]]:
+    employees = session.exec(select(Employee)).all()
+    plan: list[dict[str, object]] = []
+    conflicts: list[dict[str, object]] = []
+    used_ids: set[int] = set()
+
+    def register_plan(reason: str, rows: list[Employee]) -> None:
+        if len(rows) < 2:
+            return
+        ordered = sorted(rows, key=lambda employee: (-_employee_completeness(employee), employee.id or 0))
+        keeper = ordered[0]
+        remove_rows = ordered[1:]
+        used_ids.update(employee.id for employee in ordered if employee.id is not None)
+        plan.append(
+            {
+                "reason": reason,
+                "keep": _cleanup_row_payload(keeper),
+                "remove": [_cleanup_row_payload(employee) for employee in remove_rows],
+            }
+        )
+
+    def register_conflict(reason: str, rows: list[Employee]) -> None:
+        if len(rows) < 2:
+            return
+        used_ids.update(employee.id for employee in rows if employee.id is not None)
+        conflicts.append(
+            {
+                "reason": reason,
+                "rows": [_cleanup_row_payload(employee) for employee in sorted(rows, key=lambda item: item.id or 0)],
+            }
+        )
+
+    by_name_dob_working: dict[tuple[str, str, str], list[Employee]] = {}
+    for employee in employees:
+        name_key = _normalize_import_name(employee.name)
+        dob_key = employee.dob.isoformat() if employee.dob else None
+        if not name_key or not dob_key:
+            continue
+        working_key = (_clean_import_text(employee.working_at) or "").upper()
+        by_name_dob_working.setdefault((name_key, dob_key, working_key), []).append(employee)
+
+    for rows in by_name_dob_working.values():
+        if len(rows) < 2:
+            continue
+
+        blank_pf_rows = [employee for employee in rows if _clean_import_text(employee.pf_no) is None]
+        nonblank_pf_rows = [employee for employee in rows if _clean_import_text(employee.pf_no) is not None]
+        by_last5: dict[str, list[Employee]] = {}
+        for employee in nonblank_pf_rows:
+            by_last5.setdefault(_emp_no_last5(employee.pf_no) or "", []).append(employee)
+
+        for group_rows in by_last5.values():
+            if len(group_rows) > 1:
+                register_plan("Same Name + DOB + EMP NO last 5 match", group_rows)
+
+        distinct_nonblank_groups = [group_rows for group_rows in by_last5.values() if group_rows]
+        remaining_blank_rows = [
+            employee
+            for employee in blank_pf_rows
+            if employee.id is None or employee.id not in used_ids
+        ]
+        remaining_nonblank_rows = [
+            employee
+            for employee in nonblank_pf_rows
+            if employee.id is None or employee.id not in used_ids
+        ]
+
+        if remaining_blank_rows and len(distinct_nonblank_groups) == 1:
+            merge_rows = remaining_blank_rows + remaining_nonblank_rows
+            register_plan("Same Name + DOB and one EMP NO is blank", merge_rows)
+        elif len(remaining_blank_rows) > 1 and not remaining_nonblank_rows:
+            register_plan("Same Name + DOB and all EMP NO values are blank", remaining_blank_rows)
+        elif remaining_blank_rows and len(distinct_nonblank_groups) > 1:
+            register_conflict("Same Name + DOB but multiple conflicting EMP NO values", rows)
+
+    by_name_role_working_last5: dict[tuple[str, str, str, str], list[Employee]] = {}
+    for employee in employees:
+        if employee.id is not None and employee.id in used_ids:
+            continue
+        name_key = _normalize_import_name(employee.name)
+        role_key = normalize_role(employee.role) if employee.role else None
+        last5_key = _emp_no_last5(employee.pf_no)
+        if not name_key or not role_key or not last5_key:
+            continue
+        working_key = (_clean_import_text(employee.working_at) or "").upper()
+        by_name_role_working_last5.setdefault((name_key, role_key, working_key, last5_key), []).append(employee)
+
+    for rows in by_name_role_working_last5.values():
+        if len(rows) > 1:
+            register_plan("Same Name + Designation + EMP NO last 5 match", rows)
+
+    summary = {
+        "merge_groups": len(plan),
+        "rows_to_delete": sum(len(item["remove"]) for item in plan),
+        "conflict_groups": len(conflicts),
+    }
+    return plan, conflicts, summary
+
+
+def _apply_duplicate_cleanup_plan(
+    session: Session,
+    plan: list[dict[str, object]],
+    details: list[str],
+) -> int:
+    merge_fields = (
+        "role",
+        "hire_date",
+        "retirement_date",
+        "promotion_role",
+        "promotion_ready_date",
+        "category",
+        "hrms",
+        "crew_id",
+        "doa",
+        "do_report",
+        "status",
+        "working_at",
+        "gradation",
+        "cli",
+        "pme_due",
+        "technical_due",
+        "transportation_due",
+    )
+    removed = 0
+
+    for item in plan:
+        keep_id = item["keep"]["id"]
+        remove_ids = [row["id"] for row in item["remove"]]
+        keeper = session.get(Employee, keep_id) if keep_id is not None else None
+        if keeper is None:
+            continue
+
+        merged_count = 0
+        for duplicate_id in remove_ids:
+            duplicate = session.get(Employee, duplicate_id) if duplicate_id is not None else None
+            if duplicate is None:
+                continue
+            for field_name in merge_fields:
+                if not _employee_has_value(getattr(keeper, field_name)) and _employee_has_value(getattr(duplicate, field_name)):
+                    setattr(keeper, field_name, getattr(duplicate, field_name))
+            session.delete(duplicate)
+            removed += 1
+            merged_count += 1
+
+        if merged_count:
+            details.append(
+                f"{item['reason']}: kept {keeper.name} ({_format_sync_value(keeper.pf_no)}), removed {merged_count} duplicate row(s)."
+            )
+
+    session.commit()
     return removed
 
 

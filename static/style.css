@@ -175,6 +175,15 @@ button:hover { filter: brightness(1.05); }
   border-color: rgba(255, 255, 255, 0.32);
   filter: none;
 }
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 12px 0 16px;
+}
+.button-row form {
+  margin: 0;
+}
 .ghost {
   background: transparent;
   border: 1px solid rgba(255,255,255,0.18);
@@ -325,6 +334,25 @@ ul { padding-left: 18px; margin: 6px 0; }
   background: linear-gradient(135deg, rgba(255, 230, 102, 0.16), rgba(18, 189, 231, 0.16));
   border-color: rgba(255, 230, 102, 0.36);
   box-shadow: inset 0 0 0 1px rgba(18, 189, 231, 0.2);
+  color: #fff2a0;
+}
+.collapsible-card > summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: #f1f4ff;
+  margin: 8px 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.collapsible-card > summary:hover {
+  background: rgba(255,255,255,0.06);
+  border-color: rgba(255,255,255,0.12);
+}
+.collapsible-card[open] > summary {
+  background: linear-gradient(135deg, rgba(255, 230, 102, 0.16), rgba(18, 189, 231, 0.16));
+  border-color: rgba(255, 230, 102, 0.36);
   color: #fff2a0;
 }
 

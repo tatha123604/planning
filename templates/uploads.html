@@ -88,6 +88,130 @@
           </form>
         </div>
 
+        <div class="card" style="grid-column: 1 / -1;">
+          <h2>Smart Cleanup Existing Duplicates</h2>
+          <p class="hint">
+            Preview duplicate candidates first. Cleanup will merge matching rows and delete the duplicate row only when
+            <code>working_at</code> is the same. If <code>working_at</code> differs, both rows stay.
+          </p>
+          {% if cleanup_error %}
+          <p class="error-text" role="alert">{{ cleanup_error }}</p>
+          {% endif %}
+          {% if cleanup_notice %}
+          <p class="hint success-text" role="status">{{ cleanup_notice }}</p>
+          {% endif %}
+          {% if cleanup_summary %}
+          <p class="hint">
+            Merge groups: <strong>{{ cleanup_summary.get('merge_groups', 0) }}</strong>,
+            rows to delete: <strong>{{ cleanup_summary.get('rows_to_delete', 0) }}</strong>,
+            conflict groups: <strong>{{ cleanup_summary.get('conflict_groups', 0) }}</strong>
+          </p>
+          {% endif %}
+          <div class="button-row">
+            <form method="post" action="/uploads/employee-master-cleanup-preview">
+              <button type="submit">Preview Smart Cleanup</button>
+            </form>
+            <form method="post" action="/uploads/employee-master-cleanup-apply" onsubmit="return confirm('Apply smart cleanup and delete the duplicate rows shown in the preview?');">
+              <button type="submit" class="secondary-action">Apply Smart Cleanup</button>
+            </form>
+          </div>
+
+          {% if cleanup_plan %}
+          <p class="hint success-text"><strong>Rows that will merge and delete duplicate</strong></p>
+          {% for item in cleanup_plan %}
+          <details class="collapsible-card" open>
+            <summary>{{ item.reason }} — keep 1, delete {{ item.remove | length }}</summary>
+            <div class="table-wrap">
+              <table class="table report-table">
+                <thead>
+                  <tr>
+                    <th>Action</th>
+                    <th>Name</th>
+                    <th>Designation</th>
+                    <th>DOB</th>
+                    <th>EMP NO</th>
+                    <th>Working At</th>
+                    <th>HRMS ID</th>
+                    <th>CREW ID</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr class="table-paged-active-odd">
+                    <td>KEEP</td>
+                    <td>{{ item.keep.name }}</td>
+                    <td>{{ item.keep.designation }}</td>
+                    <td>{{ item.keep.dob }}</td>
+                    <td>{{ item.keep.emp_no }}</td>
+                    <td>{{ item.keep.working_at }}</td>
+                    <td>{{ item.keep.hrms }}</td>
+                    <td>{{ item.keep.crew_id }}</td>
+                  </tr>
+                  {% for row in item.remove %}
+                  <tr>
+                    <td>DELETE</td>
+                    <td>{{ row.name }}</td>
+                    <td>{{ row.designation }}</td>
+                    <td>{{ row.dob }}</td>
+                    <td>{{ row.emp_no }}</td>
+                    <td>{{ row.working_at }}</td>
+                    <td>{{ row.hrms }}</td>
+                    <td>{{ row.crew_id }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </details>
+          {% endfor %}
+          {% endif %}
+
+          {% if cleanup_conflicts %}
+          <p class="hint warning-text"><strong>Conflicted rows kept separate</strong></p>
+          {% for item in cleanup_conflicts %}
+          <details class="collapsible-card">
+            <summary>{{ item.reason }}</summary>
+            <div class="table-wrap">
+              <table class="table report-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Designation</th>
+                    <th>DOB</th>
+                    <th>EMP NO</th>
+                    <th>Working At</th>
+                    <th>HRMS ID</th>
+                    <th>CREW ID</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for row in item.rows %}
+                  <tr>
+                    <td>{{ row.name }}</td>
+                    <td>{{ row.designation }}</td>
+                    <td>{{ row.dob }}</td>
+                    <td>{{ row.emp_no }}</td>
+                    <td>{{ row.working_at }}</td>
+                    <td>{{ row.hrms }}</td>
+                    <td>{{ row.crew_id }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </details>
+          {% endfor %}
+          {% endif %}
+
+          {% if cleanup_details %}
+          <p class="hint success-text"><strong>Last cleanup actions</strong></p>
+          <ul class="sync-warning-list">
+            {% for item in cleanup_details %}
+            <li>{{ item }}</li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+        </div>
+
         <div class="card">
           <h2>Add Employee (manual)</h2>
           <form method="post" action="/employees">
