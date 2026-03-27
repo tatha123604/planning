@@ -490,6 +490,11 @@ ul { padding-left: 18px; margin: 6px 0; }
   background: #10213a;
   color: #eefbff;
 }
+.cleanup-group-name-list option:hover,
+.cleanup-group-name-list option:focus {
+  background: linear-gradient(135deg, rgba(255, 228, 92, 0.72), rgba(102, 225, 182, 0.58));
+  color: #07111f;
+}
 .cleanup-group-name-list option:checked {
   background: linear-gradient(135deg, rgba(123, 215, 255, 0.34), rgba(18, 189, 231, 0.28));
   color: #07111f;
