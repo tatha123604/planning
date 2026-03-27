@@ -701,7 +701,7 @@ def uploads_page(request: Request):
 
 @app.post("/uploads/employee-master-cleanup-preview")
 def preview_employee_master_cleanup(request: Request, session: Session = Depends(get_session)):
-    plan, conflicts, summary = _build_duplicate_cleanup_plan(session)
+    plan, conflicts, summary = _build_combined_cleanup_view(session)
     notice = "No cleanup candidate found" if not plan and not conflicts else ""
     return templates.TemplateResponse(
         "uploads.html",
@@ -723,7 +723,7 @@ def apply_employee_master_cleanup(
 ):
     try:
         _validate_sensitive_action_password(action_password)
-        plan, conflicts, summary = _build_duplicate_cleanup_plan(session)
+        plan, conflicts, summary = _build_combined_cleanup_view(session)
         if not plan:
             notice = "No cleanup candidate found"
             return templates.TemplateResponse(
@@ -786,7 +786,7 @@ def merge_employee_master_conflict(
         row_ids=row_ids,
         details=cleanup_details,
     )
-    plan, conflicts, summary = _build_duplicate_cleanup_plan(session)
+    plan, conflicts, summary = _build_combined_cleanup_view(session)
     notice = (
         f"Manual merge complete: {removed} duplicate row(s) deleted."
         if removed
@@ -828,7 +828,7 @@ def keep_both_employee_master_conflict(
         keep_both_keys.add(_cleanup_conflict_key(conflict_reason, rows))
         _save_keep_both_decisions(keep_both_keys)
 
-    plan, conflicts, summary = _build_duplicate_cleanup_plan(session)
+    plan, conflicts, summary = _build_combined_cleanup_view(session)
     notice = "Conflict marked as keep both."
     return templates.TemplateResponse(
         "uploads.html",
@@ -854,9 +854,13 @@ def preview_employee_master_extra_rows(request: Request, session: Session = Depe
         "uploads.html",
         _uploads_context(
             request,
-            extra_review_notice=notice,
-            extra_review_summary=summary,
-            extra_review_groups=groups,
+            cleanup_notice=notice,
+            cleanup_summary={
+                "merge_groups": 0,
+                "rows_to_delete": 0,
+                "conflict_groups": summary.get("groups", 0),
+            },
+            cleanup_conflicts=[_extra_group_to_conflict_item(group) for group in groups],
         ),
     )
 
@@ -886,7 +890,7 @@ def merge_employee_master_extra_rows(
         remove_ids=row_ids,
         details=details,
     )
-    groups, summary = _build_employee_master_extra_review(session)
+    plan, conflicts, summary = _build_combined_cleanup_view(session)
     notice = (
         f"Extra row merge complete: {removed} row(s) deleted."
         if removed
@@ -896,10 +900,11 @@ def merge_employee_master_extra_rows(
         "uploads.html",
         _uploads_context(
             request,
-            extra_review_notice=notice,
-            extra_review_summary=summary,
-            extra_review_groups=groups,
-            extra_review_details=details,
+            cleanup_notice=notice,
+            cleanup_summary=summary,
+            cleanup_plan=plan,
+            cleanup_conflicts=conflicts,
+            cleanup_details=details,
         ),
     )
 
@@ -927,7 +932,7 @@ def delete_employee_master_extra_rows(
         row_ids=row_ids,
         details=details,
     )
-    groups, summary = _build_employee_master_extra_review(session)
+    plan, conflicts, summary = _build_combined_cleanup_view(session)
     notice = (
         f"Deleted {removed} extra row(s) from the current table."
         if removed
@@ -937,10 +942,11 @@ def delete_employee_master_extra_rows(
         "uploads.html",
         _uploads_context(
             request,
-            extra_review_notice=notice,
-            extra_review_summary=summary,
-            extra_review_groups=groups,
-            extra_review_details=details,
+            cleanup_notice=notice,
+            cleanup_summary=summary,
+            cleanup_plan=plan,
+            cleanup_conflicts=conflicts,
+            cleanup_details=details,
         ),
     )
 
@@ -966,14 +972,15 @@ def keep_employee_master_extra_rows(
     keep_keys.add(_review_group_key(review_reason, keep_id, row_ids))
     _save_string_set(EMPLOYEE_MASTER_EXTRA_REVIEW_KEEP_FILE, keep_keys)
 
-    groups, summary = _build_employee_master_extra_review(session)
+    plan, conflicts, summary = _build_combined_cleanup_view(session)
     return templates.TemplateResponse(
         "uploads.html",
         _uploads_context(
             request,
-            extra_review_notice="Review group marked as keep.",
-            extra_review_summary=summary,
-            extra_review_groups=groups,
+            cleanup_notice="Review group marked as keep.",
+            cleanup_summary=summary,
+            cleanup_plan=plan,
+            cleanup_conflicts=conflicts,
         ),
     )
 
@@ -3824,6 +3831,87 @@ def _build_employee_master_extra_review(session: Session) -> tuple[list[dict[str
         "reason_counts": [{"reason": reason, "count": count} for reason, count in reason_counts.most_common()],
     }
     return groups, summary
+
+
+def _extra_group_to_conflict_item(group: dict[str, object]) -> dict[str, object]:
+    keep_row = group.get("keep")
+    review_rows = list(group.get("review_rows") or [])
+    rows = []
+    suggested_keep_id = None
+    if isinstance(keep_row, dict):
+        rows.append(keep_row)
+        suggested_keep_id = keep_row.get("id")
+    rows.extend(review_rows)
+    return {
+        "reason": group.get("reason", "Possible extra row"),
+        "row_ids": list(group.get("row_ids") or []),
+        "suggested_keep_id": suggested_keep_id,
+        "rows": rows,
+        "merge_action": "/uploads/employee-master-extra-merge" if suggested_keep_id else "",
+        "delete_action": "/uploads/employee-master-extra-delete",
+        "keep_action": "/uploads/employee-master-extra-keep",
+        "keep_button_label": "Keep",
+        "keep_id": suggested_keep_id,
+        "allow_merge": bool(suggested_keep_id),
+        "allow_delete": True,
+    }
+
+
+def _build_combined_cleanup_view(session: Session) -> tuple[list[dict[str, object]], list[dict[str, object]], dict[str, int]]:
+    base_plan, base_conflicts, _ = _build_duplicate_cleanup_plan(session)
+
+    plan: list[dict[str, object]] = list(base_plan)
+    conflicts: list[dict[str, object]] = []
+    covered_review_ids: set[int] = set()
+
+    for item in base_plan:
+        if isinstance(item.get("keep"), dict) and item["keep"].get("id") is not None:
+            covered_review_ids.add(int(item["keep"]["id"]))
+        for row in item.get("remove", []):
+            if isinstance(row, dict) and row.get("id") is not None:
+                covered_review_ids.add(int(row["id"]))
+
+    for item in base_conflicts:
+        row_ids = [int(row_id) for row_id in item.get("row_ids", []) if row_id is not None]
+        covered_review_ids.update(row_ids)
+        conflicts.append(
+            {
+                **item,
+                "merge_action": "/uploads/employee-master-cleanup-merge",
+                "delete_action": "",
+                "keep_action": "/uploads/employee-master-cleanup-keep-both",
+                "keep_button_label": "Keep Both",
+                "keep_id": item.get("suggested_keep_id"),
+                "allow_merge": True,
+                "allow_delete": False,
+            }
+        )
+
+    extra_groups, _ = _build_employee_master_extra_review(session)
+    for group in extra_groups:
+        review_ids = [int(row_id) for row_id in group.get("row_ids", []) if row_id is not None]
+        if any(row_id in covered_review_ids for row_id in review_ids):
+            continue
+        covered_review_ids.update(review_ids)
+        keep_row = group.get("keep")
+        reason = str(group.get("reason") or "")
+        if keep_row and "DOB differs" not in reason:
+            plan.append(
+                {
+                    "reason": reason,
+                    "keep": keep_row,
+                    "remove": list(group.get("review_rows") or []),
+                }
+            )
+            continue
+        conflicts.append(_extra_group_to_conflict_item(group))
+
+    summary = {
+        "merge_groups": len(plan),
+        "rows_to_delete": sum(len(item.get("remove", [])) for item in plan),
+        "conflict_groups": len(conflicts),
+    }
+    return plan, conflicts, summary
 
 
 def _cleanup_employee_master_duplicates_for_record(
