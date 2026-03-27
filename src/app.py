@@ -3418,6 +3418,21 @@ def _build_duplicate_cleanup_plan(session: Session) -> tuple[list[dict[str, obje
             continue
         register_plan("Same Name + same CREW ID", rows)
 
+    by_dob_last5: dict[tuple[str, str], list[Employee]] = {}
+    for employee in employees:
+        if employee.id is not None and employee.id in used_ids:
+            continue
+        dob_key = employee.dob.isoformat() if employee.dob else None
+        last5_key = _emp_no_last5(employee.pf_no)
+        if not dob_key or not last5_key:
+            continue
+        by_dob_last5.setdefault((dob_key, last5_key), []).append(employee)
+
+    for rows in by_dob_last5.values():
+        if len(rows) < 2:
+            continue
+        register_plan("Same DOB + EMP NO last 5 match", rows)
+
     by_name_last5: dict[tuple[str, str], list[Employee]] = {}
     for employee in employees:
         if employee.id is not None and employee.id in used_ids:
@@ -3717,6 +3732,7 @@ def _build_employee_master_extra_review(session: Session) -> tuple[list[dict[str
 
     by_name_crew_keep: dict[tuple[str, str], list[Employee]] = {}
     by_name_last5_keep: dict[tuple[str, str], list[Employee]] = {}
+    by_dob_last5_keep: dict[tuple[str, str], list[Employee]] = {}
     for employee in represented_rows:
         name_key = _normalize_import_name(employee.name)
         crew_key = _clean_import_text(employee.crew_id)
@@ -3725,6 +3741,8 @@ def _build_employee_master_extra_review(session: Session) -> tuple[list[dict[str
             by_name_crew_keep.setdefault((name_key, crew_key), []).append(employee)
         if name_key and last5_key:
             by_name_last5_keep.setdefault((name_key, last5_key), []).append(employee)
+        if employee.dob and last5_key:
+            by_dob_last5_keep.setdefault((employee.dob.isoformat(), last5_key), []).append(employee)
 
     groups: list[dict[str, object]] = []
 
@@ -3766,6 +3784,16 @@ def _build_employee_master_extra_review(session: Session) -> tuple[list[dict[str
                 if employee.dob and keep_row.dob and employee.dob != keep_row.dob:
                     reason = "Possible extra row: same Name + same CREW ID but DOB differs"
                 add_group(reason, keep_row, [employee])
+                matched = True
+
+        if matched:
+            continue
+
+        if employee.dob and last5_key:
+            keep_matches = by_dob_last5_keep.get((employee.dob.isoformat(), last5_key), [])
+            if len(keep_matches) == 1:
+                keep_row = keep_matches[0]
+                add_group("Possible extra row: same DOB + EMP NO last 5 match", keep_row, [employee])
                 matched = True
 
         if matched:
@@ -3844,14 +3872,19 @@ def _cleanup_employee_master_duplicates_for_record(
         candidate_name = _normalize_import_name(employee.name)
         same_working_at = _working_at_key(employee.working_at) == target_working_at
         blank_vs_value_working_at = _one_working_at_blank(employee.working_at, target.working_at)
+        candidate_last5 = _emp_no_last5(candidate_pf)
+
+        if dob and target_last5 and employee.dob == dob and candidate_last5 == target_last5:
+            duplicates.append((employee, "Same DOB + EMP NO last 5"))
+            continue
 
         if target_name and dob and candidate_name == target_name and employee.dob == dob:
             if same_working_at and (
-                candidate_pf is None or emp_no is None or (target_last5 and _emp_no_last5(candidate_pf) == target_last5)
+                candidate_pf is None or emp_no is None or (target_last5 and candidate_last5 == target_last5)
             ):
                 duplicates.append((employee, "Same Name + DOB"))
                 continue
-            if blank_vs_value_working_at and target_last5 and candidate_pf and _emp_no_last5(candidate_pf) == target_last5:
+            if blank_vs_value_working_at and target_last5 and candidate_pf and candidate_last5 == target_last5:
                 duplicates.append((employee, "Same Name + DOB and one Working At is blank"))
                 continue
 
@@ -3859,7 +3892,7 @@ def _cleanup_employee_master_duplicates_for_record(
             continue
 
         if target_name and target_role and candidate_name == target_name and normalize_role(employee.role) == target_role:
-            if candidate_pf and target_last5 and _emp_no_last5(candidate_pf) == target_last5:
+            if candidate_pf and target_last5 and candidate_last5 == target_last5:
                 duplicates.append((employee, "Same Name + Designation"))
 
     for duplicate, reason in duplicates:
