@@ -187,6 +187,28 @@ button:hover { filter: brightness(1.05); }
   border-color: rgba(255, 255, 255, 0.32);
   filter: none;
 }
+.secondary-action.cleanup-delete-button {
+  background: linear-gradient(135deg, rgba(72, 26, 34, 0.82), rgba(114, 38, 52, 0.72));
+  border-color: rgba(255, 141, 141, 0.28);
+  color: #ffe5e5;
+}
+.secondary-action.cleanup-delete-button:hover {
+  background: linear-gradient(135deg, rgba(255, 120, 120, 0.92), rgba(255, 157, 128, 0.86));
+  border-color: rgba(255, 189, 170, 0.52);
+  color: #2a0810;
+  box-shadow: 0 12px 28px rgba(255, 107, 107, 0.22);
+}
+.secondary-action.cleanup-keep-button {
+  background: linear-gradient(135deg, rgba(34, 54, 28, 0.82), rgba(31, 82, 66, 0.72));
+  border-color: rgba(170, 234, 170, 0.24);
+  color: #eaffea;
+}
+.secondary-action.cleanup-keep-button:hover {
+  background: linear-gradient(135deg, rgba(255, 228, 92, 0.92), rgba(102, 225, 182, 0.88));
+  border-color: rgba(255, 240, 139, 0.56);
+  color: #07111f;
+  box-shadow: 0 12px 28px rgba(255, 228, 92, 0.24);
+}
 .button-row {
   display: flex;
   flex-wrap: wrap;

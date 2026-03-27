@@ -230,7 +230,7 @@
                 <form method="post" action="{{ item.delete_action }}" onsubmit="return confirm('Delete these extra row(s) from the current employee table?');">
                   <input type="hidden" name="review_reason" value="{{ item.reason }}" />
                   <input type="hidden" name="review_row_ids" value="{{ item.row_ids | join(',') }}" />
-                  <button type="submit" class="secondary-action">Delete</button>
+                  <button type="submit" class="secondary-action cleanup-delete-button">Delete</button>
                 </form>
                 {% endif %}
                 <form method="post" action="{{ item.keep_action }}" onsubmit="return confirm('Keep these rows and hide this group from the cleanup preview?');">
@@ -244,7 +244,7 @@
                   <input type="hidden" name="keep_id" value="{{ item.keep_id }}" />
                   {% endif %}
                   {% endif %}
-                  <button type="submit" class="secondary-action">{{ item.keep_button_label }}</button>
+                  <button type="submit" class="secondary-action cleanup-keep-button">{{ item.keep_button_label }}</button>
                 </form>
               </div>
               <div class="table-wrap">
