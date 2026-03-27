@@ -70,9 +70,9 @@
         <p class="hint">One-way sync only: changes made in Google Sheet will update this project, but edits made here will not push back to Google Sheet.</p>
         {% if google_sync_ready %}
         <p class="hint">Configured source: <strong>{{ google_sync_range }}</strong></p>
-        <form method="post" action="/employees/sync-google" class="inline" data-google-sync-form>
-          <label>Site Password
-            <input type="password" name="action_password" autocomplete="current-password" required />
+        <form method="post" action="/employees/sync-google" class="inline sensitive-inline-form" data-google-sync-form>
+          <label class="site-password-label compact-site-password">Site Password
+            <input class="site-password-input compact-site-password-input" type="password" name="action_password" autocomplete="current-password" required />
           </label>
           <div class="actions">
             <button type="submit" data-sync-button>Sync from Google Sheet</button>

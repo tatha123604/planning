@@ -293,6 +293,43 @@ ul { padding-left: 18px; margin: 6px 0; }
 .employee-table .working-at-col { min-width: 120px; max-width: 160px; }
 .employee-table .actions-col { width: 1%; padding-left: 6px; padding-right: 6px; }
 .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+.sensitive-inline-form {
+  align-items: flex-end;
+  gap: 12px;
+}
+.site-password-label {
+  flex: 0 1 240px;
+  min-width: 180px;
+}
+.site-password-input {
+  width: 100%;
+}
+.compact-site-password {
+  flex-basis: 230px;
+  max-width: 260px;
+}
+.compact-site-password-input {
+  min-width: 0;
+}
+.cleanup-apply-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.cleanup-password-label {
+  flex: 0 1 260px;
+  min-width: 210px;
+}
+.cleanup-apply-form button[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: grayscale(0.15);
+  box-shadow: none;
+}
+.cleanup-apply-form button:not([disabled]) {
+  opacity: 1;
+}
 .danger-inline { margin-top: 10px; }
 .actions-cell { white-space: nowrap; min-width: 116px; }
 .ghost.small, .danger.small { padding: 6px 10px; font-size: 12px; }

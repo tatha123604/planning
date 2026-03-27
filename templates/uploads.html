@@ -120,11 +120,11 @@
             <form method="post" action="/uploads/employee-master-cleanup-preview">
               <button type="submit">Preview Smart Cleanup</button>
             </form>
-            <form method="post" action="/uploads/employee-master-cleanup-apply" onsubmit="return confirm('Apply smart cleanup and delete the duplicate rows shown in the preview?');">
-              <label>Site Password
-                <input type="password" name="action_password" autocomplete="current-password" required />
+            <form method="post" action="/uploads/employee-master-cleanup-apply" class="cleanup-apply-form sensitive-inline-form" data-password-gated-form onsubmit="return confirm('Apply smart cleanup and delete the duplicate rows shown in the preview?');">
+              <label class="site-password-label cleanup-password-label">Site Password
+                <input class="site-password-input cleanup-password-input" type="password" name="action_password" autocomplete="current-password" required data-password-gated-input />
               </label>
-              <button type="submit" class="secondary-action">Push Cleanup to Table</button>
+              <button type="submit" class="secondary-action" data-password-gated-button disabled>Auto correct and Push</button>
             </form>
           </div>
 
@@ -379,6 +379,19 @@
         }
       });
       document.body.classList.remove('nav-hidden');
+
+      document.querySelectorAll('[data-password-gated-form]').forEach((form) => {
+        const passwordInput = form.querySelector('[data-password-gated-input]');
+        const submitButton = form.querySelector('[data-password-gated-button]');
+        if (!passwordInput || !submitButton) return;
+
+        const syncButtonState = () => {
+          submitButton.disabled = passwordInput.value.trim().length === 0;
+        };
+
+        passwordInput.addEventListener('input', syncButtonState);
+        syncButtonState();
+      });
 
       document.querySelectorAll('.cleanup-group-tools').forEach((tools) => {
         const wrapper = tools.parentElement;
