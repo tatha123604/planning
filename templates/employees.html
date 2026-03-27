@@ -108,6 +108,14 @@
                 {% endfor %}
               </select>
             </label>
+            <label>Category
+              <select name="category">
+                <option value="">All</option>
+                {% for opt in category_opts %}
+                  <option value="{{ opt }}" {% if filter_category == opt %}selected{% endif %}>{{ opt }}</option>
+                {% endfor %}
+              </select>
+            </label>
             <label>Gradation
               <select name="gradation">
                 <option value="">All</option>

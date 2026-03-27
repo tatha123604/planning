@@ -733,6 +733,7 @@ def employees_page(
     request: Request,
     q: Optional[str] = None,
     role: Optional[str] = None,
+    category: Optional[str] = None,
     working_at: Optional[str] = None,
     cli: Optional[str] = None,
     gradation: Optional[str] = None,
@@ -762,6 +763,7 @@ def employees_page(
         if key not in cli_opts_map:
             cli_opts_map[key] = val.strip()
     cli_opts = [v for _, v in sorted(cli_opts_map.items(), key=lambda item: item[0])]
+    category_opts = sorted({e.category.strip() for e in employees_all if e.category and e.category.strip()})
     gradation_opts = sorted({e.gradation for e in employees_all if e.gradation})
     employees = list(employees_all)
 
@@ -777,6 +779,9 @@ def employees_page(
         ]
     if role:
         employees = [e for e in employees if e.role == role]
+    if category:
+        category_lower = category.strip().lower()
+        employees = [e for e in employees if e.category and e.category.strip().lower() == category_lower]
     if working_at:
         wa_lower = working_at.lower()
         employees = [e for e in employees if e.working_at and wa_lower in e.working_at.lower()]
@@ -825,10 +830,12 @@ def employees_page(
             "active_page": "employees",
             "query": q or "",
             "filter_role": role or "",
+            "filter_category": category or "",
             "filter_gradation": gradation or "",
             "sort": sort,
             "working_opts": working_opts,
             "cli_opts": cli_opts,
+            "category_opts": category_opts,
             "gradation_opts": gradation_opts,
             "cli_roster": cli_roster,
             "roster_name": roster_name or "",
