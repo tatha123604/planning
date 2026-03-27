@@ -789,8 +789,8 @@ def employees_page(
         cli_lower = cli.strip().lower()
         employees = [e for e in employees if cli_lower in _employee_cli_label(e).lower()]
     if gradation:
-        grad_lower = gradation.lower()
-        employees = [e for e in employees if e.gradation and grad_lower in e.gradation.lower()]
+        grad_lower = gradation.strip().lower()
+        employees = [e for e in employees if e.gradation and e.gradation.strip().lower() == grad_lower]
 
     def sort_key(e: Employee):
         if sort == "name":
@@ -799,6 +799,8 @@ def employees_page(
             return (e.retirement_date or date.max, e.name)
         if sort == "category":
             return ((e.category or "").lower(), e.name.lower())
+        if sort == "gradation":
+            return ((e.gradation or "").lower(), e.name.lower())
         if sort == "hire":
             return (e.hire_date, e.name)
         if sort == "cli":
