@@ -69,7 +69,7 @@
               {% set retiring = retire_counts.get(req.role, 0) %}
               {% set deficiency = have - retiring %}
               <tr class="{{ 'ok' if deficiency > 0 else 'warn' }}">
-                <td>{{ req.role }}</td>
+                <td><span class="designation-pill">{{ req.role }}</span></td>
                 <td>{{ have }}</td>
                 <td>{{ retiring }}</td>
                 <td>{{ deficiency }}</td>
@@ -146,6 +146,7 @@
   <script src="/static/button-confirm.js"></script>
 </body>
 </html>
+
 
 
 

@@ -603,3 +603,17 @@ ul { padding-left: 18px; margin: 6px 0; }
   .side-links a { padding: 9px 10px; text-align: center; }
   .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 }
+
+.designation-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(255, 230, 102, 0.18), rgba(18, 189, 231, 0.12));
+  border: 1px solid rgba(255, 230, 102, 0.4);
+  color: #ffe45c;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
