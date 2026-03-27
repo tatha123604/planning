@@ -14,12 +14,20 @@
       if (!button) return;
       if (button.dataset.noConfirm === "true") return;
 
+      const hasExplicitConfirm =
+        button.hasAttribute("data-confirm") ||
+        button.hasAttribute("data-confirm-label");
+
       const form = button.form;
       if (form) {
         if (form.dataset.noConfirm === "true") return;
+        const method = (form.getAttribute("method") || "get").toLowerCase();
+        if (method === "get" && !hasExplicitConfirm) return;
         if (form.querySelector('input[type="file"]')) return;
         const inlineConfirm = (form.getAttribute("onsubmit") || "").includes("confirm(");
         if (inlineConfirm) return;
+      } else if (!hasExplicitConfirm) {
+        return;
       }
 
       if (

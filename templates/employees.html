@@ -90,8 +90,8 @@
       <section class="card collapsible" id="employees-card">
         <details {% if employees_open %}open{% endif %}>
           <summary>Employees</summary>
-          <form class="inline" method="get" action="/employees#employees-card">
-            <label>Search <input name="q" value="{{ query }}" placeholder="Name or designation" /></label>
+          <form class="inline" id="employees-filter-form" method="get" action="/employees#employees-card" data-no-confirm="true">
+            <label>Search <input id="employees-search-input" type="search" name="q" value="{{ query }}" placeholder="Name or designation" autocomplete="off" /></label>
             <label>Designation
               <select name="role">
                 <option value="">All</option>
@@ -134,7 +134,7 @@
                 <option value="working_at" {% if sort == 'working_at' %}selected{% endif %}>Working at</option>
               </select>
             </label>
-            <button type="submit">Filter</button>
+            <button type="submit" data-no-confirm="true">Filter</button>
             <a class="ghost" href="/employees#employees-card">Reset</a>
             <div class="summary-chip">Total: {{ employees | length }}</div>
           </form>
@@ -215,6 +215,8 @@
       const sortSelect = document.getElementById('sort-select');
       const cliSelect = document.getElementById('filter-cli');
       const workingSelect = document.getElementById('filter-working');
+      const employeesFilterForm = document.getElementById('employees-filter-form');
+      const employeesSearchInput = document.getElementById('employees-search-input');
       const sync = () => {
         const sortVal = sortSelect ? sortSelect.value : '';
         const cliActive = sortVal === 'cli';
@@ -225,6 +227,37 @@
       if (sortSelect) {
         sortSelect.addEventListener('change', sync);
         sync();
+      }
+
+      if (employeesFilterForm && employeesSearchInput) {
+        let searchTimer = null;
+        let composing = false;
+        let lastSubmittedValue = employeesSearchInput.value;
+
+        const submitSearch = () => {
+          if (composing) return;
+          const currentValue = employeesSearchInput.value;
+          if (currentValue === lastSubmittedValue) return;
+          lastSubmittedValue = currentValue;
+          employeesFilterForm.requestSubmit();
+        };
+
+        const scheduleSearch = () => {
+          if (searchTimer) {
+            window.clearTimeout(searchTimer);
+          }
+          searchTimer = window.setTimeout(submitSearch, 250);
+        };
+
+        employeesSearchInput.addEventListener('input', scheduleSearch);
+        employeesSearchInput.addEventListener('search', scheduleSearch);
+        employeesSearchInput.addEventListener('compositionstart', () => {
+          composing = true;
+        });
+        employeesSearchInput.addEventListener('compositionend', () => {
+          composing = false;
+          scheduleSearch();
+        });
       }
 
       document.querySelectorAll('.employee-edit-link').forEach((link) => {
