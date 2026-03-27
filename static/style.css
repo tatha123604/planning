@@ -258,10 +258,10 @@ th {
   font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #fff0a8;
+  color: #7bd7ff;
   font-weight: 800;
-  background: linear-gradient(135deg, rgba(43, 35, 14, 0.96), rgba(15, 35, 49, 0.96));
-  border-bottom: 1px solid rgba(255, 228, 92, 0.32);
+  background: linear-gradient(135deg, rgba(16, 28, 48, 0.96), rgba(10, 42, 64, 0.96));
+  border-bottom: 1px solid rgba(123, 215, 255, 0.32);
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), inset 0 -1px 0 rgba(18,189,231,0.16);
   text-shadow: 0 1px 0 rgba(0, 0, 0, 0.28);
 }
@@ -276,7 +276,7 @@ thead th::after {
   right: 10px;
   bottom: 0;
   height: 1px;
-  background: linear-gradient(90deg, rgba(255, 228, 92, 0.1), rgba(255, 228, 92, 0.7), rgba(18, 189, 231, 0.5));
+  background: linear-gradient(90deg, rgba(123, 215, 255, 0.08), rgba(123, 215, 255, 0.75), rgba(18, 189, 231, 0.45));
 }
 thead th:first-child {
   border-top-left-radius: 14px;
@@ -287,12 +287,12 @@ thead th:last-child {
 .employee-table thead th,
 .paged thead th,
 .report-table thead th {
-  background: linear-gradient(135deg, rgba(48, 39, 14, 0.98), rgba(16, 38, 54, 0.98));
+  background: linear-gradient(135deg, rgba(18, 31, 52, 0.98), rgba(11, 46, 70, 0.98));
 }
 .employee-table thead th:hover,
 .paged thead th:hover,
 .report-table thead th:hover {
-  background: linear-gradient(135deg, rgba(56, 45, 16, 0.99), rgba(18, 45, 64, 0.99));
+  background: linear-gradient(135deg, rgba(21, 37, 60, 0.99), rgba(13, 56, 84, 0.99));
 }
 tr.ok td { background: rgba(102, 225, 182, 0.08); }
 tr.warn td { background: rgba(255, 149, 128, 0.08); }
@@ -329,7 +329,7 @@ ul { padding-left: 18px; margin: 6px 0; }
   position: sticky;
   top: 0;
   z-index: 2;
-  background: linear-gradient(135deg, rgba(48, 39, 14, 0.98), rgba(16, 38, 54, 0.98));
+  background: linear-gradient(135deg, rgba(18, 31, 52, 0.98), rgba(11, 46, 70, 0.98));
   backdrop-filter: blur(10px);
 }
 .employee-table tr.active td { background: rgba(102, 225, 182, 0.15); }
