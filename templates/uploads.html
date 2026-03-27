@@ -18,6 +18,7 @@
         <a class="{{ 'active' if active_page == 'dashboard' else '' }}" href="/">Dashboard</a>
         <a class="{{ 'active' if active_page == 'employees' else '' }}" href="/employees">Employees</a>
         <a class="{{ 'active' if active_page == 'uploads' else '' }}" href="/uploads">Uploads</a>
+        <a class="{{ 'active' if active_page == 'cli' else '' }}" href="/cli">CLI</a>
         <details class="side-group" {% if active_page in ['cli_matrix', 'non_continuous_duty', 'sub_non_continuous_duty'] %}open{% endif %}>
           <summary>CMS REPORTS</summary>
           <div class="side-sub-links">
@@ -361,44 +362,7 @@
           </form>
         </div>
 
-        <div class="card" id="li-grading-card">
-          <h2>Upload LI Grading (.xlsx)</h2>
-          {% if grading_update_error %}
-          <p class="error-text" role="alert">{{ grading_update_error }}</p>
-          {% endif %}
-          {% if grading_update_notice %}
-          <p class="hint success-text" role="status">{{ grading_update_notice }}</p>
-          {% endif %}
-          {% if grading_update_warning %}
-          <p class="hint warning-text" role="status">{{ grading_update_warning }}</p>
-          {% endif %}
-          {% if grading_update_details %}
-          <p class="hint success-text"><strong>Gradation update details</strong></p>
-          <ul class="sync-warning-list">
-            {% for item in grading_update_details %}
-            <li>{{ item }}</li>
-            {% endfor %}
-          </ul>
-          {% endif %}
-          {% if grading_warning_details %}
-          <p class="hint warning-text"><strong>Mismatch / Auto-fixed records</strong></p>
-          <ul class="sync-warning-list">
-            {% for item in grading_warning_details %}
-            <li>{{ item }}</li>
-            {% endfor %}
-          </ul>
-          {% endif %}
-          <form method="post" action="/upload-li-grading" enctype="multipart/form-data" class="inline sensitive-inline-form" data-password-gated-form data-password-gated-code="11111">
-            <label>Excel file
-              <input type="file" name="file" accept=".xlsx,.xlsm" required />
-            </label>
-            <label class="site-password-label compact-site-password">Action Code
-              <input class="site-password-input compact-site-password-input" type="password" name="action_password" autocomplete="current-password" required data-password-gated-input />
-            </label>
-            <button type="submit" data-password-gated-button disabled>Gradation Update</button>
-          </form>
-          <p class="hint">Uses <code>CREW ID</code>, <code>NAME</code>, <code>DESIG.</code>, <code>CURRENT GRADE</code>, and the first <code>DUE DATE</code> after current grade. It updates the CLI Roster gradation and grading due date.</p>
-        </div>
+
       </section>
     </main>
   </div>

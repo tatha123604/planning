@@ -18,6 +18,7 @@
         <a class="{{ 'active' if active_page == 'dashboard' else '' }}" href="/">Dashboard</a>
         <a class="{{ 'active' if active_page == 'employees' else '' }}" href="/employees">Employees</a>
         <a class="{{ 'active' if active_page == 'uploads' else '' }}" href="/uploads">Uploads</a>
+        <a class="{{ 'active' if active_page == 'cli' else '' }}" href="/cli">CLI</a>
         <details class="side-group" {% if active_page in ['cli_matrix', 'non_continuous_duty', 'sub_non_continuous_duty'] %}open{% endif %}>
           <summary>CMS REPORTS</summary>
           <div class="side-sub-links">
@@ -44,43 +45,6 @@
       </header>
 
       {% set recalc = request.query_params.get('start_date') or request.query_params.get('end_date') %}
-
-      <section class="card collapsible">
-        <details {% if not recalc %}open{% endif %}>
-          <summary>CLI Distribution by Gradation</summary>
-          <div style="display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap;">
-            <p>Counts of Gradation A, B, and C staff per CLI (all employees).</p>
-            <a class="ghost" href="/reports/cli-distribution.xlsx">Download Excel</a>
-          </div>
-          <div class="table-wrap">
-            <table class="paged">
-              <thead>
-                <tr>
-                  <th>CLI</th>
-                  <th>Gradation A</th>
-                  <th>Gradation B</th>
-                  <th>Gradation C</th>
-                  <th>Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for row in cli_distribution %}
-                <tr>
-                  <td>{{ row.cli }}</td>
-                  <td>{{ row.A }}</td>
-                  <td>{{ row.B }}</td>
-                  <td>{{ row.C }}</td>
-                  <td>{{ row.total }}</td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        </details>
-      </section>
-
-
-
 
       <section class="card collapsible">
         <details open>

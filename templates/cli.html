@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CLI | SDAH Crew Planner</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="icon" type="image/svg+xml" href="/static/indian-railways-mark.svg" />
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <img class="brand-mark" src="/static/indian-railways-mark.svg" alt="Indian Railways" />
+        <span>SDAH Crew Planner</span>
+      </div>
+      <nav class="side-links">
+        <a class="{{ 'active' if active_page == 'dashboard' else '' }}" href="/">Dashboard</a>
+        <a class="{{ 'active' if active_page == 'employees' else '' }}" href="/employees">Employees</a>
+        <a class="{{ 'active' if active_page == 'uploads' else '' }}" href="/uploads">Uploads</a>
+        <a class="{{ 'active' if active_page == 'cli' else '' }}" href="/cli">CLI</a>
+        <details class="side-group" {% if active_page in ['cli_matrix', 'non_continuous_duty', 'sub_non_continuous_duty'] %}open{% endif %}>
+          <summary>CMS REPORTS</summary>
+          <div class="side-sub-links">
+            <a class="{{ 'active' if active_page == 'cli_matrix' else '' }}" href="/cli-matrix">CLI Matrix</a>
+            <a class="{{ 'active' if active_page == 'non_continuous_duty' else '' }}" href="/non-continuous-duty">NON SUB NON CONT DUTY</a>
+            <a class="{{ 'active' if active_page == 'sub_non_continuous_duty' else '' }}" href="/sub-non-continuous-duty">SUB NON CONT DUTY</a>
+          </div>
+        </details>
+        <a class="{{ 'active' if active_page == 'requirements' else '' }}" href="/requirements">Requirements</a>
+        <a class="{{ 'active' if active_page == 'reports' else '' }}" href="/reports">Reports</a>
+      </nav>
+      <div class="hierarchy">Hierarchy: LPM &gt; Motorman &gt; LPP &gt; LPG &gt; LPS/SHT &gt; ALP</div>
+    </aside>
+
+    <main class="content">
+      <header>
+        <div>
+          <h1>CLI</h1>
+          <p>All CLI-related gradation tools, distribution, and roster in one place.</p>
+        </div>
+        <div class="header-actions">
+          <a class="ghost small" href="/logout">Logout</a>
+        </div>
+      </header>
+
+      <section class="card" id="li-grading-card">
+        <h2>Upload LI Grading (.xlsx)</h2>
+        {% if grading_update_error %}
+        <p class="error-text" role="alert">{{ grading_update_error }}</p>
+        {% endif %}
+        {% if grading_update_notice %}
+        <p class="hint success-text" role="status">{{ grading_update_notice }}</p>
+        {% endif %}
+        {% if grading_update_warning %}
+        <p class="hint warning-text" role="status">{{ grading_update_warning }}</p>
+        {% endif %}
+        {% if grading_update_details %}
+        <p class="hint success-text"><strong>Gradation update details</strong></p>
+        <ul class="sync-warning-list">
+          {% for item in grading_update_details %}
+          <li>{{ item }}</li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+        {% if grading_warning_details %}
+        <p class="hint warning-text"><strong>Mismatch / Auto-fixed records</strong></p>
+        <ul class="sync-warning-list">
+          {% for item in grading_warning_details %}
+          <li>{{ item }}</li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+        <form method="post" action="/upload-li-grading" enctype="multipart/form-data" class="inline sensitive-inline-form" data-password-gated-form data-password-gated-code="11111">
+          <label>Excel file
+            <input type="file" name="file" accept=".xlsx,.xlsm" required />
+          </label>
+          <label class="site-password-label compact-site-password">Action Code
+            <input class="site-password-input compact-site-password-input" type="password" name="action_password" autocomplete="current-password" required data-password-gated-input />
+          </label>
+          <button type="submit" data-password-gated-button disabled>Gradation Update</button>
+        </form>
+        <p class="hint">Uses <code>CREW ID</code>, <code>NAME</code>, <code>DESIG.</code>, <code>CURRENT GRADE</code>, and the first <code>DUE DATE</code> after current grade. It updates the CLI Roster gradation and grading due date.</p>
+      </section>
+
+      <section class="card collapsible">
+        <details open>
+          <summary>CLI Distribution by Gradation</summary>
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap;">
+            <p>Counts of Gradation A, B, and C staff per CLI (all employees).</p>
+            <a class="ghost" href="/reports/cli-distribution.xlsx">Download Excel</a>
+          </div>
+          <div class="table-wrap">
+            <table class="paged">
+              <thead>
+                <tr>
+                  <th>CLI</th>
+                  <th>Gradation A</th>
+                  <th>Gradation B</th>
+                  <th>Gradation C</th>
+                  <th>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in cli_distribution %}
+                <tr>
+                  <td>{{ row.cli }}</td>
+                  <td>{{ row.A }}</td>
+                  <td>{{ row.B }}</td>
+                  <td>{{ row.C }}</td>
+                  <td>{{ row.total }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      </section>
+
+      <section class="card collapsible" id="cli-roster">
+        <details {% if roster_open %}open{% else %}open{% endif %}>
+          <summary>CLI Roster</summary>
+          <form class="inline" method="get" action="/cli#cli-roster">
+            <label>Name
+              <input name="roster_name" value="{{ roster_name }}" placeholder="Search name" />
+            </label>
+            <label>CLI
+              <select name="roster_cli">
+                <option value="">All</option>
+                {% for opt in cli_opts %}
+                  <option value="{{ opt }}" {% if roster_cli == opt %}selected{% endif %}>{{ opt }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>Gradation
+              <select name="roster_gradation">
+                <option value="">All</option>
+                {% for opt in gradation_opts %}
+                  <option value="{{ opt }}" {% if roster_gradation == opt %}selected{% endif %}>{{ opt }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <button type="submit">Filter</button>
+            <a class="ghost" href="/cli#cli-roster">Reset</a>
+          </form>
+          <div class="table-wrap">
+            <table class="employee-table paged">
+              <thead>
+                <tr>
+                  <th>CLI</th>
+                  <th>Name</th>
+                  <th>HRMS ID</th>
+                  <th>CREW ID</th>
+                  <th>Designation</th>
+                  <th>Gradation</th>
+                  <th>Grading Due</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for e in cli_roster %}
+                <tr>
+                  <td>{{ e.cli }}</td>
+                  <td><a href="/employees/{{ e.id }}">{{ e.name }}</a></td>
+                  <td>{{ e.hrms or '' }}</td>
+                  <td>{{ e.crew_id or '' }}</td>
+                  <td>{{ e.role }}</td>
+                  <td>{{ e.gradation or '' }}</td>
+                  <td>{{ e.grading_due | dmy if e.grading_due else '' }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      </section>
+    </main>
+  </div>
+  <script>
+    (() => {
+      const brand = document.querySelector('.brand');
+      if (!brand) return;
+      brand.style.cursor = 'pointer';
+      brand.setAttribute('title', 'Click to hide/show navigation');
+      brand.setAttribute('tabindex', '0');
+      const toggle = () => document.body.classList.toggle('nav-hidden');
+      brand.addEventListener('click', toggle);
+      brand.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          toggle();
+        }
+      });
+      document.body.classList.remove('nav-hidden');
+
+      document.querySelectorAll('[data-password-gated-form]').forEach((form) => {
+        const passwordInput = form.querySelector('[data-password-gated-input]');
+        const submitButton = form.querySelector('[data-password-gated-button]');
+        if (!passwordInput || !submitButton) return;
+
+        const requiredCode = form.dataset.passwordGatedCode || '11111';
+        const syncButtonState = () => {
+          submitButton.disabled = passwordInput.value.trim() !== requiredCode;
+        };
+
+        passwordInput.addEventListener('input', syncButtonState);
+        syncButtonState();
+      });
+    })();
+  </script>
+  <script src="/static/sidebar-toggle.js"></script>
+  <script src="/static/table-pager.js"></script>
+  <script src="/static/button-confirm.js"></script>
+</body>
+</html>

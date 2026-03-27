@@ -347,6 +347,80 @@ def index(
     return response
 
 
+def _cli_page_context(
+    request: Request,
+    session: Session,
+    roster_name: Optional[str] = None,
+    roster_cli: Optional[str] = None,
+    roster_gradation: Optional[str] = None,
+    grading_update_notice: str = "",
+    grading_update_warning: str = "",
+    grading_update_error: Optional[str] = None,
+    grading_update_details: Optional[list[str]] = None,
+    grading_warning_details: Optional[list[str]] = None,
+) -> dict[str, object]:
+    employees_all = session.exec(select(Employee)).all()
+    cli_distribution = build_cli_distribution(employees_all)
+    cli_opts_map: dict[str, str] = {}
+    for val in [e.cli for e in employees_all if e.cli]:
+        key = val.strip().lower()
+        if key not in cli_opts_map:
+            cli_opts_map[key] = val.strip()
+    cli_opts = [v for _, v in sorted(cli_opts_map.items(), key=lambda item: item[0])]
+    gradation_opts = sorted({e.gradation for e in employees_all if e.gradation})
+
+    roster_filter_active = any([roster_name, roster_cli, roster_gradation])
+    cli_roster = [e for e in employees_all if e.cli]
+    if roster_name:
+        name_lower = roster_name.lower()
+        cli_roster = [e for e in cli_roster if name_lower in e.name.lower()]
+    if roster_cli:
+        roster_cli_lower = roster_cli.strip().lower()
+        cli_roster = [e for e in cli_roster if e.cli and roster_cli_lower in e.cli.strip().lower()]
+    if roster_gradation:
+        grad_lower = roster_gradation.lower()
+        cli_roster = [e for e in cli_roster if e.gradation and grad_lower in e.gradation.lower()]
+    cli_roster = sorted(cli_roster, key=lambda e: ((e.cli or "").strip().lower(), e.name))
+
+    return {
+        "request": request,
+        "active_page": "cli",
+        "cli_distribution": cli_distribution,
+        "cli_roster": cli_roster,
+        "cli_opts": cli_opts,
+        "gradation_opts": gradation_opts,
+        "roster_name": roster_name or "",
+        "roster_cli": roster_cli or "",
+        "roster_gradation": roster_gradation or "",
+        "roster_open": roster_filter_active,
+        "grading_update_notice": grading_update_notice,
+        "grading_update_warning": grading_update_warning,
+        "grading_update_error": grading_update_error or "",
+        "grading_update_details": grading_update_details or [],
+        "grading_warning_details": grading_warning_details or [],
+    }
+
+
+@app.get("/cli")
+def cli_page(
+    request: Request,
+    roster_name: Optional[str] = None,
+    roster_cli: Optional[str] = None,
+    roster_gradation: Optional[str] = None,
+    session: Session = Depends(get_session),
+):
+    return templates.TemplateResponse(
+        "cli.html",
+        _cli_page_context(
+            request,
+            session,
+            roster_name=roster_name,
+            roster_cli=roster_cli,
+            roster_gradation=roster_gradation,
+        ),
+    )
+
+
 @app.get("/employees")
 def employees_page(
     request: Request,
@@ -4625,9 +4699,10 @@ async def upload_li_grading(
         notice = f"LI grading update complete: {updated} updated, {unchanged} unchanged, {skipped} skipped."
         warning_message = f"Mismatch / auto-fixed records: {len(warnings)}" if warnings else ""
         return templates.TemplateResponse(
-            "uploads.html",
-            _uploads_context(
+            "cli.html",
+            _cli_page_context(
                 request,
+                session,
                 grading_update_notice=notice,
                 grading_update_warning=warning_message,
                 grading_update_details=details,
@@ -4637,9 +4712,10 @@ async def upload_li_grading(
     except HTTPException as exc:
         detail = exc.detail if isinstance(exc.detail, str) else "LI grading update failed."
         return templates.TemplateResponse(
-            "uploads.html",
-            _uploads_context(
+            "cli.html",
+            _cli_page_context(
                 request,
+                session,
                 grading_update_error=detail,
             ),
             status_code=exc.status_code,
