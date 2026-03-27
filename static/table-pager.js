@@ -2,6 +2,73 @@
   const DEFAULT_PAGE_SIZE = 10;
   const isFilterHidden = (row) => row?.dataset?.filterHidden === "true";
 
+  function styleGroup(group, justifyContent = "flex-start") {
+    group.style.display = "flex";
+    group.style.alignItems = "center";
+    group.style.gap = "8px";
+    group.style.flexWrap = "wrap";
+    group.style.justifyContent = justifyContent;
+  }
+
+  function styleInfo(info) {
+    info.style.color = "#c9cee0";
+    info.style.fontSize = "13px";
+  }
+
+  function createPagerBar({ showRowsSelector = false } = {}) {
+    const wrapper = document.createElement("div");
+    wrapper.style.display = "flex";
+    wrapper.style.justifyContent = "space-between";
+    wrapper.style.alignItems = "center";
+    wrapper.style.gap = "8px";
+    wrapper.style.margin = "6px 0";
+    wrapper.style.flexWrap = "wrap";
+
+    const left = document.createElement("div");
+    styleGroup(left);
+
+    const right = document.createElement("div");
+    styleGroup(right, "flex-end");
+    right.style.marginLeft = "auto";
+
+    let select = null;
+
+    if (showRowsSelector) {
+      const label = document.createElement("label");
+      label.textContent = "Rows:";
+      styleInfo(label);
+
+      select = document.createElement("select");
+      ["10", "20", "All"].forEach((optText) => {
+        const opt = document.createElement("option");
+        opt.value = optText === "All" ? "0" : optText;
+        opt.textContent = optText;
+        select.appendChild(opt);
+      });
+      select.value = String(DEFAULT_PAGE_SIZE);
+      left.append(label, select);
+    }
+
+    const info = document.createElement("span");
+    styleInfo(info);
+
+    const prev = document.createElement("button");
+    prev.type = "button";
+    prev.textContent = "Prev";
+    prev.className = "ghost small";
+
+    const next = document.createElement("button");
+    next.type = "button";
+    next.textContent = "Next";
+    next.className = "ghost small";
+
+    left.append(info);
+    right.append(prev, next);
+    wrapper.append(left, right);
+
+    return { wrapper, info, prev, next, select };
+  }
+
   function injectControls(table) {
     if (!table.tBodies.length) return;
     const rows = Array.from(table.tBodies[0].rows || []);
@@ -17,45 +84,11 @@
     let pageSize = DEFAULT_PAGE_SIZE;
     let page = 0;
 
-    const wrapper = document.createElement("div");
-    wrapper.style.display = "flex";
-    wrapper.style.justifyContent = "space-between";
-    wrapper.style.alignItems = "center";
-    wrapper.style.gap = "8px";
-    wrapper.style.margin = "6px 0";
-
-    const controls = document.createElement("div");
-    controls.style.display = "flex";
-    controls.style.gap = "8px";
-    controls.style.alignItems = "center";
-
-    const label = document.createElement("label");
-    label.textContent = "Rows:";
-    label.style.color = "#c9cee0";
-    label.style.fontSize = "13px";
-
-    const select = document.createElement("select");
-    ["10", "20", "All"].forEach((optText) => {
-      const opt = document.createElement("option");
-      opt.value = optText === "All" ? "0" : optText;
-      opt.textContent = optText;
-      select.appendChild(opt);
-    });
-    select.value = String(DEFAULT_PAGE_SIZE);
-
-    const prev = document.createElement("button");
-    prev.type = "button";
-    prev.textContent = "Prev";
-    prev.className = "ghost small";
-
-    const next = document.createElement("button");
-    next.type = "button";
-    next.textContent = "Next";
-    next.className = "ghost small";
-
-    const info = document.createElement("span");
-    info.style.color = "#c9cee0";
-    info.style.fontSize = "13px";
+    const topPager = createPagerBar({ showRowsSelector: true });
+    const bottomPager = createPagerBar();
+    const infos = [topPager.info, bottomPager.info];
+    const prevButtons = [topPager.prev, bottomPager.prev];
+    const nextButtons = [topPager.next, bottomPager.next];
 
     function render() {
       const visiblePageableRows = pageableRows.filter((row) => !isFilterHidden(row));
@@ -89,40 +122,53 @@
       });
 
       if (total === 0) {
-        info.textContent = "0 results";
+        infos.forEach((info) => {
+          info.textContent = "0 results";
+        });
       } else {
         const startIdx = ps === 0 ? 1 : page * ps + 1;
         const endIdx = ps === 0 ? total : Math.min(total, (page + 1) * ps);
-        info.textContent = ps === 0
+        const message = ps === 0
           ? `Showing all ${total}`
           : `${startIdx}-${endIdx} of ${total}`;
+        infos.forEach((info) => {
+          info.textContent = message;
+        });
       }
 
-      prev.disabled = ps === 0 || page === 0;
-      next.disabled = ps === 0 || page >= maxPage;
+      prevButtons.forEach((button) => {
+        button.disabled = ps === 0 || page === 0;
+      });
+      nextButtons.forEach((button) => {
+        button.disabled = ps === 0 || page >= maxPage;
+      });
     }
 
-    select.addEventListener("change", () => {
-      pageSize = parseInt(select.value, 10);
+    topPager.select?.addEventListener("change", () => {
+      pageSize = parseInt(topPager.select.value, 10);
       page = 0;
       render();
     });
 
-    prev.addEventListener("click", () => {
-      if (page > 0) {
-        page -= 1;
-        render();
-      }
+    prevButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        if (page > 0) {
+          page -= 1;
+          render();
+        }
+      });
     });
 
-    next.addEventListener("click", () => {
-      const total = pageableRows.filter((row) => !isFilterHidden(row)).length;
-      const ps = pageSize === 0 ? total : pageSize;
-      const maxPage = ps === 0 ? 0 : Math.max(0, Math.ceil(total / ps) - 1);
-      if (page < maxPage) {
-        page += 1;
-        render();
-      }
+    nextButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const total = pageableRows.filter((row) => !isFilterHidden(row)).length;
+        const ps = pageSize === 0 ? total : pageSize;
+        const maxPage = ps === 0 ? 0 : Math.max(0, Math.ceil(total / ps) - 1);
+        if (page < maxPage) {
+          page += 1;
+          render();
+        }
+      });
     });
 
     rows.forEach((row, idx) => {
@@ -133,9 +179,8 @@
       });
     });
 
-    controls.append(label, select, prev, next);
-    wrapper.append(controls, info);
-    table.parentElement?.insertBefore(wrapper, table);
+    table.parentElement?.insertBefore(topPager.wrapper, table);
+    table.insertAdjacentElement("afterend", bottomPager.wrapper);
     table.addEventListener("table-pager:refresh", (event) => {
       if (event?.detail?.resetPage) {
         page = 0;
