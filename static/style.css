@@ -248,7 +248,27 @@ button:hover { filter: brightness(1.05); }
 .card + .card {
   margin-top: 18px;
 }
-h2 { margin-top: 0; color: #f1f4ff; }
+h2 {
+  margin: 0 0 14px;
+  color: #eefaff;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(18, 31, 52, 0.8), rgba(11, 46, 70, 0.56));
+  border: 1px solid rgba(123, 215, 255, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 10px 24px rgba(3, 10, 24, 0.14);
+  letter-spacing: 0.02em;
+}
+h2::before {
+  content: "";
+  width: 6px;
+  height: 24px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #9be7ff, #12bde7);
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.08), 0 8px 18px rgba(18, 189, 231, 0.24);
+}
 .table-wrap { overflow-x: auto; border-radius: 16px; }
 .card { width: 100%; }
 .table-wrap { width: 100%; }
@@ -570,50 +590,55 @@ ul { padding-left: 18px; margin: 6px 0; }
 .collapsible details > summary {
   cursor: pointer;
   font-weight: 700;
-  color: #f1f4ff;
-  margin: -8px 0 8px 0;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.06);
-  transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+  color: #eaf9ff;
+  margin: -4px 0 10px 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(18, 31, 52, 0.76), rgba(11, 46, 70, 0.54));
+  border: 1px solid rgba(123, 215, 255, 0.16);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 10px 24px rgba(3, 10, 24, 0.12);
+  transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+  letter-spacing: 0.02em;
 }
 .collapsible details {
   border: none;
 }
 .collapsible details > summary:hover {
-  background: rgba(255,255,255,0.06);
-  border-color: rgba(255,255,255,0.12);
+  background: linear-gradient(135deg, rgba(22, 38, 62, 0.9), rgba(13, 56, 84, 0.62));
+  border-color: rgba(123, 215, 255, 0.26);
+  transform: translateY(-1px);
 }
 .card.collapsible:has(> details[open]) {
   background: linear-gradient(180deg, rgba(24, 34, 56, 0.96), rgba(17, 24, 39, 0.9));
-  border-color: rgba(255, 230, 102, 0.24);
+  border-color: rgba(123, 215, 255, 0.24);
   box-shadow: 0 20px 50px rgba(0,0,0,0.35), inset 0 0 0 1px rgba(18, 189, 231, 0.08);
 }
 .collapsible details[open] > summary {
-  background: linear-gradient(135deg, rgba(255, 230, 102, 0.16), rgba(18, 189, 231, 0.16));
-  border-color: rgba(255, 230, 102, 0.36);
-  box-shadow: inset 0 0 0 1px rgba(18, 189, 231, 0.2);
-  color: #fff2a0;
+  background: linear-gradient(135deg, rgba(123, 215, 255, 0.18), rgba(18, 189, 231, 0.16));
+  border-color: rgba(123, 215, 255, 0.34);
+  box-shadow: inset 0 0 0 1px rgba(123, 215, 255, 0.14), 0 12px 28px rgba(18, 189, 231, 0.08);
+  color: #eefbff;
 }
 .collapsible-card > summary {
   cursor: pointer;
   font-weight: 700;
-  color: #f1f4ff;
+  color: #eaf9ff;
   margin: 8px 0;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.06);
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(18, 31, 52, 0.76), rgba(11, 46, 70, 0.54));
+  border: 1px solid rgba(123, 215, 255, 0.16);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 10px 24px rgba(3, 10, 24, 0.12);
+  letter-spacing: 0.02em;
 }
 .collapsible-card > summary:hover {
-  background: rgba(255,255,255,0.06);
-  border-color: rgba(255,255,255,0.12);
+  background: linear-gradient(135deg, rgba(22, 38, 62, 0.9), rgba(13, 56, 84, 0.62));
+  border-color: rgba(123, 215, 255, 0.26);
 }
 .collapsible-card[open] > summary {
-  background: linear-gradient(135deg, rgba(255, 230, 102, 0.16), rgba(18, 189, 231, 0.16));
-  border-color: rgba(255, 230, 102, 0.36);
-  color: #fff2a0;
+  background: linear-gradient(135deg, rgba(123, 215, 255, 0.18), rgba(18, 189, 231, 0.16));
+  border-color: rgba(123, 215, 255, 0.34);
+  color: #eefbff;
 }
 
 .sidebar { transition: width 0.25s ease, padding 0.25s ease, opacity 0.25s ease, flex-basis 0.25s ease; }
