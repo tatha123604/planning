@@ -64,7 +64,7 @@
               <tbody>
                 {% for row in working_summary %}
                   <tr>
-                    <td>{{ row.working_at }}</td>
+                    <td>{% if row.working_at %}<span class="designation-pill">{{ row.working_at }}</span>{% endif %}</td>
                     {% for role in role_headers %}
                       <td>{{ row.counts[role] }}</td>
                     {% endfor %}
@@ -135,7 +135,7 @@
                   <td>{{ e.gradation or '' }}</td>
                   <td>{{ e.retirement_date | dmy if e.retirement_date else '' }}</td>
                   <td>{{ (e.retirement_date | hire_by(30)) | dmy if e.retirement_date else '' }}</td>
-                  <td>{{ e.working_at or '' }}</td>
+                  <td>{% if e.working_at %}<span class="designation-pill">{{ e.working_at }}</span>{% endif %}</td>
                   <td><a class="ghost small" href="/employees/{{ e.id }}">Edit</a></td>
                 </tr>
                 {% endfor %}
