@@ -110,6 +110,17 @@ def format_dmy(value):
 templates.env.filters["dmy"] = format_dmy
 
 
+def format_cli_label(cli_name, cli_id=None):
+    name_text = str(cli_name or "").strip()
+    id_text = str(cli_id or "").strip()
+    if name_text and id_text:
+        return f"{name_text} ({id_text})"
+    return name_text or id_text
+
+
+templates.env.filters["cli_label"] = format_cli_label
+
+
 def filter_hire_by(value, days: int = 30):
     if not value:
         return None
@@ -205,6 +216,16 @@ def _extract_date(text: str) -> date:
     return date.max
 
 
+def _employee_cli_key(employee: Employee) -> str:
+    cli_id = str(employee.cli_id or "").strip()
+    cli_name = str(employee.cli or "").strip()
+    return cli_id.lower() or cli_name.lower()
+
+
+def _employee_cli_label(employee: Employee) -> str:
+    return format_cli_label(employee.cli, employee.cli_id)
+
+
 def build_simple_recruit_plan(retiring: dict[str, list[Employee]], lead_days: int = 30) -> dict[str, list[str]]:
     """Create backfill steps 1 month before each retirement."""
     plan: dict[str, list[str]] = {}
@@ -228,13 +249,22 @@ def build_cli_distribution(employees: list[Employee]) -> list[dict[str, int | st
         role = normalize_role(e.role)
         if role not in CLI_DISTRIBUTION_ROLE_ORDER:
             continue
-        cli_raw = (e.cli or "").strip()
-        cli_key = cli_raw.lower() if cli_raw else "unassigned"
+        cli_raw = _employee_cli_label(e).strip()
+        cli_key = _employee_cli_key(e) or "unassigned"
         label = cli_raw or "Unassigned"
         grad = (e.gradation or "").strip().upper()
         grad_key = grad[0] if grad else ""
         if cli_key not in dist:
-            dist[cli_key] = {"cli": label, "A": 0, "B": 0, "C": 0, "total": 0}
+            dist[cli_key] = {
+                "cli": label,
+                "cli_name": str(e.cli or "").strip(),
+                "cli_id": str(e.cli_id or "").strip(),
+                "key": cli_key,
+                "A": 0,
+                "B": 0,
+                "C": 0,
+                "total": 0,
+            }
         # keep the first non-empty label we see for this key
         if not dist[cli_key]["cli"] and cli_raw:
             dist[cli_key]["cli"] = cli_raw
@@ -242,7 +272,16 @@ def build_cli_distribution(employees: list[Employee]) -> list[dict[str, int | st
             dist[cli_key][grad_key] += 1  # type: ignore[index]
             dist[cli_key]["total"] += 1  # type: ignore[index]
     return [
-        {"cli": counts["cli"], "A": counts["A"], "B": counts["B"], "C": counts["C"], "total": counts["total"]}
+        {
+            "cli": counts["cli"],
+            "cli_name": counts["cli_name"],
+            "cli_id": counts["cli_id"],
+            "key": counts["key"],
+            "A": counts["A"],
+            "B": counts["B"],
+            "C": counts["C"],
+            "total": counts["total"],
+        }
         for _, counts in sorted(dist.items(), key=lambda item: item[0])
     ]
 
@@ -256,11 +295,11 @@ def build_cli_distribution_role_breakdown(
         return "", [], None
 
     selected_key = selected_text.lower()
-    filtered = [e for e in employees if (e.cli or "").strip().lower() == selected_key]
+    filtered = [e for e in employees if _employee_cli_key(e) == selected_key]
     if not filtered:
         return "", [], None
 
-    cli_label = (filtered[0].cli or "").strip() or selected_text
+    cli_label = _employee_cli_label(filtered[0]).strip() or selected_text
     rows: list[dict[str, int | str]] = []
     totals = {"A": 0, "B": 0, "C": 0, "total": 0}
 
@@ -414,9 +453,9 @@ def _cli_page_context(
     selected_distribution_cli = (distribution_cli or "").strip()
     cli_distribution = build_cli_distribution(employees_all)
     for row in cli_distribution:
-        cli_text = str(row["cli"])
-        row["detail_href"] = f"/cli?distribution_cli={quote(cli_text, safe='')}#cli-distribution-detail"
-        row["selected"] = bool(selected_distribution_cli) and cli_text.strip().lower() == selected_distribution_cli.lower()
+        cli_key = str(row["key"])
+        row["detail_href"] = f"/cli?distribution_cli={quote(cli_key, safe='')}#cli-distribution-detail"
+        row["selected"] = bool(selected_distribution_cli) and cli_key == selected_distribution_cli.lower()
     detail_cli_label, cli_distribution_breakdown, cli_distribution_totals = build_cli_distribution_role_breakdown(
         employees_all,
         selected_distribution_cli,
@@ -431,7 +470,10 @@ def _cli_page_context(
         except ValueError:
             grading_saved_at = saved_at_raw
     cli_opts_map: dict[str, str] = {}
-    for val in [e.cli for e in employees_all if e.cli]:
+    for employee in employees_all:
+        val = _employee_cli_label(employee)
+        if not val:
+            continue
         key = val.strip().lower()
         if key not in cli_opts_map:
             cli_opts_map[key] = val.strip()
@@ -449,13 +491,13 @@ def _cli_page_context(
         cli_roster = [e for e in cli_roster if name_lower in e.name.lower()]
     if roster_cli:
         roster_cli_lower = roster_cli.strip().lower()
-        cli_roster = [e for e in cli_roster if e.cli and roster_cli_lower in e.cli.strip().lower()]
+        cli_roster = [e for e in cli_roster if roster_cli_lower in _employee_cli_label(e).lower()]
     if roster_role:
         cli_roster = [e for e in cli_roster if normalize_role(e.role) == roster_role]
     if roster_gradation:
         grad_lower = roster_gradation.lower()
         cli_roster = [e for e in cli_roster if e.gradation and grad_lower in e.gradation.lower()]
-    cli_roster = sorted(cli_roster, key=lambda e: ((e.cli or "").strip().lower(), e.name))
+    cli_roster = sorted(cli_roster, key=lambda e: (_employee_cli_key(e), e.name))
 
     return {
         "request": request,
@@ -535,7 +577,10 @@ def employees_page(
     working_opts_filtered = {wa for wa in raw_working if wa.upper().startswith("CC(")}
     working_opts = sorted(working_opts_filtered if working_opts_filtered else raw_working)
     cli_opts_map: dict[str, str] = {}
-    for val in [e.cli for e in employees_all if e.cli]:
+    for employee in employees_all:
+        val = _employee_cli_label(employee)
+        if not val:
+            continue
         key = val.strip().lower()
         if key not in cli_opts_map:
             cli_opts_map[key] = val.strip()
@@ -550,7 +595,7 @@ def employees_page(
             for e in employees
             if q_lower in e.name.lower()
             or q_lower in e.role.lower()
-            or (e.cli and q_lower in e.cli.lower())
+            or (e.cli and q_lower in _employee_cli_label(e).lower())
             or (e.gradation and q_lower in e.gradation.lower())
         ]
     if role:
@@ -560,7 +605,7 @@ def employees_page(
         employees = [e for e in employees if e.working_at and wa_lower in e.working_at.lower()]
     if cli:
         cli_lower = cli.strip().lower()
-        employees = [e for e in employees if e.cli and cli_lower in e.cli.strip().lower()]
+        employees = [e for e in employees if cli_lower in _employee_cli_label(e).lower()]
     if gradation:
         grad_lower = gradation.lower()
         employees = [e for e in employees if e.gradation and grad_lower in e.gradation.lower()]
@@ -573,7 +618,7 @@ def employees_page(
         if sort == "hire":
             return (e.hire_date, e.name)
         if sort == "cli":
-            return ((e.cli or "").strip().lower(), e.name)
+            return (_employee_cli_key(e), e.name)
         if sort == "working_at":
             return ((e.working_at or "").lower(), e.name)
         return (role_sort_key(e.role), e.name)
@@ -586,11 +631,11 @@ def employees_page(
         cli_roster = [e for e in cli_roster if name_lower in e.name.lower()]
     if roster_cli:
         roster_cli_lower = roster_cli.strip().lower()
-        cli_roster = [e for e in cli_roster if e.cli and roster_cli_lower in e.cli.strip().lower()]
+        cli_roster = [e for e in cli_roster if roster_cli_lower in _employee_cli_label(e).lower()]
     if roster_gradation:
         grad_lower = roster_gradation.lower()
         cli_roster = [e for e in cli_roster if e.gradation and grad_lower in e.gradation.lower()]
-    cli_roster = sorted(cli_roster, key=lambda e: ((e.cli or "").strip().lower(), e.name))
+    cli_roster = sorted(cli_roster, key=lambda e: (_employee_cli_key(e), e.name))
 
     return templates.TemplateResponse(
         "employees.html",
@@ -750,6 +795,7 @@ def update_employee(
     working_at: Optional[str] = Form(None),
     gradation: Optional[str] = Form(None),
     cli: Optional[str] = Form(None),
+    cli_id: Optional[str] = Form(None),
     pme_due: Optional[str] = Form(None),
     technical_due: Optional[str] = Form(None),
     transportation_due: Optional[str] = Form(None),
@@ -781,6 +827,7 @@ def update_employee(
     employee.working_at = working_at.strip() if working_at else None
     employee.gradation = gradation.strip() if gradation else None
     employee.cli = cli.strip() if cli else None
+    employee.cli_id = cli_id.strip() if cli_id else None
     employee.pme_due = to_date(pme_due)
     employee.technical_due = to_date(technical_due)
     employee.transportation_due = to_date(transportation_due)
@@ -1281,6 +1328,8 @@ EMPLOYEE_ALIAS_MAP = {
     "transportation": "transportation_due",
     "transportationdue": "transportation_due",
     "transportation_due": "transportation_due",
+    "cliid": "cli_id",
+    "cli_id": "cli_id",
 }
 
 
@@ -1566,6 +1615,7 @@ def _import_employee_rows(
             pf_no_target = pf_no if has_col("pf_no") else existing.pf_no
             hrms_target = hrms if has_col("hrms") else existing.hrms
             crew_id_target = crew_id if has_col("crew_id") else existing.crew_id
+            cli_id_target = str(get("cli_id")).strip() if has_col("cli_id") and get("cli_id") else (None if has_col("cli_id") else existing.cli_id)
             dob_target = dob if has_col("dob") else existing.dob
             doa_target = doa if has_col("doa") else existing.doa
             do_report_target = do_report if has_col("do_report") else existing.do_report
@@ -1587,6 +1637,7 @@ def _import_employee_rows(
                 ("PF No", existing.pf_no, pf_no_target),
                 ("HRMS ID", existing.hrms, hrms_target),
                 ("CREW ID", existing.crew_id, crew_id_target),
+                ("CLI ID", existing.cli_id, cli_id_target),
                 ("DOB", existing.dob, dob_target),
                 ("DOA", existing.doa, doa_target),
                 ("DO Report", existing.do_report, do_report_target),
@@ -1614,6 +1665,7 @@ def _import_employee_rows(
             existing.pf_no = pf_no_target
             existing.hrms = hrms_target
             existing.crew_id = crew_id_target
+            existing.cli_id = cli_id_target
             existing.dob = dob_target
             existing.doa = doa_target
             existing.do_report = do_report_target
@@ -1643,6 +1695,7 @@ def _import_employee_rows(
                     pf_no=pf_no,
                     hrms=hrms,
                     crew_id=crew_id,
+                    cli_id=str(get("cli_id")).strip() if "cli_id" in col_index and get("cli_id") else None,
                     dob=dob,
                     doa=doa,
                     do_report=do_report,
@@ -3037,6 +3090,7 @@ def add_employee(
     working_at: Optional[str] = Form(None),
     gradation: Optional[str] = Form(None),
     cli: Optional[str] = Form(None),
+    cli_id: Optional[str] = Form(None),
     pme_due: Optional[str] = Form(None),
     technical_due: Optional[str] = Form(None),
     transportation_due: Optional[str] = Form(None),
@@ -3069,6 +3123,7 @@ def add_employee(
         existing.working_at = working_at.strip() if working_at else None
         existing.gradation = gradation.strip() if gradation else None
         existing.cli = cli.strip() if cli else None
+        existing.cli_id = cli_id.strip() if cli_id else None
         existing.pme_due = to_date(pme_due)
         existing.technical_due = to_date(technical_due)
         existing.transportation_due = to_date(transportation_due)
@@ -3092,6 +3147,7 @@ def add_employee(
         working_at=working_at.strip() if working_at else None,
         gradation=gradation.strip() if gradation else None,
         cli=cli.strip() if cli else None,
+        cli_id=cli_id.strip() if cli_id else None,
         pme_due=to_date(pme_due),
         technical_due=to_date(technical_due),
         transportation_due=to_date(transportation_due),
@@ -3376,7 +3432,7 @@ def _cleanup_row_payload(employee: Employee) -> dict[str, object]:
         "hrms": employee.hrms or "",
         "category": employee.category or "",
         "gradation": employee.gradation or "",
-        "cli": employee.cli or "",
+        "cli": _employee_cli_label(employee),
     }
 
 
@@ -4624,9 +4680,11 @@ def _parse_li_grading_workbook(content: bytes) -> tuple[list[dict[str, object]],
     worksheet = workbook.active
     rows = list(worksheet.iter_rows(values_only=True))
     if not rows:
-        raise HTTPException(status_code=400, detail="LI Grading workbook is empty.")
+        raise HTTPException(status_code=400, detail="CLI Grading workbook is empty.")
 
     header_row_index: int | None = None
+    cli_id_idx: int | None = None
+    cli_name_idx: int | None = None
     crew_idx: int | None = None
     name_idx: int | None = None
     role_idx: int | None = None
@@ -4635,7 +4693,7 @@ def _parse_li_grading_workbook(content: bytes) -> tuple[list[dict[str, object]],
 
     for idx, row in enumerate(rows):
         normalized = [_normalize_li_grading_header(cell) for cell in row]
-        if "CREWID" not in normalized or "NAME" not in normalized or "CURRENTGRADE" not in normalized:
+        if "CLIID" not in normalized or "CLINAME" not in normalized or "CREWID" not in normalized or "NAME" not in normalized or "CURRENTGRADE" not in normalized:
             continue
         role_idx = next((i for i, value in enumerate(normalized) if value in {"DESIG", "DESIGNATION", "ROLE"}), None)
         if role_idx is None:
@@ -4646,15 +4704,17 @@ def _parse_li_grading_workbook(content: bytes) -> tuple[list[dict[str, object]],
             due_date_idx = next((i for i, value in enumerate(normalized) if value == "DUEDATE"), None)
         if due_date_idx is None:
             continue
+        cli_id_idx = normalized.index("CLIID")
+        cli_name_idx = normalized.index("CLINAME")
         crew_idx = normalized.index("CREWID")
         name_idx = normalized.index("NAME")
         header_row_index = idx
         break
 
-    if header_row_index is None or None in {crew_idx, name_idx, role_idx, current_grade_idx, due_date_idx}:
+    if header_row_index is None or None in {cli_id_idx, cli_name_idx, crew_idx, name_idx, role_idx, current_grade_idx, due_date_idx}:
         raise HTTPException(
             status_code=400,
-            detail="Could not find the LI Grading columns. Required columns: CREW ID, NAME, DESIG., CURRENT GRADE, DUE DATE.",
+            detail="Could not find the CLI Grading columns. Required columns: CLI ID, CLI NAME, CREW ID, NAME, DESIG., CURRENT GRADE, DUE DATE.",
         )
 
     warnings: list[str] = []
@@ -4666,34 +4726,41 @@ def _parse_li_grading_workbook(content: bytes) -> tuple[list[dict[str, object]],
                 return None
             return row[column_index]
 
+        cli_id = _clean_import_text(get(cli_id_idx))
+        cli_name = _clean_import_text(get(cli_name_idx))
         crew_id = _clean_import_text(get(crew_idx))
         name = _clean_import_text(get(name_idx))
         role_raw = _clean_import_text(get(role_idx))
         current_grade = _clean_import_text(get(current_grade_idx))
         due_raw = get(due_date_idx)
 
-        if not any([crew_id, name, role_raw, current_grade, due_raw]):
+        if not any([cli_id, cli_name, crew_id, name, role_raw, current_grade, due_raw]):
             continue
 
         row_hint = name or crew_id or f"row {row_number}"
+        if not cli_name:
+            warnings.append(f"CLI Grading {row_hint}: skipped because CLI NAME is blank.")
+            continue
         if not name:
-            warnings.append(f"LI Grading row {row_number}: skipped because NAME is blank.")
+            warnings.append(f"CLI Grading row {row_number}: skipped because NAME is blank.")
             continue
         if not role_raw:
-            warnings.append(f"LI Grading {row_hint}: skipped because DESIG. is blank.")
+            warnings.append(f"CLI Grading {row_hint}: skipped because DESIG. is blank.")
             continue
         if not current_grade:
-            warnings.append(f"LI Grading {row_hint}: skipped because CURRENT GRADE is blank.")
+            warnings.append(f"CLI Grading {row_hint}: skipped because CURRENT GRADE is blank.")
             continue
 
         try:
-            due_date = _excel_to_date_with_correction(due_raw, warnings, "LI Grading", row_hint, "due_date") if due_raw not in (None, "") else None
+            due_date = _excel_to_date_with_correction(due_raw, warnings, "CLI Grading", row_hint, "due_date") if due_raw not in (None, "") else None
         except ValueError as exc:
-            warnings.append(f"LI Grading {row_hint}: skipped because DUE DATE is invalid ({exc}).")
+            warnings.append(f"CLI Grading {row_hint}: skipped because DUE DATE is invalid ({exc}).")
             continue
 
         records.append(
             {
+                "cli_id": cli_id,
+                "cli_name": cli_name,
                 "crew_id": crew_id,
                 "name": name,
                 "role": normalize_role(role_raw),
@@ -4704,7 +4771,7 @@ def _parse_li_grading_workbook(content: bytes) -> tuple[list[dict[str, object]],
         )
 
     if not records:
-        raise HTTPException(status_code=400, detail="LI Grading workbook did not produce any usable rows.")
+        raise HTTPException(status_code=400, detail="CLI Grading workbook did not produce any usable rows.")
     return records, warnings
 
 
@@ -4719,18 +4786,21 @@ async def upload_li_grading(
         _validate_sensitive_action_password(action_password)
         filename = file.filename or ""
         if not filename.lower().endswith((".xlsx", ".xlsm")):
-            raise HTTPException(status_code=400, detail="Upload the LI Grading .xlsx workbook.")
+            raise HTTPException(status_code=400, detail="Upload the CLI Grading .xlsx workbook.")
 
         records, warnings = _parse_li_grading_workbook(await file.read())
         employees = session.exec(select(Employee)).all()
 
         by_crew: dict[str, list[Employee]] = {}
+        by_crew_name: dict[tuple[str, str], list[Employee]] = {}
         by_name_role: dict[tuple[str, str], list[Employee]] = {}
         for employee in employees:
             crew_key = (_clean_import_text(employee.crew_id) or "").upper()
+            name_key = _normalize_import_name(employee.name)
             if crew_key:
                 by_crew.setdefault(crew_key, []).append(employee)
-            name_key = _normalize_import_name(employee.name)
+                if name_key:
+                    by_crew_name.setdefault((crew_key, name_key), []).append(employee)
             role_key = normalize_role(employee.role)
             if name_key and role_key:
                 by_name_role.setdefault((name_key, role_key), []).append(employee)
@@ -4743,12 +4813,31 @@ async def upload_li_grading(
 
         for record in records:
             row_hint = str(record["row_hint"])
+            cli_name = _clean_import_text(record.get("cli_name"))
+            cli_id = _clean_import_text(record.get("cli_id"))
             crew_key = str(record.get("crew_id") or "").upper()
             name_key = _normalize_import_name(record.get("name"))
             role_key = str(record.get("role") or "")
             target: Employee | None = None
 
-            if crew_key:
+            if crew_key and name_key:
+                crew_name_matches = by_crew_name.get((crew_key, name_key), [])
+                if len(crew_name_matches) == 1:
+                    target = crew_name_matches[0]
+                elif len(crew_name_matches) > 1:
+                    filtered_matches = [
+                        employee
+                        for employee in crew_name_matches
+                        if normalize_role(employee.role) == role_key
+                    ]
+                    if len(filtered_matches) == 1:
+                        target = filtered_matches[0]
+                    else:
+                        warnings.append(f"CLI Grading {row_hint}: skipped because CREW ID + NAME matched multiple roster rows.")
+                        skipped += 1
+                        continue
+
+            if target is None and crew_key:
                 crew_matches = by_crew.get(crew_key, [])
                 filtered_matches = [
                     employee
@@ -4758,33 +4847,33 @@ async def upload_li_grading(
                 if len(filtered_matches) == 1:
                     target = filtered_matches[0]
                 elif len(filtered_matches) > 1:
-                    warnings.append(f"LI Grading {row_hint}: skipped because CREW ID, NAME, and DESIGNATION matched multiple roster rows.")
+                    warnings.append(f"CLI Grading {row_hint}: skipped because CREW ID, NAME, and DESIGNATION matched multiple roster rows.")
                     skipped += 1
                     continue
                 elif crew_matches:
-                    warnings.append(f"LI Grading {row_hint}: skipped because CREW ID {crew_key} matched the roster but NAME / DESIGNATION did not match.")
+                    warnings.append(f"CLI Grading {row_hint}: skipped because CREW ID {crew_key} matched the roster but NAME / DESIGNATION did not match.")
                     skipped += 1
                     continue
 
             if target is None:
                 if not name_key or not role_key:
-                    warnings.append(f"LI Grading {row_hint}: no matching CLI Roster row found.")
+                    warnings.append(f"CLI Grading {row_hint}: no matching CLI Roster row found.")
                     skipped += 1
                     continue
                 fallback_matches = by_name_role.get((name_key, role_key), [])
                 if len(fallback_matches) == 1:
                     target = fallback_matches[0]
                 elif len(fallback_matches) > 1:
-                    warnings.append(f"LI Grading {row_hint}: skipped because NAME + DESIGNATION matched multiple CLI Roster rows.")
+                    warnings.append(f"CLI Grading {row_hint}: skipped because NAME + DESIGNATION matched multiple CLI Roster rows.")
                     skipped += 1
                     continue
                 else:
-                    warnings.append(f"LI Grading {row_hint}: no matching CLI Roster row found.")
+                    warnings.append(f"CLI Grading {row_hint}: no matching CLI Roster row found.")
                     skipped += 1
                     continue
 
             if target.id is not None and target.id in touched_ids:
-                warnings.append(f"LI Grading {row_hint}: skipped because that roster row already received a grading update from another row in this workbook.")
+                warnings.append(f"CLI Grading {row_hint}: skipped because that roster row already received a grading update from another row in this workbook.")
                 skipped += 1
                 continue
 
@@ -4792,8 +4881,10 @@ async def upload_li_grading(
             new_due = record.get("grading_due")
             old_grade = _clean_import_text(target.gradation)
             old_due = target.grading_due
+            old_cli = _clean_import_text(target.cli)
+            old_cli_id = _clean_import_text(target.cli_id)
 
-            if old_grade == new_grade and old_due == new_due:
+            if old_grade == new_grade and old_due == new_due and old_cli == cli_name and old_cli_id == cli_id:
                 unchanged += 1
                 if target.id is not None:
                     touched_ids.add(target.id)
@@ -4804,9 +4895,15 @@ async def upload_li_grading(
                 changes.append(f"Gradation: {_format_sync_value(old_grade)} -> {_format_sync_value(new_grade)}")
             if old_due != new_due:
                 changes.append(f"Grading Due: {_format_sync_value(old_due)} -> {_format_sync_value(new_due)}")
+            if old_cli != cli_name:
+                changes.append(f"CLI: {_format_sync_value(old_cli)} -> {_format_sync_value(cli_name)}")
+            if old_cli_id != cli_id:
+                changes.append(f"CLI ID: {_format_sync_value(old_cli_id)} -> {_format_sync_value(cli_id)}")
 
             target.gradation = new_grade
             target.grading_due = new_due
+            target.cli = cli_name
+            target.cli_id = cli_id
             updated += 1
             if target.id is not None:
                 touched_ids.add(target.id)
@@ -4817,7 +4914,7 @@ async def upload_li_grading(
         session.commit()
         _save_li_grading_metadata(filename)
         if updated == 0 and unchanged > 0 and skipped == 0:
-            notice = "No change found in LI grading file."
+            notice = "No change found in CLI grading file."
         else:
             notice_parts = []
             if updated:
@@ -4826,7 +4923,7 @@ async def upload_li_grading(
                 notice_parts.append(f"{skipped} skipped")
             if not notice_parts:
                 notice_parts.append("No change found")
-            notice = "LI grading update complete: " + ", ".join(notice_parts) + "."
+            notice = "CLI grading update complete: " + ", ".join(notice_parts) + "."
         warning_message = f"Mismatch / auto-fixed records: {len(warnings)}" if warnings else ""
         return templates.TemplateResponse(
             "cli.html",
@@ -4840,7 +4937,7 @@ async def upload_li_grading(
             ),
         )
     except HTTPException as exc:
-        detail = exc.detail if isinstance(exc.detail, str) else "LI grading update failed."
+        detail = exc.detail if isinstance(exc.detail, str) else "CLI grading update failed."
         return templates.TemplateResponse(
             "cli.html",
             _cli_page_context(

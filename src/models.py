@@ -25,6 +25,7 @@ class Employee(SQLModel, table=True):
     gradation: str | None = None
     grading_due: date | None = None
     cli: str | None = None
+    cli_id: str | None = None
     pme_due: date | None = None
     technical_due: date | None = None
     transportation_due: date | None = None

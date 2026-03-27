@@ -230,7 +230,7 @@
               <tbody>
                 {% for e in cli_roster %}
                 <tr>
-                  <td>{{ e.cli }}</td>
+                  <td>{{ e.cli | cli_label(e.cli_id) }}</td>
                   <td><a class="cli-roster-link" href="/employees/{{ e.id }}">{{ e.name }}</a></td>
                   <td>{{ e.hrms or '' }}</td>
                   <td>{{ e.crew_id or '' }}</td>

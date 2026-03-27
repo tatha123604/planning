@@ -131,7 +131,7 @@
                   <td>{{ e.hrms or '' }}</td>
                   <td>{{ e.crew_id or '' }}</td>
                   <td>{{ e.role }}</td>
-                  <td>{{ e.cli or '' }}</td>
+                  <td>{{ e.cli | cli_label(e.cli_id) }}</td>
                   <td>{{ e.gradation or '' }}</td>
                   <td>{{ e.retirement_date | dmy if e.retirement_date else '' }}</td>
                   <td>{{ (e.retirement_date | hire_by(30)) | dmy if e.retirement_date else '' }}</td>

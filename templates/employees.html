@@ -175,7 +175,7 @@
                   <td>{{ e.category or '' }}</td>
                   <td>{{ e.pf_no or '' }}</td>
                   <td>{{ e.gradation or '' }}</td>
-                  <td>{{ e.cli or '' }}</td>
+                  <td>{{ e.cli | cli_label(e.cli_id) }}</td>
                   <td>{{ e.dob | dmy }}</td>
                   <td class="working-at-col">{{ e.working_at or '' }}</td>
                   <td class="actions-cell actions-col">
