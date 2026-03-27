@@ -226,12 +226,13 @@
       const gradingDetailsList = document.getElementById('grading-details-list');
       if (gradingDetailsToggle && gradingDetailsList) {
         const detailItems = Array.from(gradingDetailsList.querySelectorAll('li'));
+        const collapsedCount = 10;
         let detailsExpanded = false;
         const renderDetails = () => {
           detailItems.forEach((item, index) => {
-            item.hidden = !detailsExpanded && index >= 5;
+            item.hidden = !detailsExpanded && index >= collapsedCount;
           });
-          if (detailItems.length > 5) {
+          if (detailItems.length > collapsedCount) {
             gradingDetailsToggle.hidden = false;
             gradingDetailsToggle.textContent = detailsExpanded ? 'Show less' : 'Show more';
             gradingDetailsToggle.setAttribute('aria-expanded', detailsExpanded ? 'true' : 'false');
