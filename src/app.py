@@ -194,7 +194,7 @@ def format_cli_label(cli_name, cli_id=None):
     name_text, id_text = _canonicalize_cli_name(cli_name, cli_id)
     if name_text and id_text:
         return f"{name_text} ({id_text})"
-    return name_text or id_text
+    return name_text or id_text or ""
 
 
 templates.env.filters["cli_label"] = format_cli_label
