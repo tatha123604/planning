@@ -79,6 +79,10 @@
     if (!table.tBodies.length) return;
     const rows = Array.from(table.tBodies[0].rows || []);
     if (!rows.length) return;
+    const scrollContainer = table.closest(".table-wrap");
+    const pagerAnchor = scrollContainer || table;
+    const pagerHost = pagerAnchor.parentElement;
+    if (!pagerHost) return;
     const isTotalRow = (row) =>
       Array.from(row.cells || []).some((cell) =>
         String(cell.textContent || "").trim().toUpperCase() === "TOTAL"
@@ -96,11 +100,9 @@
     const prevButtons = [topPager.prev, bottomPager.prev];
     const nextButtons = [topPager.next, bottomPager.next];
     const syncPagerWidths = () => {
-      const parentWidth = table.parentElement?.clientWidth || 0;
-      const tableWidth = table.scrollWidth || table.offsetWidth || 0;
-      const targetWidth = Math.max(parentWidth, tableWidth);
+      const hostWidth = pagerAnchor.clientWidth || pagerHost.clientWidth || table.clientWidth || 0;
       [topPager.wrapper, bottomPager.wrapper].forEach((wrapper) => {
-        wrapper.style.width = targetWidth > 0 ? `${targetWidth}px` : "";
+        wrapper.style.width = hostWidth > 0 ? `${hostWidth}px` : "";
       });
     };
 
@@ -194,8 +196,8 @@
       });
     });
 
-    table.parentElement?.insertBefore(topPager.wrapper, table);
-    table.insertAdjacentElement("afterend", bottomPager.wrapper);
+    pagerHost.insertBefore(topPager.wrapper, pagerAnchor);
+    pagerAnchor.insertAdjacentElement("afterend", bottomPager.wrapper);
     window.addEventListener("resize", syncPagerWidths);
     table.addEventListener("table-pager:refresh", (event) => {
       if (event?.detail?.resetPage) {
