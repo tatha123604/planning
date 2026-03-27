@@ -3,14 +3,6 @@
 
   const normalizeText = (value) => String(value ?? "").replace(/\s+/g, " ").trim();
 
-  const escapeHtml = (value) =>
-    String(value ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#39;");
-
   const sanitizeFilename = (value, fallback = "table_export") => {
     const cleaned = normalizeText(value)
       .toLowerCase()
@@ -93,7 +85,7 @@
     };
   };
 
-  const parseDownloadFilename = (response, fallbackTitle) => {
+  const parseDownloadFilename = (response, fallbackTitle, extension) => {
     const header = response.headers.get("content-disposition") || "";
     const utfMatch = header.match(/filename\*=UTF-8''([^;]+)/i);
     if (utfMatch?.[1]) {
@@ -103,143 +95,48 @@
     if (plainMatch?.[1]) {
       return plainMatch[1];
     }
-    return `${sanitizeFilename(fallbackTitle)}.xlsx`;
+    return `${sanitizeFilename(fallbackTitle)}.${extension}`;
   };
 
-  const buildPrintDocument = (snapshot) => {
-    const headerHtml = snapshot.headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("");
-    const rowHtml = snapshot.rows
-      .map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`)
-      .join("");
-
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <title>${escapeHtml(snapshot.title)} PDF</title>
-  <style>
-    @page { size: landscape; margin: 12mm; }
-    body {
-      font-family: "Segoe UI", Arial, sans-serif;
-      margin: 0;
-      color: #122235;
-      background: #ffffff;
-    }
-    .print-shell {
-      padding: 18px 20px;
-    }
-    h1 {
-      margin: 0 0 8px;
-      font-size: 24px;
-      color: #173a5c;
-    }
-    .meta {
-      margin: 0 0 16px;
-      font-size: 12px;
-      color: #4f6d87;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      table-layout: auto;
-      font-size: 11px;
-    }
-    thead th {
-      background: #173a5c;
-      color: #f3fbff;
-      padding: 8px 10px;
-      border: 1px solid #d3dfeb;
-      text-align: left;
-    }
-    tbody td {
-      padding: 7px 10px;
-      border: 1px solid #d3dfeb;
-      vertical-align: top;
-      word-break: break-word;
-    }
-    tbody tr:nth-child(even) td {
-      background: #f7fbff;
-    }
-  </style>
-</head>
-<body>
-  <div class="print-shell">
-    <h1>${escapeHtml(snapshot.title)}</h1>
-    <p class="meta">Rows: ${snapshot.rows.length} | Generated: ${escapeHtml(new Date().toLocaleString())}</p>
-    <table>
-      <thead><tr>${headerHtml}</tr></thead>
-      <tbody>${rowHtml}</tbody>
-    </table>
-  </div>
-</body>
-</html>`;
-  };
-
-  const printSnapshot = (snapshot, setStatus) => {
-    const existingFrame = document.getElementById("table-export-print-frame");
-    if (existingFrame) {
-      existingFrame.remove();
-    }
-
-    const frame = document.createElement("iframe");
-    frame.id = "table-export-print-frame";
-    frame.setAttribute("aria-hidden", "true");
-    frame.style.position = "fixed";
-    frame.style.right = "0";
-    frame.style.bottom = "0";
-    frame.style.width = "0";
-    frame.style.height = "0";
-    frame.style.border = "0";
-    frame.style.opacity = "0";
-    frame.style.pointerEvents = "none";
-    document.body.appendChild(frame);
-
-    const cleanup = () => {
-      if (frame.parentNode) {
-        frame.parentNode.removeChild(frame);
+  const downloadSnapshot = async (
+    snapshot,
+    endpoint,
+    extension,
+    button,
+    setStatus,
+    pendingMessage,
+    readyMessage,
+    failureMessage
+  ) => {
+    try {
+      setStatus(pendingMessage);
+      button.disabled = true;
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(snapshot),
+      });
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || failureMessage);
       }
-    };
-
-    const win = frame.contentWindow;
-    const doc = win?.document;
-    if (!win || !doc) {
-      cleanup();
-      setStatus("PDF print failed.", true);
-      return;
+      const blob = await response.blob();
+      const downloadUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.download = parseDownloadFilename(response, snapshot.title, extension);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+      setStatus(`${readyMessage} (${snapshot.rows.length} rows).`);
+      window.setTimeout(() => setStatus(""), 2400);
+    } catch (error) {
+      console.error(error);
+      setStatus(failureMessage, true);
+    } finally {
+      button.disabled = false;
     }
-
-    let started = false;
-    const startPrint = () => {
-      if (started) {
-        return;
-      }
-      started = true;
-      try {
-        setStatus("Opening PDF dialog...");
-        win.onafterprint = () => {
-          window.setTimeout(() => {
-            cleanup();
-            setStatus("");
-          }, 200);
-        };
-        win.focus();
-        win.print();
-        window.setTimeout(() => {
-          cleanup();
-          setStatus("");
-        }, 60000);
-      } catch (error) {
-        console.error(error);
-        cleanup();
-        setStatus("PDF print failed.", true);
-      }
-    };
-
-    frame.addEventListener("load", () => window.setTimeout(startPrint, 150), { once: true });
-    doc.open();
-    doc.write(buildPrintDocument(snapshot));
-    doc.close();
-    window.setTimeout(startPrint, 300);
   };
 
   const injectToolbar = (table, tableIndex) => {
@@ -281,7 +178,7 @@
       status.classList.toggle("is-error", isError);
     };
 
-    pdfButton.addEventListener("click", () => {
+    pdfButton.addEventListener("click", async () => {
       const snapshot = buildSnapshot(table, tableIndex);
       const confirmed = window.confirm(
         `Generate PDF for "${snapshot.title}"?\nRows: ${snapshot.rows.length}`
@@ -291,7 +188,16 @@
         window.setTimeout(() => setStatus(""), 1800);
         return;
       }
-      printSnapshot(snapshot, setStatus);
+      await downloadSnapshot(
+        snapshot,
+        "/exports/table.pdf",
+        "pdf",
+        pdfButton,
+        setStatus,
+        "Preparing PDF...",
+        "PDF ready",
+        "PDF export failed."
+      );
     });
 
     excelButton.addEventListener("click", async () => {
@@ -304,35 +210,16 @@
         window.setTimeout(() => setStatus(""), 1800);
         return;
       }
-      try {
-        setStatus("Preparing Excel...");
-        excelButton.disabled = true;
-        const response = await fetch("/exports/table.xlsx", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(snapshot),
-        });
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(errorText || "Excel export failed.");
-        }
-        const blob = await response.blob();
-        const downloadUrl = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = downloadUrl;
-        link.download = parseDownloadFilename(response, snapshot.title);
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
-        setStatus(`Excel ready (${snapshot.rows.length} rows).`);
-        window.setTimeout(() => setStatus(""), 2400);
-      } catch (error) {
-        console.error(error);
-        setStatus("Excel export failed.", true);
-      } finally {
-        excelButton.disabled = false;
-      }
+      await downloadSnapshot(
+        snapshot,
+        "/exports/table.xlsx",
+        "xlsx",
+        excelButton,
+        setStatus,
+        "Preparing Excel...",
+        "Excel ready",
+        "Excel export failed."
+      );
     });
 
     actions.append(pdfButton, excelButton);

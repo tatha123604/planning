@@ -8,8 +8,9 @@ import math
 import os
 from io import BytesIO, StringIO
 from pathlib import Path
-from typing import Optional
 import re
+import textwrap
+from typing import Optional
 from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, Form, Request, UploadFile, File, HTTPException
@@ -274,6 +275,179 @@ def _sanitize_export_filename(value: object | None, suffix: str) -> str:
 
 def _normalize_export_text(value: object | None) -> str:
     return re.sub(r"\s+", " ", str(value or "").strip())
+
+
+def _coerce_export_table_payload(payload: object) -> tuple[str, list[str], list[list[str]]]:
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Export payload must be an object.")
+
+    headers_payload = payload.get("headers")
+    rows_payload = payload.get("rows")
+    if not isinstance(headers_payload, list) or not headers_payload:
+        raise HTTPException(status_code=400, detail="Export requires at least one column.")
+    if rows_payload is not None and not isinstance(rows_payload, list):
+        raise HTTPException(status_code=400, detail="Export rows payload is invalid.")
+
+    title = _sanitize_export_title(payload.get("title"))
+    headers = [
+        _normalize_export_text(header) or f"Column {index + 1}"
+        for index, header in enumerate(headers_payload)
+    ]
+    width = len(headers)
+    rows: list[list[str]] = []
+    for raw_row in rows_payload or []:
+        if not isinstance(raw_row, list):
+            continue
+        normalized = [_normalize_export_text(cell) for cell in raw_row[:width]]
+        if len(normalized) < width:
+            normalized.extend([""] * (width - len(normalized)))
+        rows.append(normalized)
+    return title, headers, rows
+
+
+def _pdf_escape_text(value: object | None) -> str:
+    text = _normalize_export_text(value).encode("latin-1", "replace").decode("latin-1")
+    return text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+
+
+def _wrap_pdf_cell(value: object | None, width: int) -> list[str]:
+    text = _normalize_export_text(value)
+    if width <= 1:
+        return [text[:width]]
+    if not text:
+        return [""]
+    return textwrap.wrap(text, width=width, break_long_words=True, break_on_hyphens=False) or [""]
+
+
+def _fit_pdf_column_widths(headers: list[str], rows: list[list[str]], max_chars: int = 120) -> list[int]:
+    min_width = 5
+    max_width = 24
+    widths = [max(min_width, min(len(header), max_width)) for header in headers]
+    for row in rows:
+        for index, cell in enumerate(row[: len(widths)]):
+            widths[index] = max(widths[index], min(len(_normalize_export_text(cell)), max_width))
+
+    allowed = max_chars - (3 * max(0, len(widths) - 1))
+    total = sum(widths)
+    while total > allowed:
+        index = max(range(len(widths)), key=lambda item: widths[item])
+        if widths[index] <= min_width:
+            break
+        widths[index] -= 1
+        total -= 1
+    return widths
+
+
+def _format_pdf_row_block(values: list[str], widths: list[int]) -> list[str]:
+    wrapped_cells = [_wrap_pdf_cell(values[index] if index < len(values) else "", width) for index, width in enumerate(widths)]
+    block_height = max((len(lines) for lines in wrapped_cells), default=1)
+    lines: list[str] = []
+    for line_index in range(block_height):
+        parts = []
+        for col_index, width in enumerate(widths):
+            text = wrapped_cells[col_index][line_index] if line_index < len(wrapped_cells[col_index]) else ""
+            parts.append(text.ljust(width))
+        lines.append(" | ".join(parts))
+    return lines
+
+
+def _build_table_pdf_bytes(title: str, headers: list[str], rows: list[list[str]]) -> bytes:
+    widths = _fit_pdf_column_widths(headers, rows)
+    header_block = _format_pdf_row_block(headers, widths)
+    separator = "-+-".join("-" * width for width in widths)
+    row_blocks = [_format_pdf_row_block(row, widths) for row in rows] or [["No rows available."]]
+
+    page_capacity = 38
+    pages: list[list[str]] = []
+    current_page: list[str] = []
+    used_lines = 0
+
+    def start_page() -> None:
+        nonlocal current_page, used_lines
+        current_page = []
+        current_page.extend(header_block)
+        current_page.append(separator)
+        used_lines = len(current_page)
+
+    start_page()
+    for block in row_blocks:
+        remaining = list(block)
+        while remaining:
+            free_space = page_capacity - used_lines
+            if free_space <= 0:
+                pages.append(current_page)
+                start_page()
+                free_space = page_capacity - used_lines
+            take = min(len(remaining), free_space)
+            current_page.extend(remaining[:take])
+            used_lines += take
+            remaining = remaining[take:]
+            if remaining:
+                pages.append(current_page)
+                start_page()
+    pages.append(current_page)
+
+    page_width = 842
+    page_height = 595
+    title_y = 560
+    meta_y = 542
+    table_start_y = 520
+    line_height = 11
+
+    objects: list[str] = [
+        "<< /Type /Catalog /Pages 2 0 R >>",
+        "",
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>",
+    ]
+    page_refs: list[int] = []
+
+    total_pages = len(pages)
+    for page_index, page_lines in enumerate(pages, start=1):
+        commands = [
+            f"BT /F1 16 Tf 1 0 0 1 36 {title_y} Tm ({_pdf_escape_text(title)}) Tj ET",
+            f"BT /F1 9 Tf 1 0 0 1 36 {meta_y} Tm ({_pdf_escape_text(f'Rows: {len(rows)}   Page: {page_index}/{total_pages}')}) Tj ET",
+        ]
+        for line_number, line in enumerate(page_lines):
+            y = table_start_y - (line_number * line_height)
+            if y < 28:
+                break
+            commands.append(f"BT /F2 8.4 Tf 1 0 0 1 36 {y} Tm ({_pdf_escape_text(line)}) Tj ET")
+
+        stream_body = "\n".join(commands).encode("latin-1", "replace")
+        content_object = (
+            f"<< /Length {len(stream_body)} >>\nstream\n".encode("latin-1")
+            + stream_body
+            + b"\nendstream"
+        ).decode("latin-1")
+        objects.append(content_object)
+        content_ref = len(objects)
+        page_object = (
+            f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {page_width} {page_height}] "
+            f"/Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents {content_ref} 0 R >>"
+        )
+        objects.append(page_object)
+        page_refs.append(len(objects))
+
+    objects[1] = f"<< /Type /Pages /Count {len(page_refs)} /Kids [{' '.join(f'{ref} 0 R' for ref in page_refs)}] >>"
+
+    pdf_parts = [b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n"]
+    offsets = [0]
+    running_offset = len(pdf_parts[0])
+    for index, obj in enumerate(objects, start=1):
+        offsets.append(running_offset)
+        chunk = f"{index} 0 obj\n{obj}\nendobj\n".encode("latin-1")
+        pdf_parts.append(chunk)
+        running_offset += len(chunk)
+
+    xref_offset = running_offset
+    xref_entries = ["0000000000 65535 f \n"] + [f"{offset:010d} 00000 n \n" for offset in offsets[1:]]
+    pdf_parts.append(f"xref\n0 {len(objects) + 1}\n".encode("latin-1"))
+    pdf_parts.append("".join(xref_entries).encode("latin-1"))
+    pdf_parts.append(
+        f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF".encode("latin-1")
+    )
+    return b"".join(pdf_parts)
 
 ADMIN_USER = "admin"
 ADMIN_PASS = "sdah1234"
@@ -3276,30 +3450,7 @@ async def export_table_xlsx(request: Request):
         payload = await request.json()
     except json.JSONDecodeError as exc:
         raise HTTPException(status_code=400, detail="Invalid export payload.") from exc
-    if not isinstance(payload, dict):
-        raise HTTPException(status_code=400, detail="Export payload must be an object.")
-
-    headers_payload = payload.get("headers")
-    rows_payload = payload.get("rows")
-    if not isinstance(headers_payload, list) or not headers_payload:
-        raise HTTPException(status_code=400, detail="Export requires at least one column.")
-    if rows_payload is not None and not isinstance(rows_payload, list):
-        raise HTTPException(status_code=400, detail="Export rows payload is invalid.")
-
-    title = _sanitize_export_title(payload.get("title"))
-    headers = [
-        _normalize_export_text(header) or f"Column {index + 1}"
-        for index, header in enumerate(headers_payload)
-    ]
-    width = len(headers)
-    rows: list[list[str]] = []
-    for raw_row in rows_payload or []:
-        if not isinstance(raw_row, list):
-            continue
-        normalized = [_normalize_export_text(cell) for cell in raw_row[:width]]
-        if len(normalized) < width:
-            normalized.extend([""] * (width - len(normalized)))
-        rows.append(normalized)
+    title, headers, rows = _coerce_export_table_payload(payload)
 
     wb = Workbook()
     ws = wb.active
@@ -3331,6 +3482,23 @@ async def export_table_xlsx(request: Request):
     return StreamingResponse(
         stream,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
+    )
+
+
+@app.post("/exports/table.pdf")
+async def export_table_pdf(request: Request):
+    try:
+        payload = await request.json()
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail="Invalid export payload.") from exc
+
+    title, headers, rows = _coerce_export_table_payload(payload)
+    pdf_bytes = _build_table_pdf_bytes(title, headers, rows)
+    filename = _sanitize_export_filename(title, "pdf")
+    return StreamingResponse(
+        BytesIO(pdf_bytes),
+        media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
     )
 
