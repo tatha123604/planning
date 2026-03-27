@@ -2955,6 +2955,12 @@ def _working_at_key(value: object | None) -> str:
     return (_clean_import_text(value) or "").upper()
 
 
+def _one_working_at_blank(first: object | None, second: object | None) -> bool:
+    first_key = _working_at_key(first)
+    second_key = _working_at_key(second)
+    return (not first_key and bool(second_key)) or (bool(first_key) and not second_key)
+
+
 def _cleanup_row_payload(employee: Employee) -> dict[str, object]:
     return {
         "id": employee.id,
@@ -3063,23 +3069,46 @@ def _build_duplicate_cleanup_plan(session: Session) -> tuple[list[dict[str, obje
             working_groups.setdefault(_working_at_key(employee.working_at), []).append(employee)
 
         if len(working_groups) > 1:
-            conflict_rows: list[Employee] = []
-            working_keys = list(working_groups.keys())
-            for idx, working_key in enumerate(working_keys):
-                for other_key in working_keys[idx + 1 :]:
-                    for first in working_groups[working_key]:
-                        for second in working_groups[other_key]:
-                            if same_name_dob_merge_condition(first, second):
-                                conflict_rows = rows
+            blank_group = working_groups.get("", [])
+            filled_groups = {key: value for key, value in working_groups.items() if key}
+            auto_merged_blank_group = False
+
+            if blank_group and len(filled_groups) == 1:
+                filled_rows = next(iter(filled_groups.values()))
+                all_rows = blank_group + filled_rows
+                nonblank_last5 = {
+                    _emp_no_last5(employee.pf_no)
+                    for employee in all_rows
+                    if _clean_import_text(employee.pf_no)
+                }
+                nonblank_last5.discard(None)
+                pairwise_ok = all(
+                    same_name_dob_merge_condition(first, second)
+                    for first in blank_group
+                    for second in filled_rows
+                )
+                if pairwise_ok and len(nonblank_last5) <= 1:
+                    register_plan("Same Name + DOB and one Working At is blank", all_rows)
+                    auto_merged_blank_group = True
+
+            if not auto_merged_blank_group:
+                conflict_rows: list[Employee] = []
+                working_keys = list(working_groups.keys())
+                for idx, working_key in enumerate(working_keys):
+                    for other_key in working_keys[idx + 1 :]:
+                        for first in working_groups[working_key]:
+                            for second in working_groups[other_key]:
+                                if same_name_dob_merge_condition(first, second):
+                                    conflict_rows = rows
+                                    break
+                            if conflict_rows:
                                 break
                         if conflict_rows:
                             break
                     if conflict_rows:
                         break
                 if conflict_rows:
-                    break
-            if conflict_rows:
-                register_conflict("Same Name + DOB candidate but Working At differs", conflict_rows)
+                    register_conflict("Same Name + DOB candidate but Working At differs", conflict_rows)
 
         for working_at_rows in working_groups.values():
             if len(working_at_rows) < 2:
@@ -3306,16 +3335,24 @@ def _cleanup_employee_master_duplicates_for_record(
     for employee in list(employees):
         if employee is target:
             continue
-        if _working_at_key(employee.working_at) != target_working_at:
-            continue
 
         candidate_pf = _clean_import_text(employee.pf_no)
         candidate_name = _normalize_import_name(employee.name)
+        same_working_at = _working_at_key(employee.working_at) == target_working_at
+        blank_vs_value_working_at = _one_working_at_blank(employee.working_at, target.working_at)
 
         if target_name and dob and candidate_name == target_name and employee.dob == dob:
-            if candidate_pf is None or emp_no is None or (target_last5 and _emp_no_last5(candidate_pf) == target_last5):
+            if same_working_at and (
+                candidate_pf is None or emp_no is None or (target_last5 and _emp_no_last5(candidate_pf) == target_last5)
+            ):
                 duplicates.append((employee, "Same Name + DOB"))
                 continue
+            if blank_vs_value_working_at and target_last5 and candidate_pf and _emp_no_last5(candidate_pf) == target_last5:
+                duplicates.append((employee, "Same Name + DOB and one Working At is blank"))
+                continue
+
+        if not same_working_at:
+            continue
 
         if target_name and target_role and candidate_name == target_name and normalize_role(employee.role) == target_role:
             if candidate_pf and target_last5 and _emp_no_last5(candidate_pf) == target_last5:
