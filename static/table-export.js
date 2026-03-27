@@ -171,14 +171,75 @@
       <tbody>${rowHtml}</tbody>
     </table>
   </div>
-  <script>
-    window.addEventListener("load", () => {
-      window.setTimeout(() => window.print(), 150);
-    });
-    window.onafterprint = () => window.close();
-  </script>
 </body>
 </html>`;
+  };
+
+  const printSnapshot = (snapshot, setStatus) => {
+    const existingFrame = document.getElementById("table-export-print-frame");
+    if (existingFrame) {
+      existingFrame.remove();
+    }
+
+    const frame = document.createElement("iframe");
+    frame.id = "table-export-print-frame";
+    frame.setAttribute("aria-hidden", "true");
+    frame.style.position = "fixed";
+    frame.style.right = "0";
+    frame.style.bottom = "0";
+    frame.style.width = "0";
+    frame.style.height = "0";
+    frame.style.border = "0";
+    frame.style.opacity = "0";
+    frame.style.pointerEvents = "none";
+    document.body.appendChild(frame);
+
+    const cleanup = () => {
+      if (frame.parentNode) {
+        frame.parentNode.removeChild(frame);
+      }
+    };
+
+    const win = frame.contentWindow;
+    const doc = win?.document;
+    if (!win || !doc) {
+      cleanup();
+      setStatus("PDF print failed.", true);
+      return;
+    }
+
+    let started = false;
+    const startPrint = () => {
+      if (started) {
+        return;
+      }
+      started = true;
+      try {
+        setStatus("Opening PDF dialog...");
+        win.onafterprint = () => {
+          window.setTimeout(() => {
+            cleanup();
+            setStatus("");
+          }, 200);
+        };
+        win.focus();
+        win.print();
+        window.setTimeout(() => {
+          cleanup();
+          setStatus("");
+        }, 60000);
+      } catch (error) {
+        console.error(error);
+        cleanup();
+        setStatus("PDF print failed.", true);
+      }
+    };
+
+    frame.addEventListener("load", () => window.setTimeout(startPrint, 150), { once: true });
+    doc.open();
+    doc.write(buildPrintDocument(snapshot));
+    doc.close();
+    window.setTimeout(startPrint, 300);
   };
 
   const injectToolbar = (table, tableIndex) => {
@@ -222,16 +283,7 @@
 
     pdfButton.addEventListener("click", () => {
       const snapshot = buildSnapshot(table, tableIndex);
-      const printWindow = window.open("", "_blank", "noopener,noreferrer");
-      if (!printWindow) {
-        setStatus("PDF window blocked.", true);
-        return;
-      }
-      printWindow.document.open();
-      printWindow.document.write(buildPrintDocument(snapshot));
-      printWindow.document.close();
-      setStatus("PDF ready for save.");
-      window.setTimeout(() => setStatus(""), 2400);
+      printSnapshot(snapshot, setStatus);
     });
 
     excelButton.addEventListener("click", async () => {
