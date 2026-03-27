@@ -792,6 +792,8 @@ def employees_page(
             return (e.name.lower(),)
         if sort == "retirement":
             return (e.retirement_date or date.max, e.name)
+        if sort == "category":
+            return ((e.category or "").lower(), e.name.lower())
         if sort == "hire":
             return (e.hire_date, e.name)
         if sort == "cli":
