@@ -45,8 +45,9 @@
       </header>
 
       <section class="grid">
-        <div class="card" style="grid-column: 1 / -1;">
-          <h2>Update Employee Table from Service Particulars + CMS Other Bio Data</h2>
+        <div class="card collapsible" style="grid-column: 1 / -1;">
+          <details open>
+            <summary>Update Employee Table from Service Particulars + CMS Other Bio Data</summary>
           {% if update_error %}
           <p class="error-text" role="alert">{{ update_error }}</p>
           {% endif %}
@@ -90,10 +91,12 @@
             </p>
             <button type="submit">Update Employee Table</button>
           </form>
+          </details>
         </div>
 
-        <div class="card" style="grid-column: 1 / -1;">
-          <h2>Smart Cleanup Existing Duplicates</h2>
+        <div class="card collapsible" style="grid-column: 1 / -1;">
+          <details {% if cleanup_error or cleanup_notice or cleanup_summary or cleanup_groups or cleanup_details %}open{% endif %}>
+            <summary>Smart Cleanup Existing Duplicates</summary>
           <p class="hint">
             Preview duplicate candidates first. Cleanup will merge matching rows and delete the duplicate row only when
             <code>working_at</code> is the same, or when a safe blank-vs-filled <code>working_at</code> match is found.
@@ -301,10 +304,12 @@
             {% endfor %}
           </ul>
           {% endif %}
+          </details>
         </div>
 
-        <div class="card">
-          <h2>Add Employee (manual)</h2>
+        <div class="card collapsible">
+          <details>
+            <summary>Add Employee (manual)</summary>
           <form method="post" action="/employees">
             <label>Name <input name="name" required /></label>
             <label>Designation
@@ -334,10 +339,12 @@
             <label>Working at <input name="working_at" /></label>
             <button type="submit">Add</button>
           </form>
+          </details>
         </div>
 
-        <div class="card">
-          <h2>Upload Employees (.xlsx)</h2>
+        <div class="card collapsible">
+          <details>
+            <summary>Upload Employees (.xlsx)</summary>
           <form method="post" action="/upload" enctype="multipart/form-data">
             <label>Excel file
               <input type="file" name="file" accept=".xlsx,.xlsm" required />
@@ -349,10 +356,12 @@
             </p>
             <button type="submit">Upload</button>
           </form>
+          </details>
         </div>
 
-        <div class="card">
-          <h2>Upload Seniority (.xlsx)</h2>
+        <div class="card collapsible">
+          <details>
+            <summary>Upload Seniority (.xlsx)</summary>
           <form method="post" action="/upload-seniority" enctype="multipart/form-data">
             <label>Excel file
               <input type="file" name="file" accept=".xlsx,.xlsm" required />
@@ -360,6 +369,7 @@
             <p class="hint">Columns: name, designation (role), seniority_rank (or seniority). Optional: promotion designation (promotion_role), promotion_ready_date. Rows update existing employees; names/designations must match the roster.</p>
             <button type="submit">Upload</button>
           </form>
+          </details>
         </div>
 
 
