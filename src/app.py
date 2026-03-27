@@ -2893,6 +2893,7 @@ def _build_duplicate_cleanup_plan(session: Session) -> tuple[list[dict[str, obje
     plan: list[dict[str, object]] = []
     conflicts: list[dict[str, object]] = []
     used_ids: set[int] = set()
+    seen_conflicts: set[tuple[str, tuple[int, ...]]] = set()
 
     def register_plan(reason: str, rows: list[Employee]) -> None:
         if len(rows) < 2:
@@ -2912,7 +2913,11 @@ def _build_duplicate_cleanup_plan(session: Session) -> tuple[list[dict[str, obje
     def register_conflict(reason: str, rows: list[Employee]) -> None:
         if len(rows) < 2:
             return
-        used_ids.update(employee.id for employee in rows if employee.id is not None)
+        row_ids = tuple(sorted(employee.id or 0 for employee in rows))
+        conflict_key = (reason, row_ids)
+        if conflict_key in seen_conflicts:
+            return
+        seen_conflicts.add(conflict_key)
         conflicts.append(
             {
                 "reason": reason,
@@ -2920,64 +2925,121 @@ def _build_duplicate_cleanup_plan(session: Session) -> tuple[list[dict[str, obje
             }
         )
 
-    by_name_dob_working: dict[tuple[str, str, str], list[Employee]] = {}
+    def same_name_dob_merge_condition(first: Employee, second: Employee) -> bool:
+        first_pf = _clean_import_text(first.pf_no)
+        second_pf = _clean_import_text(second.pf_no)
+        if first_pf is None or second_pf is None:
+            return True
+        first_last5 = _emp_no_last5(first_pf)
+        second_last5 = _emp_no_last5(second_pf)
+        return bool(first_last5 and second_last5 and first_last5 == second_last5)
+
+    by_name_dob: dict[tuple[str, str], list[Employee]] = {}
     for employee in employees:
         name_key = _normalize_import_name(employee.name)
         dob_key = employee.dob.isoformat() if employee.dob else None
         if not name_key or not dob_key:
             continue
-        working_key = (_clean_import_text(employee.working_at) or "").upper()
-        by_name_dob_working.setdefault((name_key, dob_key, working_key), []).append(employee)
+        by_name_dob.setdefault((name_key, dob_key), []).append(employee)
 
-    for rows in by_name_dob_working.values():
+    for rows in by_name_dob.values():
         if len(rows) < 2:
             continue
 
-        blank_pf_rows = [employee for employee in rows if _clean_import_text(employee.pf_no) is None]
-        nonblank_pf_rows = [employee for employee in rows if _clean_import_text(employee.pf_no) is not None]
-        by_last5: dict[str, list[Employee]] = {}
-        for employee in nonblank_pf_rows:
-            by_last5.setdefault(_emp_no_last5(employee.pf_no) or "", []).append(employee)
+        working_groups: dict[str, list[Employee]] = {}
+        for employee in rows:
+            working_groups.setdefault(_working_at_key(employee.working_at), []).append(employee)
 
-        for group_rows in by_last5.values():
-            if len(group_rows) > 1:
-                register_plan("Same Name + DOB + EMP NO last 5 match", group_rows)
+        if len(working_groups) > 1:
+            conflict_rows: list[Employee] = []
+            working_keys = list(working_groups.keys())
+            for idx, working_key in enumerate(working_keys):
+                for other_key in working_keys[idx + 1 :]:
+                    for first in working_groups[working_key]:
+                        for second in working_groups[other_key]:
+                            if same_name_dob_merge_condition(first, second):
+                                conflict_rows = rows
+                                break
+                        if conflict_rows:
+                            break
+                    if conflict_rows:
+                        break
+                if conflict_rows:
+                    break
+            if conflict_rows:
+                register_conflict("Same Name + DOB candidate but Working At differs", conflict_rows)
 
-        distinct_nonblank_groups = [group_rows for group_rows in by_last5.values() if group_rows]
-        remaining_blank_rows = [
-            employee
-            for employee in blank_pf_rows
-            if employee.id is None or employee.id not in used_ids
-        ]
-        remaining_nonblank_rows = [
-            employee
-            for employee in nonblank_pf_rows
-            if employee.id is None or employee.id not in used_ids
-        ]
+        for working_at_rows in working_groups.values():
+            if len(working_at_rows) < 2:
+                continue
 
-        if remaining_blank_rows and len(distinct_nonblank_groups) == 1:
-            merge_rows = remaining_blank_rows + remaining_nonblank_rows
-            register_plan("Same Name + DOB and one EMP NO is blank", merge_rows)
-        elif len(remaining_blank_rows) > 1 and not remaining_nonblank_rows:
-            register_plan("Same Name + DOB and all EMP NO values are blank", remaining_blank_rows)
-        elif remaining_blank_rows and len(distinct_nonblank_groups) > 1:
-            register_conflict("Same Name + DOB but multiple conflicting EMP NO values", rows)
+            blank_pf_rows = [employee for employee in working_at_rows if _clean_import_text(employee.pf_no) is None]
+            nonblank_pf_rows = [employee for employee in working_at_rows if _clean_import_text(employee.pf_no) is not None]
+            by_last5: dict[str, list[Employee]] = {}
+            for employee in nonblank_pf_rows:
+                by_last5.setdefault(_emp_no_last5(employee.pf_no) or "", []).append(employee)
 
-    by_name_role_working_last5: dict[tuple[str, str, str, str], list[Employee]] = {}
+            for group_rows in by_last5.values():
+                if len(group_rows) > 1:
+                    register_plan("Same Name + DOB + EMP NO last 5 match", group_rows)
+
+            distinct_nonblank_groups = [group_rows for group_rows in by_last5.values() if group_rows]
+            remaining_blank_rows = [
+                employee
+                for employee in blank_pf_rows
+                if employee.id is None or employee.id not in used_ids
+            ]
+            remaining_nonblank_rows = [
+                employee
+                for employee in nonblank_pf_rows
+                if employee.id is None or employee.id not in used_ids
+            ]
+
+            if remaining_blank_rows and len(distinct_nonblank_groups) == 1:
+                merge_rows = remaining_blank_rows + remaining_nonblank_rows
+                register_plan("Same Name + DOB and one EMP NO is blank", merge_rows)
+            elif len(remaining_blank_rows) > 1 and not remaining_nonblank_rows:
+                register_plan("Same Name + DOB and all EMP NO values are blank", remaining_blank_rows)
+            elif remaining_blank_rows and len(distinct_nonblank_groups) > 1:
+                register_conflict("Same Name + DOB but multiple conflicting EMP NO values", working_at_rows)
+
+    by_name_role: dict[tuple[str, str], list[Employee]] = {}
     for employee in employees:
         if employee.id is not None and employee.id in used_ids:
             continue
         name_key = _normalize_import_name(employee.name)
         role_key = normalize_role(employee.role) if employee.role else None
-        last5_key = _emp_no_last5(employee.pf_no)
-        if not name_key or not role_key or not last5_key:
+        if not name_key or not role_key:
             continue
-        working_key = (_clean_import_text(employee.working_at) or "").upper()
-        by_name_role_working_last5.setdefault((name_key, role_key, working_key, last5_key), []).append(employee)
+        by_name_role.setdefault((name_key, role_key), []).append(employee)
 
-    for rows in by_name_role_working_last5.values():
-        if len(rows) > 1:
-            register_plan("Same Name + Designation + EMP NO last 5 match", rows)
+    for rows in by_name_role.values():
+        if len(rows) < 2:
+            continue
+
+        by_working_last5: dict[tuple[str, str], list[Employee]] = {}
+        for employee in rows:
+            last5_key = _emp_no_last5(employee.pf_no)
+            if not last5_key:
+                continue
+            by_working_last5.setdefault((_working_at_key(employee.working_at), last5_key), []).append(employee)
+
+        by_last5_all_working: dict[str, set[str]] = {}
+        for working_key, last5_key in by_working_last5.keys():
+            by_last5_all_working.setdefault(last5_key, set()).add(working_key)
+
+        for last5_key, working_keys in by_last5_all_working.items():
+            if len(working_keys) > 1:
+                conflict_rows = [
+                    employee
+                    for employee in rows
+                    if _emp_no_last5(employee.pf_no) == last5_key
+                ]
+                register_conflict("Same Name + Designation + EMP NO last 5 match but Working At differs", conflict_rows)
+
+        for group_rows in by_working_last5.values():
+            if len(group_rows) > 1:
+                register_plan("Same Name + Designation + EMP NO last 5 match", group_rows)
 
     summary = {
         "merge_groups": len(plan),
