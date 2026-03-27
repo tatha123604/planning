@@ -225,6 +225,9 @@ def build_cli_distribution(employees: list[Employee]) -> list[dict[str, int | st
     """Aggregate gradation counts per CLI (case-insensitive)."""
     dist: dict[str, dict[str, int | str]] = {}
     for e in employees:
+        role = normalize_role(e.role)
+        if role not in CLI_DISTRIBUTION_ROLE_ORDER:
+            continue
         cli_raw = (e.cli or "").strip()
         cli_key = cli_raw.lower() if cli_raw else "unassigned"
         label = cli_raw or "Unassigned"
