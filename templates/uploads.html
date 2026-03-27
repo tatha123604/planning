@@ -132,20 +132,20 @@
           <p class="hint warning-text"><strong>Grouped by cleanup reason</strong></p>
           {% for group in cleanup_groups %}
           <details class="collapsible-card">
-            <summary>{{ group.reason }} - {{ group.item_count }} item(s)</summary>
+            <summary>{{ group["reason"] }} - {{ group["item_count"] }} item(s)</summary>
             <div class="cleanup-group-tools">
               <label>Search names in this group
                 <input type="search" class="cleanup-group-search" placeholder="Type to filter names" />
               </label>
               <label>Name list
-                <select class="cleanup-group-name-list" size="{{ 6 if group.names|length > 6 else (group.names|length if group.names|length else 1) }}">
-                  {% for name in group.names %}
+                <select class="cleanup-group-name-list" size="{{ 6 if group["names"]|length > 6 else (group["names"]|length if group["names"]|length else 1) }}">
+                  {% for name in group["names"] %}
                   <option>{{ name }}</option>
                   {% endfor %}
                 </select>
               </label>
             </div>
-            {% for item in group.items %}
+            {% for item in group["items"] %}
             <details class="collapsible-card cleanup-item-card" data-cleanup-item data-cleanup-label="{{ item.search_text }}">
               <summary>{{ item.summary }}</summary>
               {% if item.remove is defined %}
