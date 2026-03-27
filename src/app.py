@@ -2686,6 +2686,108 @@ def _find_employee_master_merge_candidate(
     return None
 
 
+def _employee_has_value(value: object | None) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    return True
+
+
+def _employee_completeness(employee: Employee) -> int:
+    fields = (
+        "name",
+        "role",
+        "hire_date",
+        "retirement_date",
+        "promotion_ready_date",
+        "category",
+        "pf_no",
+        "hrms",
+        "crew_id",
+        "dob",
+        "doa",
+        "do_report",
+        "status",
+        "working_at",
+        "gradation",
+        "cli",
+        "pme_due",
+        "technical_due",
+        "transportation_due",
+    )
+    return sum(1 for field in fields if _employee_has_value(getattr(employee, field)))
+
+
+def _dedupe_uploaded_employee_rows(session: Session, sync_details: list[str]) -> int:
+    groups: dict[tuple[str, str, str], list[Employee]] = {}
+    for employee in session.exec(select(Employee)).all():
+        name_key = _normalize_import_name(employee.name)
+        pf_key = _clean_import_text(employee.pf_no)
+        dob_key = employee.dob.isoformat() if employee.dob else None
+        if not name_key or not pf_key or not dob_key:
+            continue
+        groups.setdefault((name_key, dob_key, pf_key), []).append(employee)
+
+    removed = 0
+    merge_fields = (
+        "role",
+        "hire_date",
+        "retirement_date",
+        "promotion_role",
+        "promotion_ready_date",
+        "category",
+        "hrms",
+        "crew_id",
+        "doa",
+        "do_report",
+        "status",
+        "gradation",
+        "cli",
+        "pme_due",
+        "technical_due",
+        "transportation_due",
+    )
+
+    for employees in groups.values():
+        if len(employees) < 2:
+            continue
+
+        by_working_at: dict[str, list[Employee]] = {}
+        for employee in employees:
+            working_at_key = (_clean_import_text(employee.working_at) or "").upper()
+            by_working_at.setdefault(working_at_key, []).append(employee)
+
+        for working_at_group in by_working_at.values():
+            if len(working_at_group) < 2:
+                continue
+
+            ordered = sorted(
+                working_at_group,
+                key=lambda employee: (-_employee_completeness(employee), employee.id or 0),
+            )
+            keeper = ordered[0]
+            merged_count = 0
+
+            for duplicate in ordered[1:]:
+                for field_name in merge_fields:
+                    if not _employee_has_value(getattr(keeper, field_name)) and _employee_has_value(
+                        getattr(duplicate, field_name)
+                    ):
+                        setattr(keeper, field_name, getattr(duplicate, field_name))
+                session.delete(duplicate)
+                removed += 1
+                merged_count += 1
+
+            if merged_count:
+                location = _clean_import_text(keeper.working_at) or "blank working_at"
+                sync_details.append(
+                    f"Deduplicated {keeper.name}: kept 1 row for EMP NO {_format_sync_value(keeper.pf_no)} at {location}; removed {merged_count} duplicate row(s)."
+                )
+
+    return removed
+
+
 def _build_service_particular_records(
     content: bytes,
     warnings: list[str],
@@ -2888,7 +2990,7 @@ def _upsert_employee_master_records(
     records: dict[str, dict[str, object]],
     warnings: list[str],
     sync_details: list[str],
-) -> tuple[int, int, int, int]:
+) -> tuple[int, int, int, int, int]:
     added = 0
     updated = 0
     unchanged = 0
@@ -3028,8 +3130,9 @@ def _upsert_employee_master_records(
             )
             rebuild_exact_indexes()
 
+    deduplicated = _dedupe_uploaded_employee_rows(session, sync_details)
     session.commit()
-    return added, updated, unchanged, skipped
+    return added, updated, unchanged, skipped, deduplicated
 
 
 @app.post("/uploads/employee-master-sync")
@@ -3054,19 +3157,19 @@ async def upload_employee_master_sync(
 
         records, hrms_to_emp = _build_service_particular_records(service_content, warnings)
         _merge_cms_other_bio(records, hrms_to_emp, cms_content, warnings)
-        added, updated, unchanged, skipped = _upsert_employee_master_records(
+        added, updated, unchanged, skipped, deduplicated = _upsert_employee_master_records(
             session,
             records,
             warnings,
             sync_details,
         )
 
-        if added == 0 and updated == 0 and skipped == 0:
+        if added == 0 and updated == 0 and skipped == 0 and deduplicated == 0:
             notice = "No change found"
         else:
             notice = (
                 "Employee table update complete: "
-                f"{added} added, {updated} updated, {unchanged} unchanged, {skipped} skipped."
+                f"{added} added, {updated} updated, {unchanged} unchanged, {skipped} skipped, {deduplicated} deduplicated."
             )
         warning_text = ""
         if warnings:
