@@ -136,10 +136,10 @@
             </label>
             <button type="submit" data-no-confirm="true">Filter</button>
             <a class="ghost" href="/employees#employees-card">Reset</a>
-            <div class="summary-chip">Total: {{ employees | length }}</div>
+            <div class="summary-chip" id="employees-total-chip">Total: {{ employees | length }}</div>
           </form>
           <div class="table-wrap">
-            <table class="employee-table paged">
+            <table class="employee-table paged" id="employees-table">
               <thead>
                 <tr>
                   <th>Sl No.</th>
@@ -189,6 +189,7 @@
               </tbody>
             </table>
           </div>
+          <p class="hint warning-text" id="employees-empty-state" hidden>No employee matched this search.</p>
         </details>
       </section>
 
@@ -217,6 +218,9 @@
       const workingSelect = document.getElementById('filter-working');
       const employeesFilterForm = document.getElementById('employees-filter-form');
       const employeesSearchInput = document.getElementById('employees-search-input');
+      const employeesTable = document.getElementById('employees-table');
+      const employeesTotalChip = document.getElementById('employees-total-chip');
+      const employeesEmptyState = document.getElementById('employees-empty-state');
       const sync = () => {
         const sortVal = sortSelect ? sortSelect.value : '';
         const cliActive = sortVal === 'cli';
@@ -229,35 +233,66 @@
         sync();
       }
 
-      if (employeesFilterForm && employeesSearchInput) {
-        let searchTimer = null;
+      if (employeesFilterForm && employeesSearchInput && employeesTable && employeesTable.tBodies.length) {
+        const employeeRows = Array.from(employeesTable.tBodies[0].rows || []);
         let composing = false;
-        let lastSubmittedValue = employeesSearchInput.value;
 
-        const submitSearch = () => {
-          if (composing) return;
-          const currentValue = employeesSearchInput.value;
-          if (currentValue === lastSubmittedValue) return;
-          lastSubmittedValue = currentValue;
-          employeesFilterForm.requestSubmit();
-        };
+        const normalizeText = (value) =>
+          (value || '').toLowerCase().replace(/\s+/g, ' ').trim();
 
-        const scheduleSearch = () => {
-          if (searchTimer) {
-            window.clearTimeout(searchTimer);
+        const rowSearchText = (row) => {
+          if (!row.dataset.searchText) {
+            const searchCells = Array.from(row.cells || []).slice(0, -1);
+            row.dataset.searchText = normalizeText(
+              searchCells.map((cell) => cell.textContent || '').join(' ')
+            );
           }
-          searchTimer = window.setTimeout(submitSearch, 250);
+          return row.dataset.searchText;
         };
 
-        employeesSearchInput.addEventListener('input', scheduleSearch);
-        employeesSearchInput.addEventListener('search', scheduleSearch);
+        const applyLiveSearch = () => {
+          if (composing) return;
+          const query = normalizeText(employeesSearchInput.value);
+          const terms = query ? query.split(' ').filter(Boolean) : [];
+          let matched = 0;
+
+          employeeRows.forEach((row) => {
+            const haystack = rowSearchText(row);
+            const matches = !terms.length || terms.every((term) => haystack.includes(term));
+            row.dataset.filterHidden = matches ? 'false' : 'true';
+            if (matches) {
+              matched += 1;
+            }
+          });
+
+          if (employeesTotalChip) {
+            employeesTotalChip.textContent = `Total: ${matched}`;
+          }
+          if (employeesEmptyState) {
+            employeesEmptyState.hidden = matched !== 0;
+          }
+          employeesTable.dispatchEvent(
+            new CustomEvent('table-pager:refresh', { detail: { resetPage: true } })
+          );
+        };
+
+        employeesSearchInput.addEventListener('input', applyLiveSearch);
+        employeesSearchInput.addEventListener('search', applyLiveSearch);
+        employeesSearchInput.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            applyLiveSearch();
+          }
+        });
         employeesSearchInput.addEventListener('compositionstart', () => {
           composing = true;
         });
         employeesSearchInput.addEventListener('compositionend', () => {
           composing = false;
-          scheduleSearch();
+          applyLiveSearch();
         });
+
+        applyLiveSearch();
       }
 
       document.querySelectorAll('.employee-edit-link').forEach((link) => {

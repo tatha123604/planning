@@ -1,5 +1,6 @@
 (() => {
   const DEFAULT_PAGE_SIZE = 10;
+  const isFilterHidden = (row) => row?.dataset?.filterHidden === "true";
 
   function injectControls(table) {
     if (!table.tBodies.length) return;
@@ -57,31 +58,45 @@
     info.style.fontSize = "13px";
 
     function render() {
-      const total = pageableRows.length;
+      const visiblePageableRows = pageableRows.filter((row) => !isFilterHidden(row));
+      const total = visiblePageableRows.length;
       const ps = pageSize === 0 ? total : pageSize;
       const maxPage = ps === 0 ? 0 : Math.max(0, Math.ceil(total / ps) - 1);
       if (page > maxPage) page = maxPage;
 
-      pageableRows.forEach((row, idx) => {
+      pageableRows.forEach((row) => {
         row.classList.remove("table-paged-active");
+      });
+
+      visiblePageableRows.forEach((row, idx) => {
         if (ps === 0) {
           row.style.display = "";
-        } else {
-          const start = page * ps;
-          const end = start + ps;
-          row.style.display = idx >= start && idx < end ? "" : "none";
+          return;
         }
+        const start = page * ps;
+        const end = start + ps;
+        row.style.display = idx >= start && idx < end ? "" : "none";
       });
+
+      pageableRows
+        .filter((row) => isFilterHidden(row))
+        .forEach((row) => {
+          row.style.display = "none";
+        });
 
       stickyRows.forEach((row) => {
-        row.style.display = "";
+        row.style.display = total > 0 ? "" : "none";
       });
 
-      const startIdx = ps === 0 ? 1 : page * ps + 1;
-      const endIdx = ps === 0 ? total : Math.min(total, (page + 1) * ps);
-      info.textContent = ps === 0
-        ? `Showing all ${total}`
-        : `${startIdx}-${endIdx} of ${total}`;
+      if (total === 0) {
+        info.textContent = "0 results";
+      } else {
+        const startIdx = ps === 0 ? 1 : page * ps + 1;
+        const endIdx = ps === 0 ? total : Math.min(total, (page + 1) * ps);
+        info.textContent = ps === 0
+          ? `Showing all ${total}`
+          : `${startIdx}-${endIdx} of ${total}`;
+      }
 
       prev.disabled = ps === 0 || page === 0;
       next.disabled = ps === 0 || page >= maxPage;
@@ -101,8 +116,9 @@
     });
 
     next.addEventListener("click", () => {
-      const ps = pageSize === 0 ? rows.length : pageSize;
-      const maxPage = ps === 0 ? 0 : Math.max(0, Math.ceil(rows.length / ps) - 1);
+      const total = pageableRows.filter((row) => !isFilterHidden(row)).length;
+      const ps = pageSize === 0 ? total : pageSize;
+      const maxPage = ps === 0 ? 0 : Math.max(0, Math.ceil(total / ps) - 1);
       if (page < maxPage) {
         page += 1;
         render();
@@ -120,6 +136,12 @@
     controls.append(label, select, prev, next);
     wrapper.append(controls, info);
     table.parentElement?.insertBefore(wrapper, table);
+    table.addEventListener("table-pager:refresh", (event) => {
+      if (event?.detail?.resetPage) {
+        page = 0;
+      }
+      render();
+    });
     render();
   }
 
