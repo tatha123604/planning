@@ -86,14 +86,14 @@
             <button type="submit">Recalculate</button>
             {# <a class="ghost" href="{{ dashboard_link }}">Apply dates to Dashboard</a> #}
           </form>
-          <table class="paged">
+          <table class="paged clickable-table" id="retirements-by-designation-table">
             <thead>
               <tr><th>Designation</th><th>Retirements</th></tr>
             </thead>
             <tbody>
               {% for role, count in retirements.items() %}
-              <tr>
-                <td><a class="cli-roster-link" href="/reports?start_date={{ start_date.isoformat() }}&end_date={{ end_date.isoformat() }}&role={{ role }}">{{ role }}</a></td>
+              <tr data-href="/reports?start_date={{ start_date.isoformat() }}&end_date={{ end_date.isoformat() }}&role={{ role }}#retirement-details-card">
+                <td><a class="cli-roster-link" href="/reports?start_date={{ start_date.isoformat() }}&end_date={{ end_date.isoformat() }}&role={{ role }}#retirement-details-card">{{ role }}</a></td>
                 <td>{{ count }}</td>
               </tr>
               {% endfor %}
@@ -102,11 +102,11 @@
         </details>
       </section>
 
-      <section class="card collapsible">
-        <details {% if not recalc %}open{% endif %}>
+      <section class="card collapsible" id="retirement-details-card" tabindex="-1">
+        <details {% if role_filter or not recalc %}open{% endif %}>
           <summary>Retirement Details{% if role_filter %} &mdash; {{ role_filter }}{% endif %}</summary>
           {% if role_filter %}
-            <p><a class="ghost small" href="/reports?start_date={{ start_date.isoformat() }}&end_date={{ end_date.isoformat() }}">Clear designation filter</a></p>
+            <p><a class="ghost small" href="/reports?start_date={{ start_date.isoformat() }}&end_date={{ end_date.isoformat() }}#retirements-by-designation-card">Clear designation filter</a></p>
           {% endif %}
           <div class="table-wrap">
             <table class="employee-table paged">
@@ -162,6 +162,17 @@
         }
       });
       document.body.classList.remove('nav-hidden');
+
+      document.querySelectorAll('#retirements-by-designation-table tbody tr[data-href]').forEach((row) => {
+        row.style.cursor = 'pointer';
+        row.addEventListener('click', (event) => {
+          if (event.target.closest('a, button, input, select, textarea, summary')) return;
+          const href = row.dataset.href;
+          if (href) {
+            window.location.href = href;
+          }
+        });
+      });
 
     })();
   </script>
