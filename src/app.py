@@ -4741,7 +4741,17 @@ async def upload_li_grading(
 
         session.commit()
         _save_li_grading_metadata(filename)
-        notice = f"LI grading update complete: {updated} updated, {unchanged} unchanged, {skipped} skipped."
+        if updated == 0 and unchanged > 0 and skipped == 0:
+            notice = "No change found in LI grading file."
+        else:
+            notice_parts = []
+            if updated:
+                notice_parts.append(f"{updated} updated")
+            if skipped:
+                notice_parts.append(f"{skipped} skipped")
+            if not notice_parts:
+                notice_parts.append("No change found")
+            notice = "LI grading update complete: " + ", ".join(notice_parts) + "."
         warning_message = f"Mismatch / auto-fixed records: {len(warnings)}" if warnings else ""
         return templates.TemplateResponse(
             "cli.html",
