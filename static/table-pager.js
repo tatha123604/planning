@@ -95,8 +95,17 @@
     const infos = [topPager.info, bottomPager.info];
     const prevButtons = [topPager.prev, bottomPager.prev];
     const nextButtons = [topPager.next, bottomPager.next];
+    const syncPagerWidths = () => {
+      const parentWidth = table.parentElement?.clientWidth || 0;
+      const tableWidth = table.scrollWidth || table.offsetWidth || 0;
+      const targetWidth = Math.max(parentWidth, tableWidth);
+      [topPager.wrapper, bottomPager.wrapper].forEach((wrapper) => {
+        wrapper.style.width = targetWidth > 0 ? `${targetWidth}px` : "";
+      });
+    };
 
     function render() {
+      syncPagerWidths();
       const visiblePageableRows = pageableRows.filter((row) => !isFilterHidden(row));
       const total = visiblePageableRows.length;
       const ps = pageSize === 0 ? total : pageSize;
@@ -187,6 +196,7 @@
 
     table.parentElement?.insertBefore(topPager.wrapper, table);
     table.insertAdjacentElement("afterend", bottomPager.wrapper);
+    window.addEventListener("resize", syncPagerWidths);
     table.addEventListener("table-pager:refresh", (event) => {
       if (event?.detail?.resetPage) {
         page = 0;
