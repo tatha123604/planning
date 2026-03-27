@@ -17,6 +17,7 @@
 
   function createPagerBar({ showRowsSelector = false } = {}) {
     const wrapper = document.createElement("div");
+    wrapper.className = "table-pager";
     wrapper.style.display = "flex";
     wrapper.style.justifyContent = "space-between";
     wrapper.style.alignItems = "center";
@@ -25,9 +26,11 @@
     wrapper.style.flexWrap = "wrap";
 
     const left = document.createElement("div");
+    left.className = "table-pager-left";
     styleGroup(left);
 
     const right = document.createElement("div");
+    right.className = "table-pager-right";
     styleGroup(right, "flex-end");
     right.style.marginLeft = "auto";
 
@@ -35,10 +38,12 @@
 
     if (showRowsSelector) {
       const label = document.createElement("label");
+      label.className = "table-pager-label";
       label.textContent = "Rows:";
       styleInfo(label);
 
       select = document.createElement("select");
+      select.className = "table-pager-select";
       ["10", "20", "All"].forEach((optText) => {
         const opt = document.createElement("option");
         opt.value = optText === "All" ? "0" : optText;
@@ -50,17 +55,18 @@
     }
 
     const info = document.createElement("span");
+    info.className = "table-pager-info";
     styleInfo(info);
 
     const prev = document.createElement("button");
     prev.type = "button";
     prev.textContent = "Prev";
-    prev.className = "ghost small";
+    prev.className = "ghost small table-pager-button";
 
     const next = document.createElement("button");
     next.type = "button";
     next.textContent = "Next";
-    next.className = "ghost small";
+    next.className = "ghost small table-pager-button table-pager-button-next";
 
     left.append(info);
     right.append(prev, next);
