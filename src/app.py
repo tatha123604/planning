@@ -2871,6 +2871,10 @@ def _dedupe_uploaded_employee_rows(session: Session, sync_details: list[str]) ->
     return removed
 
 
+def _working_at_key(value: object | None) -> str:
+    return (_clean_import_text(value) or "").upper()
+
+
 def _cleanup_row_payload(employee: Employee) -> dict[str, object]:
     return {
         "id": employee.id,
@@ -3034,6 +3038,77 @@ def _apply_duplicate_cleanup_plan(
             )
 
     session.commit()
+    return removed
+
+
+def _cleanup_employee_master_duplicates_for_record(
+    employees: list[Employee],
+    target: Employee,
+    *,
+    emp_no: str | None,
+    name: str | None,
+    role: str | None,
+    dob: date | None,
+    sync_details: list[str],
+    session: Session,
+) -> int:
+    target_name = _normalize_import_name(name)
+    target_role = normalize_role(role) if role else None
+    target_last5 = _emp_no_last5(emp_no)
+    target_working_at = _working_at_key(target.working_at)
+    removed = 0
+
+    merge_fields = (
+        "role",
+        "hire_date",
+        "retirement_date",
+        "promotion_role",
+        "promotion_ready_date",
+        "category",
+        "hrms",
+        "crew_id",
+        "doa",
+        "do_report",
+        "status",
+        "working_at",
+        "gradation",
+        "cli",
+        "pme_due",
+        "technical_due",
+        "transportation_due",
+    )
+
+    duplicates: list[tuple[Employee, str]] = []
+    for employee in list(employees):
+        if employee is target:
+            continue
+        if _working_at_key(employee.working_at) != target_working_at:
+            continue
+
+        candidate_pf = _clean_import_text(employee.pf_no)
+        candidate_name = _normalize_import_name(employee.name)
+
+        if target_name and dob and candidate_name == target_name and employee.dob == dob:
+            if candidate_pf is None or emp_no is None or (target_last5 and _emp_no_last5(candidate_pf) == target_last5):
+                duplicates.append((employee, "Same Name + DOB"))
+                continue
+
+        if target_name and target_role and candidate_name == target_name and normalize_role(employee.role) == target_role:
+            if candidate_pf and target_last5 and _emp_no_last5(candidate_pf) == target_last5:
+                duplicates.append((employee, "Same Name + Designation"))
+
+    for duplicate, reason in duplicates:
+        for field_name in merge_fields:
+            if not _employee_has_value(getattr(target, field_name)) and _employee_has_value(getattr(duplicate, field_name)):
+                setattr(target, field_name, getattr(duplicate, field_name))
+        session.delete(duplicate)
+        if duplicate in employees:
+            employees.remove(duplicate)
+        removed += 1
+        sync_details.append(
+            f"Deduplicated {target.name}: removed duplicate row by {reason} at {_clean_import_text(target.working_at) or 'blank working_at'}."
+        )
+
     return removed
 
 
@@ -3244,6 +3319,7 @@ def _upsert_employee_master_records(
     updated = 0
     unchanged = 0
     skipped = 0
+    deduplicated = 0
     employees = session.exec(select(Employee)).all()
 
     by_pf: dict[str, list[Employee]] = {}
@@ -3353,9 +3429,19 @@ def _upsert_employee_master_records(
             if changed_fields:
                 updated += 1
                 sync_details.append(f"Updated {row_hint}: {'; '.join(changed_fields)}")
-                rebuild_exact_indexes()
             else:
                 unchanged += 1
+            deduplicated += _cleanup_employee_master_duplicates_for_record(
+                employees,
+                existing,
+                emp_no=emp_no,
+                name=name,
+                role=role,
+                dob=record.get("dob") if isinstance(record.get("dob"), date) else None,
+                sync_details=sync_details,
+                session=session,
+            )
+            rebuild_exact_indexes()
         else:
             employee = Employee(
                 name=record_values["name"],
@@ -3377,9 +3463,19 @@ def _upsert_employee_master_records(
             sync_details.append(
                 f"Added {row_hint}: EMP NO {_format_sync_value(emp_no)}; CREW ID {_format_sync_value(crew_id)}"
             )
+            deduplicated += _cleanup_employee_master_duplicates_for_record(
+                employees,
+                employee,
+                emp_no=emp_no,
+                name=name,
+                role=role,
+                dob=record.get("dob") if isinstance(record.get("dob"), date) else None,
+                sync_details=sync_details,
+                session=session,
+            )
             rebuild_exact_indexes()
 
-    deduplicated = _dedupe_uploaded_employee_rows(session, sync_details)
+    deduplicated += _dedupe_uploaded_employee_rows(session, sync_details)
     session.commit()
     return added, updated, unchanged, skipped, deduplicated
 
