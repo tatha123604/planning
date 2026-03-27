@@ -67,6 +67,7 @@ EMPLOYEE_MASTER_SMART_CLEANUP_SENTINEL = DB_PATH.parent / ".employee_master_smar
 EMPLOYEE_MASTER_KEEP_BOTH_FILE = DB_PATH.parent / "employee_master_keep_both.json"
 EMPLOYEE_MASTER_SOURCE_SNAPSHOT_FILE = DB_PATH.parent / "employee_master_source_snapshot.json"
 EMPLOYEE_MASTER_EXTRA_REVIEW_KEEP_FILE = DB_PATH.parent / "employee_master_extra_review_keep.json"
+LI_GRADING_METADATA_FILE = DB_PATH.parent / "li_grading_metadata.json"
 GOOGLE_SHEETS_READONLY_SCOPE = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 NON_CONTINUOUS_VARIANTS = {
     "non_sub": {
@@ -361,6 +362,15 @@ def _cli_page_context(
 ) -> dict[str, object]:
     employees_all = session.exec(select(Employee)).all()
     cli_distribution = build_cli_distribution(employees_all)
+    grading_meta = _load_li_grading_metadata()
+    grading_report_date = coerce_report_date(grading_meta.get("report_date"))
+    grading_saved_at = ""
+    saved_at_raw = grading_meta.get("saved_at", "")
+    if saved_at_raw:
+        try:
+            grading_saved_at = datetime.fromisoformat(saved_at_raw).strftime("%d/%m/%Y %I:%M %p")
+        except ValueError:
+            grading_saved_at = saved_at_raw
     cli_opts_map: dict[str, str] = {}
     for val in [e.cli for e in employees_all if e.cli]:
         key = val.strip().lower()
@@ -393,6 +403,9 @@ def _cli_page_context(
         "roster_cli": roster_cli or "",
         "roster_gradation": roster_gradation or "",
         "roster_open": roster_filter_active,
+        "grading_source_name": grading_meta.get("filename", ""),
+        "grading_report_date": grading_report_date.strftime("%d-%m-%Y") if grading_report_date else "",
+        "grading_saved_at": grading_saved_at,
         "grading_update_notice": grading_update_notice,
         "grading_update_warning": grading_update_warning,
         "grading_update_error": grading_update_error or "",
@@ -1116,6 +1129,35 @@ def _load_persistent_template(key: str) -> tuple[bytes | None, str]:
         return None, ""
     stored_name = name_path.read_text(encoding="utf-8").strip() if name_path.exists() else "template.xlsx"
     return data_path.read_bytes(), stored_name
+
+
+def _save_li_grading_metadata(filename: str | None) -> None:
+    report_date = infer_report_date(filename or "")
+    payload = {
+        "filename": filename or "",
+        "report_date": report_date.isoformat() if report_date else "",
+        "saved_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    LI_GRADING_METADATA_FILE.write_text(
+        json.dumps(payload, ensure_ascii=True, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _load_li_grading_metadata() -> dict[str, str]:
+    if not LI_GRADING_METADATA_FILE.exists():
+        return {"filename": "", "report_date": "", "saved_at": ""}
+    try:
+        raw = json.loads(LI_GRADING_METADATA_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {"filename": "", "report_date": "", "saved_at": ""}
+    if not isinstance(raw, dict):
+        return {"filename": "", "report_date": "", "saved_at": ""}
+    return {
+        "filename": str(raw.get("filename") or ""),
+        "report_date": str(raw.get("report_date") or ""),
+        "saved_at": str(raw.get("saved_at") or ""),
+    }
 
 
 EMPLOYEE_ALIAS_MAP = {
@@ -2862,6 +2904,8 @@ def reports_page(
 def download_cli_distribution(session: Session = Depends(get_session)):
     employees = session.exec(select(Employee)).all()
     cli_distribution = build_cli_distribution(employees)
+    grading_meta = _load_li_grading_metadata()
+    report_date = coerce_report_date(grading_meta.get("report_date")) or date.today()
 
     wb = Workbook()
     ws = wb.active
@@ -2873,7 +2917,7 @@ def download_cli_distribution(session: Session = Depends(get_session)):
     stream = BytesIO()
     wb.save(stream)
     stream.seek(0)
-    filename = f"cli_distribution_{date.today().isoformat()}.xlsx"
+    filename = f"cli_distribution_{report_date.isoformat()}.xlsx"
     return StreamingResponse(
         stream,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -4696,6 +4740,7 @@ async def upload_li_grading(
             )
 
         session.commit()
+        _save_li_grading_metadata(filename)
         notice = f"LI grading update complete: {updated} updated, {unchanged} unchanged, {skipped} skipped."
         warning_message = f"Mismatch / auto-fixed records: {len(warnings)}" if warnings else ""
         return templates.TemplateResponse(

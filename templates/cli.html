@@ -55,9 +55,20 @@
         {% if grading_update_warning %}
         <p class="hint warning-text" role="status">{{ grading_update_warning }}</p>
         {% endif %}
+        {% if grading_source_name or grading_report_date or grading_saved_at %}
+        <p class="hint">
+          Latest grading source:
+          {% if grading_source_name %}<strong>{{ grading_source_name }}</strong>{% endif %}
+          {% if grading_report_date %}<span> - file date {{ grading_report_date }}</span>{% endif %}
+          {% if grading_saved_at %}<span> - updated on {{ grading_saved_at }}</span>{% endif %}
+        </p>
+        {% endif %}
         {% if grading_update_details %}
-        <p class="hint success-text"><strong>Gradation update details</strong></p>
-        <ul class="sync-warning-list">
+        <div class="sync-list-header">
+          <p class="hint success-text"><strong>Gradation update details</strong></p>
+          <button type="button" class="ghost small sync-list-toggle" id="grading-details-toggle" hidden aria-expanded="false">Show more</button>
+        </div>
+        <ul class="sync-warning-list" id="grading-details-list">
           {% for item in grading_update_details %}
           <li>{{ item }}</li>
           {% endfor %}
@@ -87,7 +98,12 @@
         <details open>
           <summary>CLI Distribution by Gradation</summary>
           <div style="display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap;">
-            <p>Counts of Gradation A, B, and C staff per CLI (all employees).</p>
+            <div>
+              <p>Counts of Gradation A, B, and C staff per CLI (all employees).</p>
+              {% if grading_report_date %}
+              <p class="hint">Distribution file date: <strong>{{ grading_report_date }}</strong></p>
+              {% endif %}
+            </div>
             <a class="ghost" href="/reports/cli-distribution.xlsx">Download Excel</a>
           </div>
           <div class="table-wrap">
@@ -205,6 +221,31 @@
         passwordInput.addEventListener('input', syncButtonState);
         syncButtonState();
       });
+
+      const gradingDetailsToggle = document.getElementById('grading-details-toggle');
+      const gradingDetailsList = document.getElementById('grading-details-list');
+      if (gradingDetailsToggle && gradingDetailsList) {
+        const detailItems = Array.from(gradingDetailsList.querySelectorAll('li'));
+        let detailsExpanded = false;
+        const renderDetails = () => {
+          detailItems.forEach((item, index) => {
+            item.hidden = !detailsExpanded && index >= 5;
+          });
+          if (detailItems.length > 5) {
+            gradingDetailsToggle.hidden = false;
+            gradingDetailsToggle.textContent = detailsExpanded ? 'Show less' : `Show more (${detailItems.length - 5} more)`;
+            gradingDetailsToggle.setAttribute('aria-expanded', detailsExpanded ? 'true' : 'false');
+          } else {
+            gradingDetailsToggle.hidden = true;
+            gradingDetailsToggle.setAttribute('aria-expanded', 'false');
+          }
+        };
+        gradingDetailsToggle.addEventListener('click', () => {
+          detailsExpanded = !detailsExpanded;
+          renderDetails();
+        });
+        renderDetails();
+      }
     })();
   </script>
   <script src="/static/sidebar-toggle.js"></script>
