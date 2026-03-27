@@ -151,7 +151,7 @@ def _cli_name_score(value: object | None) -> tuple[int, int, int]:
     return (long_tokens, len(tokens), len("".join(tokens)))
 
 
-def _build_cli_name_maps(rows) -> tuple[dict[str, str], dict[str, str]]:
+def _build_cli_name_maps(rows) -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
     alias_map = {key: _clean_cli_name(value) for key, value in CLI_NAME_MANUAL_ALIASES.items() if value}
     names_by_id: dict[str, set[str]] = {}
 
@@ -159,20 +159,28 @@ def _build_cli_name_maps(rows) -> tuple[dict[str, str], dict[str, str]]:
         name_text = _clean_cli_name(cli_name)
         id_text = _clean_cli_id(cli_id)
         if name_text:
-            alias_map[_cli_name_key(name_text)] = name_text
+            alias_map.setdefault(_cli_name_key(name_text), name_text)
         if id_text and name_text:
             names_by_id.setdefault(id_text, set()).add(name_text)
 
     canonical_by_id: dict[str, str] = {}
+    id_sets_by_name_key: dict[str, set[str]] = {}
     for id_text, names in names_by_id.items():
         canonical = max(names, key=_cli_name_score)
         canonical_by_id[id_text] = canonical
         alias_map[_cli_name_key(canonical)] = canonical
         alias_name = _cli_initial_alias(canonical)
         if alias_name:
-            alias_map[_cli_name_key(alias_name)] = canonical
+            alias_map.setdefault(_cli_name_key(alias_name), canonical)
+        id_sets_by_name_key.setdefault(_cli_name_key(canonical), set()).add(id_text)
 
-    return canonical_by_id, alias_map
+    id_by_name: dict[str, str] = {
+        key: next(iter(ids))
+        for key, ids in id_sets_by_name_key.items()
+        if key and len(ids) == 1
+    }
+
+    return canonical_by_id, alias_map, id_by_name
 
 
 def _canonicalize_cli_name(
@@ -181,6 +189,7 @@ def _canonicalize_cli_name(
     *,
     canonical_by_id: dict[str, str] | None = None,
     alias_map: dict[str, str] | None = None,
+    id_by_name: dict[str, str] | None = None,
 ) -> tuple[str | None, str | None]:
     id_text = _clean_cli_id(cli_id)
     name_text = _clean_cli_name(cli_name)
@@ -194,6 +203,13 @@ def _canonicalize_cli_name(
         mapped = lookup.get(_cli_name_key(name_text))
         if mapped:
             name_text = _clean_cli_name(mapped)
+
+    if not id_text and name_text and id_by_name:
+        inferred_id = id_by_name.get(_cli_name_key(name_text))
+        if inferred_id:
+            id_text = inferred_id
+            if canonical_by_id and canonical_by_id.get(id_text):
+                name_text = canonical_by_id[id_text]
 
     return name_text or None, id_text or None
 
@@ -315,7 +331,7 @@ def _employee_cli_label(employee: Employee) -> str:
 
 def _normalize_employee_cli_names(session: Session) -> int:
     employees = session.exec(select(Employee)).all()
-    canonical_by_id, alias_map = _build_cli_name_maps((employee.cli, employee.cli_id) for employee in employees)
+    canonical_by_id, alias_map, id_by_name = _build_cli_name_maps((employee.cli, employee.cli_id) for employee in employees)
     changed = 0
     for employee in employees:
         new_cli, new_cli_id = _canonicalize_cli_name(
@@ -323,6 +339,7 @@ def _normalize_employee_cli_names(session: Session) -> int:
             employee.cli_id,
             canonical_by_id=canonical_by_id,
             alias_map=alias_map,
+            id_by_name=id_by_name,
         )
         if employee.cli != new_cli or employee.cli_id != new_cli_id:
             employee.cli = new_cli
@@ -351,7 +368,7 @@ def build_simple_recruit_plan(retiring: dict[str, list[Employee]], lead_days: in
 
 def build_cli_distribution(employees: list[Employee]) -> list[dict[str, int | str]]:
     """Aggregate gradation counts per CLI (case-insensitive)."""
-    canonical_by_id, alias_map = _build_cli_name_maps((employee.cli, employee.cli_id) for employee in employees)
+    canonical_by_id, alias_map, id_by_name = _build_cli_name_maps((employee.cli, employee.cli_id) for employee in employees)
     dist: dict[str, dict[str, int | str]] = {}
     for e in employees:
         role = normalize_role(e.role)
@@ -362,6 +379,7 @@ def build_cli_distribution(employees: list[Employee]) -> list[dict[str, int | st
             e.cli_id,
             canonical_by_id=canonical_by_id,
             alias_map=alias_map,
+            id_by_name=id_by_name,
         )
         cli_key = _cli_name_key(cli_name) or (cli_id or "").lower() or "unassigned"
         label = cli_name or "Unassigned"
@@ -410,7 +428,7 @@ def build_cli_distribution_role_breakdown(
     if not selected_text:
         return "", [], None
 
-    canonical_by_id, alias_map = _build_cli_name_maps((employee.cli, employee.cli_id) for employee in employees)
+    canonical_by_id, alias_map, id_by_name = _build_cli_name_maps((employee.cli, employee.cli_id) for employee in employees)
     selected_key = selected_text.lower()
     filtered = [
         e
@@ -422,6 +440,7 @@ def build_cli_distribution_role_breakdown(
                     e.cli_id,
                     canonical_by_id=canonical_by_id,
                     alias_map=alias_map,
+                    id_by_name=id_by_name,
                 )[0]
             ).lower()
             or (_clean_cli_id(e.cli_id).lower())
@@ -436,6 +455,7 @@ def build_cli_distribution_role_breakdown(
         filtered[0].cli_id,
         canonical_by_id=canonical_by_id,
         alias_map=alias_map,
+        id_by_name=id_by_name,
     )
     cli_label = format_cli_label(cli_name, cli_id).strip() or selected_text
     rows: list[dict[str, int | str]] = []
@@ -4929,6 +4949,7 @@ async def upload_li_grading(
 
         records, warnings = _parse_li_grading_workbook(await file.read())
         employees = session.exec(select(Employee)).all()
+        canonical_by_id, alias_map, id_by_name = _build_cli_name_maps((employee.cli, employee.cli_id) for employee in employees)
 
         by_crew: dict[str, list[Employee]] = {}
         by_crew_name: dict[tuple[str, str], list[Employee]] = {}
@@ -4954,7 +4975,7 @@ async def upload_li_grading(
             row_hint = str(record["row_hint"])
             cli_name = _clean_import_text(record.get("cli_name"))
             cli_id = _clean_import_text(record.get("cli_id"))
-            cli_name, cli_id = _canonicalize_cli_name(cli_name, cli_id)
+            cli_name, cli_id = _canonicalize_cli_name(cli_name, cli_id, canonical_by_id=canonical_by_id, alias_map=alias_map, id_by_name=id_by_name)
             crew_key = str(record.get("crew_id") or "").upper()
             name_key = _normalize_import_name(record.get("name"))
             role_key = str(record.get("role") or "")
@@ -5021,7 +5042,7 @@ async def upload_li_grading(
             new_due = record.get("grading_due")
             old_grade = _clean_import_text(target.gradation)
             old_due = target.grading_due
-            old_cli, old_cli_id = _canonicalize_cli_name(target.cli, target.cli_id)
+            old_cli, old_cli_id = _canonicalize_cli_name(target.cli, target.cli_id, canonical_by_id=canonical_by_id, alias_map=alias_map, id_by_name=id_by_name)
 
             if old_grade == new_grade and old_due == new_due and old_cli == cli_name and old_cli_id == cli_id:
                 unchanged += 1
@@ -5041,7 +5062,7 @@ async def upload_li_grading(
 
             target.gradation = new_grade
             target.grading_due = new_due
-            target.cli, target.cli_id = _canonicalize_cli_name(cli_name, cli_id)
+            target.cli, target.cli_id = _canonicalize_cli_name(cli_name, cli_id, canonical_by_id=canonical_by_id, alias_map=alias_map, id_by_name=id_by_name)
             updated += 1
             if target.id is not None:
                 touched_ids.add(target.id)
