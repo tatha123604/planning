@@ -401,6 +401,7 @@ def _cli_page_context(
     session: Session,
     roster_name: Optional[str] = None,
     roster_cli: Optional[str] = None,
+    roster_role: Optional[str] = None,
     roster_gradation: Optional[str] = None,
     distribution_cli: Optional[str] = None,
     grading_update_notice: str = "",
@@ -436,8 +437,12 @@ def _cli_page_context(
             cli_opts_map[key] = val.strip()
     cli_opts = [v for _, v in sorted(cli_opts_map.items(), key=lambda item: item[0])]
     gradation_opts = sorted({e.gradation for e in employees_all if e.gradation})
+    role_opts = sorted(
+        {normalize_role(e.role) or e.role for e in employees_all if e.cli and e.role},
+        key=role_sort_key,
+    )
 
-    roster_filter_active = any([roster_name, roster_cli, roster_gradation])
+    roster_filter_active = any([roster_name, roster_cli, roster_role, roster_gradation])
     cli_roster = [e for e in employees_all if e.cli]
     if roster_name:
         name_lower = roster_name.lower()
@@ -445,6 +450,8 @@ def _cli_page_context(
     if roster_cli:
         roster_cli_lower = roster_cli.strip().lower()
         cli_roster = [e for e in cli_roster if e.cli and roster_cli_lower in e.cli.strip().lower()]
+    if roster_role:
+        cli_roster = [e for e in cli_roster if normalize_role(e.role) == roster_role]
     if roster_gradation:
         grad_lower = roster_gradation.lower()
         cli_roster = [e for e in cli_roster if e.gradation and grad_lower in e.gradation.lower()]
@@ -456,9 +463,11 @@ def _cli_page_context(
         "cli_distribution": cli_distribution,
         "cli_roster": cli_roster,
         "cli_opts": cli_opts,
+        "role_opts": role_opts,
         "gradation_opts": gradation_opts,
         "roster_name": roster_name or "",
         "roster_cli": roster_cli or "",
+        "roster_role": roster_role or "",
         "roster_gradation": roster_gradation or "",
         "roster_open": roster_filter_active,
         "distribution_cli": selected_distribution_cli,
@@ -481,6 +490,7 @@ def cli_page(
     request: Request,
     roster_name: Optional[str] = None,
     roster_cli: Optional[str] = None,
+    roster_role: Optional[str] = None,
     roster_gradation: Optional[str] = None,
     distribution_cli: Optional[str] = None,
     session: Session = Depends(get_session),
@@ -492,6 +502,7 @@ def cli_page(
             session,
             roster_name=roster_name,
             roster_cli=roster_cli,
+            roster_role=roster_role,
             roster_gradation=roster_gradation,
             distribution_cli=distribution_cli,
         ),

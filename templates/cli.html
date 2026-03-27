@@ -195,6 +195,14 @@
                 {% endfor %}
               </select>
             </label>
+            <label>Designation
+              <select name="roster_role">
+                <option value="">All</option>
+                {% for opt in role_opts %}
+                  <option value="{{ opt }}" {% if roster_role == opt %}selected{% endif %}>{{ opt }}</option>
+                {% endfor %}
+              </select>
+            </label>
             <label>Gradation
               <select name="roster_gradation">
                 <option value="">All</option>
