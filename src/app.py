@@ -348,25 +348,29 @@ def build_cli_distribution(employees: list[Employee]) -> list[dict[str, int | st
         role = normalize_role(e.role)
         if role not in CLI_DISTRIBUTION_ROLE_ORDER:
             continue
-        cli_raw = _employee_cli_label(e).strip()
-        cli_key = _employee_cli_key(e) or "unassigned"
-        label = cli_raw or "Unassigned"
+        cli_name = str(e.cli or "").strip()
+        cli_id = str(e.cli_id or "").strip()
+        cli_key = cli_name.lower() or cli_id.lower() or "unassigned"
+        label = cli_name or "Unassigned"
         grad = (e.gradation or "").strip().upper()
         grad_key = grad[0] if grad else ""
         if cli_key not in dist:
             dist[cli_key] = {
                 "cli": label,
-                "cli_name": str(e.cli or "").strip(),
-                "cli_id": str(e.cli_id or "").strip(),
+                "cli_name": cli_name,
+                "cli_id": cli_id,
                 "key": cli_key,
                 "A": 0,
                 "B": 0,
                 "C": 0,
                 "total": 0,
             }
-        # keep the first non-empty label we see for this key
-        if not dist[cli_key]["cli"] and cli_raw:
-            dist[cli_key]["cli"] = cli_raw
+        if not dist[cli_key]["cli"] and cli_name:
+            dist[cli_key]["cli"] = cli_name
+        if not dist[cli_key]["cli_name"] and cli_name:
+            dist[cli_key]["cli_name"] = cli_name
+        if not dist[cli_key]["cli_id"] and cli_id:
+            dist[cli_key]["cli_id"] = cli_id
         if grad_key in ("A", "B", "C"):
             dist[cli_key][grad_key] += 1  # type: ignore[index]
             dist[cli_key]["total"] += 1  # type: ignore[index]
@@ -394,7 +398,12 @@ def build_cli_distribution_role_breakdown(
         return "", [], None
 
     selected_key = selected_text.lower()
-    filtered = [e for e in employees if _employee_cli_key(e) == selected_key]
+    filtered = [
+        e
+        for e in employees
+        if (str(e.cli or "").strip().lower() == selected_key)
+        or (not str(e.cli or "").strip() and _employee_cli_key(e) == selected_key)
+    ]
     if not filtered:
         return "", [], None
 
