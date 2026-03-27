@@ -257,6 +257,143 @@
           {% endif %}
         </div>
 
+        <div class="card" style="grid-column: 1 / -1;">
+          <h2>Possible Extra Rows From Latest Source Upload</h2>
+          <p class="hint">
+            Preview rows that still look extra after the latest <code>Service Particulars</code> +
+            <code>CMS other bio data</code> upload. We can then <strong>Merge</strong>, <strong>Delete</strong>,
+            or <strong>Keep</strong> them manually.
+          </p>
+          {% if extra_review_error %}
+          <p class="error-text" role="alert">{{ extra_review_error }}</p>
+          {% endif %}
+          {% if extra_review_notice %}
+          <p class="hint success-text" role="status">{{ extra_review_notice }}</p>
+          {% endif %}
+          {% if extra_review_summary %}
+          <p class="hint">
+            Groups: <strong>{{ extra_review_summary.get('groups', 0) }}</strong>,
+            review rows: <strong>{{ extra_review_summary.get('review_rows', 0) }}</strong>,
+            mergeable groups: <strong>{{ extra_review_summary.get('mergeable_groups', 0) }}</strong>,
+            DB-only groups: <strong>{{ extra_review_summary.get('db_only_groups', 0) }}</strong>
+          </p>
+          {% endif %}
+          <div class="button-row">
+            <form method="post" action="/uploads/employee-master-extra-preview">
+              <button type="submit">Preview Possible Extra Rows</button>
+            </form>
+          </div>
+
+          {% if extra_review_summary.get('reason_counts') %}
+          <p class="hint warning-text"><strong>Grouped by reason</strong></p>
+          <ul class="sync-warning-list">
+            {% for item in extra_review_summary.get('reason_counts', []) %}
+            <li>{{ item.reason }}: {{ item.count }}</li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+
+          {% if extra_review_groups %}
+          {% for item in extra_review_groups %}
+          <details class="collapsible-card">
+            <summary>{{ item.reason }} - review {{ item.review_rows | length }}</summary>
+            <div class="button-row">
+              {% if item.can_merge and item.keep %}
+              <form method="post" action="/uploads/employee-master-extra-merge" onsubmit="return confirm('Merge these extra rows into the kept row and delete the extra row(s)?');">
+                <input type="hidden" name="review_reason" value="{{ item.reason }}" />
+                <input type="hidden" name="keep_id" value="{{ item.keep.id }}" />
+                <input type="hidden" name="review_row_ids" value="{{ item.row_ids | join(',') }}" />
+                <button type="submit">Merge</button>
+              </form>
+              {% endif %}
+              <form method="post" action="/uploads/employee-master-extra-delete" onsubmit="return confirm('Delete these extra row(s) from the current employee table?');">
+                <input type="hidden" name="review_reason" value="{{ item.reason }}" />
+                <input type="hidden" name="review_row_ids" value="{{ item.row_ids | join(',') }}" />
+                <button type="submit" class="secondary-action">Delete</button>
+              </form>
+              <form method="post" action="/uploads/employee-master-extra-keep" onsubmit="return confirm('Keep these row(s) and hide this review group from the preview?');">
+                <input type="hidden" name="review_reason" value="{{ item.reason }}" />
+                <input type="hidden" name="review_row_ids" value="{{ item.row_ids | join(',') }}" />
+                {% if item.keep %}
+                <input type="hidden" name="keep_id" value="{{ item.keep.id }}" />
+                {% endif %}
+                <button type="submit" class="secondary-action">Keep</button>
+              </form>
+            </div>
+            <div class="table-wrap">
+              <table class="table report-table">
+                <thead>
+                  <tr>
+                    <th>Row ID</th>
+                    <th>Action</th>
+                    <th>Name</th>
+                    <th>Designation</th>
+                    <th>DOB</th>
+                    <th>Hire Date</th>
+                    <th>Retirement Date</th>
+                    <th>EMP NO</th>
+                    <th>Working At</th>
+                    <th>HRMS ID</th>
+                    <th>CREW ID</th>
+                    <th>Category</th>
+                    <th>Gradation</th>
+                    <th>CLI</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% if item.keep %}
+                  <tr class="table-paged-active-odd">
+                    <td>{{ item.keep.id }}</td>
+                    <td>KEEP</td>
+                    <td>{{ item.keep.name }}</td>
+                    <td>{{ item.keep.designation }}</td>
+                    <td>{{ item.keep.dob }}</td>
+                    <td>{{ item.keep.hire_date }}</td>
+                    <td>{{ item.keep.retirement_date }}</td>
+                    <td>{{ item.keep.emp_no }}</td>
+                    <td>{{ item.keep.working_at }}</td>
+                    <td>{{ item.keep.hrms }}</td>
+                    <td>{{ item.keep.crew_id }}</td>
+                    <td>{{ item.keep.category }}</td>
+                    <td>{{ item.keep.gradation }}</td>
+                    <td>{{ item.keep.cli }}</td>
+                  </tr>
+                  {% endif %}
+                  {% for row in item.review_rows %}
+                  <tr>
+                    <td>{{ row.id }}</td>
+                    <td>REVIEW</td>
+                    <td>{{ row.name }}</td>
+                    <td>{{ row.designation }}</td>
+                    <td>{{ row.dob }}</td>
+                    <td>{{ row.hire_date }}</td>
+                    <td>{{ row.retirement_date }}</td>
+                    <td>{{ row.emp_no }}</td>
+                    <td>{{ row.working_at }}</td>
+                    <td>{{ row.hrms }}</td>
+                    <td>{{ row.crew_id }}</td>
+                    <td>{{ row.category }}</td>
+                    <td>{{ row.gradation }}</td>
+                    <td>{{ row.cli }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </details>
+          {% endfor %}
+          {% endif %}
+
+          {% if extra_review_details %}
+          <p class="hint success-text"><strong>Last extra-row actions</strong></p>
+          <ul class="sync-warning-list">
+            {% for item in extra_review_details %}
+            <li>{{ item }}</li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+        </div>
+
         <div class="card">
           <h2>Add Employee (manual)</h2>
           <form method="post" action="/employees">

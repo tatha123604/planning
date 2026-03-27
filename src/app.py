@@ -65,6 +65,8 @@ TEMPLATE_STORE_DIR = DB_PATH.parent / "saved_templates"
 CLI_MATRIX_2026_03_24_CLEANUP_SENTINEL = DB_PATH.parent / ".cli_matrix_cleanup_2026_03_24.done"
 EMPLOYEE_MASTER_SMART_CLEANUP_SENTINEL = DB_PATH.parent / ".employee_master_smart_cleanup_2026_03_27.done"
 EMPLOYEE_MASTER_KEEP_BOTH_FILE = DB_PATH.parent / "employee_master_keep_both.json"
+EMPLOYEE_MASTER_SOURCE_SNAPSHOT_FILE = DB_PATH.parent / "employee_master_source_snapshot.json"
+EMPLOYEE_MASTER_EXTRA_REVIEW_KEEP_FILE = DB_PATH.parent / "employee_master_extra_review_keep.json"
 GOOGLE_SHEETS_READONLY_SCOPE = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 NON_CONTINUOUS_VARIANTS = {
     "non_sub": {
@@ -635,6 +637,11 @@ def _uploads_context(
     cleanup_plan: Optional[list[dict[str, object]]] = None,
     cleanup_conflicts: Optional[list[dict[str, object]]] = None,
     cleanup_details: Optional[list[str]] = None,
+    extra_review_notice: str = "",
+    extra_review_error: Optional[str] = None,
+    extra_review_summary: Optional[dict[str, object]] = None,
+    extra_review_groups: Optional[list[dict[str, object]]] = None,
+    extra_review_details: Optional[list[str]] = None,
 ):
     return {
         "request": request,
@@ -651,6 +658,11 @@ def _uploads_context(
         "cleanup_plan": cleanup_plan or [],
         "cleanup_conflicts": cleanup_conflicts or [],
         "cleanup_details": cleanup_details or [],
+        "extra_review_notice": extra_review_notice,
+        "extra_review_error": extra_review_error,
+        "extra_review_summary": extra_review_summary or {},
+        "extra_review_groups": extra_review_groups or [],
+        "extra_review_details": extra_review_details or [],
     }
 
 
@@ -787,6 +799,142 @@ def keep_both_employee_master_conflict(
             cleanup_summary=summary,
             cleanup_plan=plan,
             cleanup_conflicts=conflicts,
+        ),
+    )
+
+
+@app.post("/uploads/employee-master-extra-preview")
+def preview_employee_master_extra_rows(request: Request, session: Session = Depends(get_session)):
+    groups, summary = _build_employee_master_extra_review(session)
+    notice = ""
+    if not _load_employee_master_source_snapshot():
+        notice = "Upload the latest Service Particulars + CMS files once to review possible extra rows."
+    elif not groups:
+        notice = "No possible extra rows found."
+    return templates.TemplateResponse(
+        "uploads.html",
+        _uploads_context(
+            request,
+            extra_review_notice=notice,
+            extra_review_summary=summary,
+            extra_review_groups=groups,
+        ),
+    )
+
+
+@app.post("/uploads/employee-master-extra-merge")
+def merge_employee_master_extra_rows(
+    request: Request,
+    review_reason: str = Form(...),
+    keep_id: int = Form(...),
+    review_row_ids: str = Form(...),
+    session: Session = Depends(get_session),
+):
+    try:
+        row_ids = [int(value) for value in review_row_ids.split(",") if value.strip()]
+    except ValueError:
+        return templates.TemplateResponse(
+            "uploads.html",
+            _uploads_context(request, extra_review_error="Invalid extra-row selection."),
+            status_code=400,
+        )
+
+    details: list[str] = []
+    removed = _merge_employee_rows(
+        session,
+        reason=review_reason,
+        keep_id=keep_id,
+        remove_ids=row_ids,
+        details=details,
+    )
+    groups, summary = _build_employee_master_extra_review(session)
+    notice = (
+        f"Extra row merge complete: {removed} row(s) deleted."
+        if removed
+        else "Extra row merge could not be applied."
+    )
+    return templates.TemplateResponse(
+        "uploads.html",
+        _uploads_context(
+            request,
+            extra_review_notice=notice,
+            extra_review_summary=summary,
+            extra_review_groups=groups,
+            extra_review_details=details,
+        ),
+    )
+
+
+@app.post("/uploads/employee-master-extra-delete")
+def delete_employee_master_extra_rows(
+    request: Request,
+    review_reason: str = Form(...),
+    review_row_ids: str = Form(...),
+    session: Session = Depends(get_session),
+):
+    try:
+        row_ids = [int(value) for value in review_row_ids.split(",") if value.strip()]
+    except ValueError:
+        return templates.TemplateResponse(
+            "uploads.html",
+            _uploads_context(request, extra_review_error="Invalid extra-row selection."),
+            status_code=400,
+        )
+
+    details: list[str] = []
+    removed = _delete_employee_rows(
+        session,
+        reason=review_reason,
+        row_ids=row_ids,
+        details=details,
+    )
+    groups, summary = _build_employee_master_extra_review(session)
+    notice = (
+        f"Deleted {removed} extra row(s) from the current table."
+        if removed
+        else "No extra rows were deleted."
+    )
+    return templates.TemplateResponse(
+        "uploads.html",
+        _uploads_context(
+            request,
+            extra_review_notice=notice,
+            extra_review_summary=summary,
+            extra_review_groups=groups,
+            extra_review_details=details,
+        ),
+    )
+
+
+@app.post("/uploads/employee-master-extra-keep")
+def keep_employee_master_extra_rows(
+    request: Request,
+    review_reason: str = Form(...),
+    review_row_ids: str = Form(...),
+    keep_id: Optional[int] = Form(None),
+    session: Session = Depends(get_session),
+):
+    try:
+        row_ids = sorted(int(value) for value in review_row_ids.split(",") if value.strip())
+    except ValueError:
+        return templates.TemplateResponse(
+            "uploads.html",
+            _uploads_context(request, extra_review_error="Invalid extra-row selection."),
+            status_code=400,
+        )
+
+    keep_keys = _load_string_set(EMPLOYEE_MASTER_EXTRA_REVIEW_KEEP_FILE)
+    keep_keys.add(_review_group_key(review_reason, keep_id, row_ids))
+    _save_string_set(EMPLOYEE_MASTER_EXTRA_REVIEW_KEEP_FILE, keep_keys)
+
+    groups, summary = _build_employee_master_extra_review(session)
+    return templates.TemplateResponse(
+        "uploads.html",
+        _uploads_context(
+            request,
+            extra_review_notice="Review group marked as keep.",
+            extra_review_summary=summary,
+            extra_review_groups=groups,
         ),
     )
 
@@ -2984,11 +3132,11 @@ def _cleanup_conflict_key(reason: str, rows: list[Employee]) -> str:
     return f"{reason}|{row_ids}"
 
 
-def _load_keep_both_decisions() -> set[str]:
-    if not EMPLOYEE_MASTER_KEEP_BOTH_FILE.exists():
+def _load_string_set(path: Path) -> set[str]:
+    if not path.exists():
         return set()
     try:
-        raw = json.loads(EMPLOYEE_MASTER_KEEP_BOTH_FILE.read_text(encoding="utf-8"))
+        raw = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return set()
     if not isinstance(raw, list):
@@ -2996,11 +3144,60 @@ def _load_keep_both_decisions() -> set[str]:
     return {str(item) for item in raw if item}
 
 
-def _save_keep_both_decisions(keys: set[str]) -> None:
-    EMPLOYEE_MASTER_KEEP_BOTH_FILE.write_text(
+def _save_string_set(path: Path, keys: set[str]) -> None:
+    path.write_text(
         json.dumps(sorted(keys), ensure_ascii=True, indent=2),
         encoding="utf-8",
     )
+
+
+def _load_keep_both_decisions() -> set[str]:
+    return _load_string_set(EMPLOYEE_MASTER_KEEP_BOTH_FILE)
+
+
+def _save_keep_both_decisions(keys: set[str]) -> None:
+    _save_string_set(EMPLOYEE_MASTER_KEEP_BOTH_FILE, keys)
+
+
+def _review_group_key(reason: str, keep_id: int | None, review_ids: list[int]) -> str:
+    review_string = ",".join(str(row_id) for row_id in sorted(review_ids))
+    return f"{reason}|{keep_id or 0}|{review_string}"
+
+
+def _serialize_employee_master_snapshot(records: dict[str, dict[str, object]]) -> list[dict[str, object]]:
+    payload: list[dict[str, object]] = []
+    for emp_no, record in sorted(records.items()):
+        payload.append(
+            {
+                "row_hint": str(record.get("row_hint") or ""),
+                "name": _clean_import_text(record.get("name")) or "",
+                "role": _clean_import_text(record.get("role")) or "",
+                "pf_no": emp_no,
+                "crew_id": _clean_import_text(record.get("crew_id")) or "",
+                "dob": record.get("dob").isoformat() if isinstance(record.get("dob"), date) else "",
+                "category": _clean_import_text(record.get("category"), blank_na=True) or "",
+            }
+        )
+    return payload
+
+
+def _save_employee_master_source_snapshot(records: dict[str, dict[str, object]]) -> None:
+    EMPLOYEE_MASTER_SOURCE_SNAPSHOT_FILE.write_text(
+        json.dumps(_serialize_employee_master_snapshot(records), ensure_ascii=True, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _load_employee_master_source_snapshot() -> list[dict[str, object]]:
+    if not EMPLOYEE_MASTER_SOURCE_SNAPSHOT_FILE.exists():
+        return []
+    try:
+        raw = json.loads(EMPLOYEE_MASTER_SOURCE_SNAPSHOT_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    if not isinstance(raw, list):
+        return []
+    return [item for item in raw if isinstance(item, dict)]
 
 
 def _build_duplicate_cleanup_plan(session: Session) -> tuple[list[dict[str, object]], list[dict[str, object]], dict[str, int]]:
@@ -3371,6 +3568,195 @@ def _merge_conflict_rows(
         )
     session.commit()
     return removed
+
+
+def _merge_employee_rows(
+    session: Session,
+    *,
+    reason: str,
+    keep_id: int,
+    remove_ids: list[int],
+    details: list[str],
+) -> int:
+    keeper = session.get(Employee, keep_id)
+    if keeper is None:
+        return 0
+
+    merge_fields = (
+        "role",
+        "hire_date",
+        "retirement_date",
+        "promotion_role",
+        "promotion_ready_date",
+        "category",
+        "hrms",
+        "crew_id",
+        "doa",
+        "do_report",
+        "status",
+        "working_at",
+        "gradation",
+        "cli",
+        "pme_due",
+        "technical_due",
+        "transportation_due",
+    )
+    removed = 0
+
+    for duplicate_id in remove_ids:
+        duplicate = session.get(Employee, duplicate_id)
+        if duplicate is None or duplicate is keeper:
+            continue
+        for field_name in merge_fields:
+            if not _employee_has_value(getattr(keeper, field_name)) and _employee_has_value(getattr(duplicate, field_name)):
+                setattr(keeper, field_name, getattr(duplicate, field_name))
+        session.delete(duplicate)
+        removed += 1
+
+    if removed:
+        details.append(
+            f"{reason}: kept {keeper.name} ({_format_sync_value(keeper.pf_no)}), removed {removed} extra row(s)."
+        )
+    session.commit()
+    return removed
+
+
+def _delete_employee_rows(
+    session: Session,
+    *,
+    reason: str,
+    row_ids: list[int],
+    details: list[str],
+) -> int:
+    removed = 0
+    for row_id in row_ids:
+        employee = session.get(Employee, row_id)
+        if employee is None:
+            continue
+        details.append(
+            f"{reason}: deleted {employee.name} ({_format_sync_value(employee.pf_no)}) from the current table."
+        )
+        session.delete(employee)
+        removed += 1
+    session.commit()
+    return removed
+
+
+def _build_employee_master_extra_review(session: Session) -> tuple[list[dict[str, object]], dict[str, object]]:
+    snapshot = _load_employee_master_source_snapshot()
+    if not snapshot:
+        return [], {
+            "groups": 0,
+            "review_rows": 0,
+            "mergeable_groups": 0,
+            "db_only_groups": 0,
+            "reason_counts": [],
+        }
+
+    employees = session.exec(select(Employee)).all()
+    keep_keys = _load_string_set(EMPLOYEE_MASTER_EXTRA_REVIEW_KEEP_FILE)
+
+    source_by_pf: dict[str, dict[str, object]] = {}
+    source_by_crew: dict[str, dict[str, object]] = {}
+    for row in snapshot:
+        pf_value = _clean_import_text(row.get("pf_no"))
+        crew_value = _clean_import_text(row.get("crew_id"))
+        if pf_value and pf_value not in source_by_pf:
+            source_by_pf[pf_value] = row
+        if crew_value and crew_value not in source_by_crew:
+            source_by_crew[crew_value] = row
+
+    represented_ids: set[int] = set()
+    represented_rows: list[Employee] = []
+    for employee in employees:
+        pf_value = _clean_import_text(employee.pf_no)
+        crew_value = _clean_import_text(employee.crew_id)
+        if (pf_value and pf_value in source_by_pf) or (crew_value and crew_value in source_by_crew):
+            if employee.id is not None:
+                represented_ids.add(employee.id)
+            represented_rows.append(employee)
+
+    by_name_crew_keep: dict[tuple[str, str], list[Employee]] = {}
+    by_name_last5_keep: dict[tuple[str, str], list[Employee]] = {}
+    for employee in represented_rows:
+        name_key = _normalize_import_name(employee.name)
+        crew_key = _clean_import_text(employee.crew_id)
+        last5_key = _emp_no_last5(employee.pf_no)
+        if name_key and crew_key:
+            by_name_crew_keep.setdefault((name_key, crew_key), []).append(employee)
+        if name_key and last5_key:
+            by_name_last5_keep.setdefault((name_key, last5_key), []).append(employee)
+
+    groups: list[dict[str, object]] = []
+
+    def add_group(reason: str, keep_row: Employee | None, review_rows: list[Employee]) -> None:
+        if not review_rows:
+            return
+        ordered_review = sorted(review_rows, key=lambda employee: (-_employee_completeness(employee), employee.id or 0))
+        review_ids = [employee.id for employee in ordered_review if employee.id is not None]
+        if not review_ids:
+            return
+        keep_id = keep_row.id if keep_row is not None else None
+        group_key = _review_group_key(reason, keep_id, review_ids)
+        if group_key in keep_keys:
+            return
+        groups.append(
+            {
+                "reason": reason,
+                "group_key": group_key,
+                "keep": _cleanup_row_payload(keep_row) if keep_row is not None else None,
+                "review_rows": [_cleanup_row_payload(employee) for employee in ordered_review],
+                "row_ids": review_ids,
+                "can_merge": keep_row is not None,
+            }
+        )
+
+    for employee in employees:
+        if employee.id is None or employee.id in represented_ids:
+            continue
+        name_key = _normalize_import_name(employee.name)
+        crew_key = _clean_import_text(employee.crew_id)
+        last5_key = _emp_no_last5(employee.pf_no)
+        matched = False
+
+        if name_key and crew_key:
+            keep_matches = by_name_crew_keep.get((name_key, crew_key), [])
+            if len(keep_matches) == 1:
+                keep_row = keep_matches[0]
+                reason = "Possible extra row: same Name + same CREW ID"
+                if employee.dob and keep_row.dob and employee.dob != keep_row.dob:
+                    reason = "Possible extra row: same Name + same CREW ID but DOB differs"
+                add_group(reason, keep_row, [employee])
+                matched = True
+
+        if matched:
+            continue
+
+        if name_key and last5_key:
+            keep_matches = by_name_last5_keep.get((name_key, last5_key), [])
+            if len(keep_matches) == 1:
+                keep_row = keep_matches[0]
+                if _one_working_at_blank(employee.working_at, keep_row.working_at):
+                    reason = "Possible extra row: same Name + EMP NO last 5 match and one Working At is blank"
+                    if employee.dob and keep_row.dob and employee.dob != keep_row.dob:
+                        reason = "Possible extra row: same Name + EMP NO last 5 match but DOB differs"
+                    add_group(reason, keep_row, [employee])
+                    matched = True
+
+        if matched:
+            continue
+
+        add_group("Only in current DB, no latest source match", None, [employee])
+
+    reason_counts = Counter(group["reason"] for group in groups)
+    summary = {
+        "groups": len(groups),
+        "review_rows": sum(len(group["review_rows"]) for group in groups),
+        "mergeable_groups": sum(1 for group in groups if group["can_merge"]),
+        "db_only_groups": sum(1 for group in groups if not group["can_merge"]),
+        "reason_counts": [{"reason": reason, "count": count} for reason, count in reason_counts.most_common()],
+    }
+    return groups, summary
 
 
 def _cleanup_employee_master_duplicates_for_record(
@@ -3842,6 +4228,7 @@ async def upload_employee_master_sync(
 
         records, hrms_to_emp = _build_service_particular_records(service_content, warnings)
         _merge_cms_other_bio(records, hrms_to_emp, cms_content, warnings)
+        _save_employee_master_source_snapshot(records)
         added, updated, unchanged, skipped, deduplicated = _upsert_employee_master_records(
             session,
             records,
