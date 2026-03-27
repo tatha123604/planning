@@ -168,15 +168,15 @@
                   <td>{{ e.hrms or '' }}</td>
                   <td>{{ e.crew_id or '' }}</td>
                   <td>{{ e.role }}</td>
-                <td>{{ e.retirement_date | dmy if e.retirement_date else '' }}</td>
-                <td>{{ e.pme_due | dmy }}</td>
-                <td>{{ e.technical_due | dmy }}</td>
-                <td>{{ e.transportation_due | dmy }}</td>
+                <td>{% if e.retirement_date %}<span class="employee-date-pill employee-date-pill-retirement">{{ e.retirement_date | dmy }}</span>{% endif %}</td>
+                <td>{% if e.pme_due %}<span class="employee-date-pill employee-date-pill-due">{{ e.pme_due | dmy }}</span>{% endif %}</td>
+                <td>{% if e.technical_due %}<span class="employee-date-pill employee-date-pill-due">{{ e.technical_due | dmy }}</span>{% endif %}</td>
+                <td>{% if e.transportation_due %}<span class="employee-date-pill employee-date-pill-due">{{ e.transportation_due | dmy }}</span>{% endif %}</td>
                   <td>{{ e.category or '' }}</td>
                   <td>{{ e.pf_no or '' }}</td>
                   <td>{{ e.gradation or '' }}</td>
                   <td>{{ e.cli | cli_label(e.cli_id) }}</td>
-                  <td>{{ e.dob | dmy }}</td>
+                  <td>{% if e.dob %}<span class="employee-date-pill employee-date-pill-birth">{{ e.dob | dmy }}</span>{% endif %}</td>
                   <td class="working-at-col">{% if e.working_at %}<span class="designation-pill">{{ e.working_at }}</span>{% endif %}</td>
                   <td class="actions-cell actions-col">
                     <a class="ghost small employee-edit-link" href="/employees/{{ e.id }}" data-employee-name="{{ e.name }}">Edit</a>
