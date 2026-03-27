@@ -343,22 +343,27 @@ def build_simple_recruit_plan(retiring: dict[str, list[Employee]], lead_days: in
 
 def build_cli_distribution(employees: list[Employee]) -> list[dict[str, int | str]]:
     """Aggregate gradation counts per CLI (case-insensitive)."""
+    canonical_by_id, alias_map = _build_cli_name_maps((employee.cli, employee.cli_id) for employee in employees)
     dist: dict[str, dict[str, int | str]] = {}
     for e in employees:
         role = normalize_role(e.role)
         if role not in CLI_DISTRIBUTION_ROLE_ORDER:
             continue
-        cli_name = str(e.cli or "").strip()
-        cli_id = str(e.cli_id or "").strip()
-        cli_key = cli_name.lower() or cli_id.lower() or "unassigned"
+        cli_name, cli_id = _canonicalize_cli_name(
+            e.cli,
+            e.cli_id,
+            canonical_by_id=canonical_by_id,
+            alias_map=alias_map,
+        )
+        cli_key = _cli_name_key(cli_name) or (cli_id or "").lower() or "unassigned"
         label = cli_name or "Unassigned"
         grad = (e.gradation or "").strip().upper()
         grad_key = grad[0] if grad else ""
         if cli_key not in dist:
             dist[cli_key] = {
                 "cli": label,
-                "cli_name": cli_name,
-                "cli_id": cli_id,
+                "cli_name": cli_name or "",
+                "cli_id": cli_id or "",
                 "key": cli_key,
                 "A": 0,
                 "B": 0,
@@ -397,17 +402,34 @@ def build_cli_distribution_role_breakdown(
     if not selected_text:
         return "", [], None
 
+    canonical_by_id, alias_map = _build_cli_name_maps((employee.cli, employee.cli_id) for employee in employees)
     selected_key = selected_text.lower()
     filtered = [
         e
         for e in employees
-        if (str(e.cli or "").strip().lower() == selected_key)
-        or (not str(e.cli or "").strip() and _employee_cli_key(e) == selected_key)
+        if (
+            _cli_name_key(
+                _canonicalize_cli_name(
+                    e.cli,
+                    e.cli_id,
+                    canonical_by_id=canonical_by_id,
+                    alias_map=alias_map,
+                )[0]
+            ).lower()
+            or (_clean_cli_id(e.cli_id).lower())
+            or "unassigned"
+        ) == selected_key
     ]
     if not filtered:
         return "", [], None
 
-    cli_label = _employee_cli_label(filtered[0]).strip() or selected_text
+    cli_name, cli_id = _canonicalize_cli_name(
+        filtered[0].cli,
+        filtered[0].cli_id,
+        canonical_by_id=canonical_by_id,
+        alias_map=alias_map,
+    )
+    cli_label = format_cli_label(cli_name, cli_id).strip() or selected_text
     rows: list[dict[str, int | str]] = []
     totals = {"A": 0, "B": 0, "C": 0, "total": 0}
 

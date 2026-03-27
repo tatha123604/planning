@@ -128,7 +128,7 @@
               <tbody>
                 {% for row in cli_distribution %}
                 <tr{% if row.selected %} class="table-paged-active-odd"{% endif %} data-href="{{ row.detail_href }}">
-                  <td><a href="{{ row.detail_href }}">{{ row.cli }}</a></td>
+                  <td><a href="{{ row.detail_href }}">{{ row.cli | cli_label(row.cli_id) }}</a></td>
                   <td>{{ row.cli_id or '' }}</td>
                   <td>{{ row.A }}</td>
                   <td>{{ row.B }}</td>
@@ -233,7 +233,7 @@
               <tbody>
                 {% for e in cli_roster %}
                 <tr>
-                  <td>{{ e.cli or '' }}</td>
+                  <td>{{ e.cli | cli_label(e.cli_id) }}</td>
                   <td>{{ e.cli_id or '' }}</td>
                   <td><a class="cli-roster-link" href="/employees/{{ e.id }}">{{ e.name }}</a></td>
                   <td>{{ e.hrms or '' }}</td>
