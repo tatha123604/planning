@@ -236,7 +236,7 @@ def build_cli_distribution(employees: list[Employee]) -> list[dict[str, int | st
             dist[cli_key]["cli"] = cli_raw
         if grad_key in ("A", "B", "C"):
             dist[cli_key][grad_key] += 1  # type: ignore[index]
-        dist[cli_key]["total"] += 1  # type: ignore[index]
+            dist[cli_key]["total"] += 1  # type: ignore[index]
     return [
         {"cli": counts["cli"], "A": counts["A"], "B": counts["B"], "C": counts["C"], "total": counts["total"]}
         for _, counts in sorted(dist.items(), key=lambda item: item[0])
