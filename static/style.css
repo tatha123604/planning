@@ -559,17 +559,22 @@ ul { padding-left: 18px; margin: 6px 0; }
   cursor: not-allowed;
 }
 .filter-reset-link {
-  background: linear-gradient(135deg, #ffe45c, #66e1b6);
-  border: none;
-  color: #07111f;
-  box-shadow: 0 10px 24px rgba(255, 228, 92, 0.22);
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(18, 31, 52, 0.92), rgba(11, 46, 70, 0.82));
+  border: 1px solid rgba(123, 215, 255, 0.26);
+  color: #dff6ff;
+  font-weight: 700;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 10px 24px rgba(3, 10, 24, 0.18);
 }
 .filter-reset-link:hover {
-  background: linear-gradient(135deg, #fff08b, #7ff0c4);
-  box-shadow: 0 12px 28px rgba(255, 228, 92, 0.28);
+  background: linear-gradient(135deg, rgba(21, 37, 60, 0.98), rgba(13, 56, 84, 0.9));
+  border-color: rgba(123, 215, 255, 0.44);
+  color: #eefbff;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 12px 28px rgba(18, 189, 231, 0.14);
 }
 .filter-reset-link:focus-visible {
-  box-shadow: 0 0 0 3px rgba(255, 228, 92, 0.2), 0 12px 28px rgba(255, 228, 92, 0.24);
+  box-shadow: 0 0 0 3px rgba(123, 215, 255, 0.18), 0 12px 28px rgba(18, 189, 231, 0.16);
 }
 .danger { background: #ff6b6b; color: #0b1220; border: none; }
 .danger:hover { filter: brightness(1.05); }
