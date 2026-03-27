@@ -120,7 +120,7 @@
             <form method="post" action="/uploads/employee-master-cleanup-preview">
               <button type="submit">Preview Smart Cleanup</button>
             </form>
-            <form method="post" action="/uploads/employee-master-cleanup-apply" class="cleanup-apply-form sensitive-inline-form" data-password-gated-form onsubmit="return confirm('Apply smart cleanup and delete the duplicate rows shown in the preview?');">
+            <form method="post" action="/uploads/employee-master-cleanup-apply" class="cleanup-apply-form sensitive-inline-form" data-password-gated-form data-password-gated-code="11111" onsubmit="return confirm('Apply smart cleanup and delete the duplicate rows shown in the preview?');">
               <label class="site-password-label cleanup-password-label">Site Password
                 <input class="site-password-input cleanup-password-input" type="password" name="action_password" autocomplete="current-password" required data-password-gated-input />
               </label>
@@ -385,8 +385,9 @@
         const submitButton = form.querySelector('[data-password-gated-button]');
         if (!passwordInput || !submitButton) return;
 
+        const requiredCode = form.dataset.passwordGatedCode || '11111';
         const syncButtonState = () => {
-          submitButton.disabled = passwordInput.value.trim().length === 0;
+          submitButton.disabled = passwordInput.value.trim() !== requiredCode;
         };
 
         passwordInput.addEventListener('input', syncButtonState);

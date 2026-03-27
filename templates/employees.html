@@ -70,7 +70,7 @@
         <p class="hint">One-way sync only: changes made in Google Sheet will update this project, but edits made here will not push back to Google Sheet.</p>
         {% if google_sync_ready %}
         <p class="hint">Configured source: <strong>{{ google_sync_range }}</strong></p>
-        <form method="post" action="/employees/sync-google" class="inline sensitive-inline-form" data-google-sync-form data-password-gated-form>
+        <form method="post" action="/employees/sync-google" class="inline sensitive-inline-form" data-google-sync-form data-password-gated-form data-password-gated-code="11111">
           <label class="site-password-label compact-site-password">Site Password
             <input class="site-password-input compact-site-password-input" type="password" name="action_password" autocomplete="current-password" required data-password-gated-input />
           </label>
@@ -309,8 +309,9 @@
         const submitButton = form.querySelector('[data-password-gated-button]');
         if (!passwordInput || !submitButton) return;
 
+        const requiredCode = form.dataset.passwordGatedCode || '11111';
         const syncButtonState = () => {
-          submitButton.disabled = passwordInput.value.trim().length === 0;
+          submitButton.disabled = passwordInput.value.trim() !== requiredCode;
         };
 
         passwordInput.addEventListener('input', syncButtonState);
@@ -408,7 +409,9 @@
             syncWarningWrap.hidden = true;
             syncWarningList.innerHTML = '';
           } finally {
-            syncButton.disabled = false;
+            const requiredCode = syncForm.dataset.passwordGatedCode || '11111';
+            const passwordInput = syncForm.querySelector('[data-password-gated-input]');
+            syncButton.disabled = !passwordInput || passwordInput.value.trim() !== requiredCode;
             syncButton.textContent = originalText;
             window.location.hash = 'google-sync-card';
           }
