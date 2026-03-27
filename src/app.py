@@ -123,13 +123,32 @@ CLI_NAME_MANUAL_ALIASES = {
 }
 
 
+def _split_cli_name_and_inline_id(value: object | None) -> tuple[str, str]:
+    text = " ".join(str(value or "").strip().split())
+    if not text:
+        return "", ""
+
+    match = re.match(
+        r"^(?P<name>.*?)(?:\s*\((?P<id>[A-Za-z]{2,}[A-Za-z0-9-]*\d+[A-Za-z0-9-]*)\))\s*$",
+        text,
+    )
+    if not match:
+        return text, ""
+
+    name_text = " ".join((match.group("name") or "").split())
+    inline_id = " ".join((match.group("id") or "").split())
+    if not name_text:
+        return text, ""
+    return name_text, inline_id
+
+
 def _clean_cli_id(value: object | None) -> str:
     text = " ".join(str(value or "").strip().split())
     return text.upper() if text else ""
 
 
 def _clean_cli_name(value: object | None) -> str:
-    text = " ".join(str(value or "").strip().split())
+    text, _ = _split_cli_name_and_inline_id(value)
     return text.upper() if text else ""
 
 
@@ -191,8 +210,9 @@ def _canonicalize_cli_name(
     alias_map: dict[str, str] | None = None,
     id_by_name: dict[str, str] | None = None,
 ) -> tuple[str | None, str | None]:
-    id_text = _clean_cli_id(cli_id)
-    name_text = _clean_cli_name(cli_name)
+    raw_name, inline_id = _split_cli_name_and_inline_id(cli_name)
+    id_text = _clean_cli_id(cli_id) or _clean_cli_id(inline_id)
+    name_text = _clean_cli_name(raw_name)
     lookup = dict(CLI_NAME_MANUAL_ALIASES)
     if alias_map:
         lookup.update(alias_map)
@@ -216,8 +236,6 @@ def _canonicalize_cli_name(
 
 def format_cli_label(cli_name, cli_id=None):
     name_text, id_text = _canonicalize_cli_name(cli_name, cli_id)
-    if name_text and id_text:
-        return f"{name_text} ({id_text})"
     return name_text or id_text or ""
 
 
@@ -985,8 +1003,7 @@ def update_employee(
     employee.status = status.strip() if status else employee.status
     employee.working_at = working_at.strip() if working_at else None
     employee.gradation = gradation.strip() if gradation else None
-    employee.cli = cli.strip() if cli else None
-    employee.cli_id = cli_id.strip() if cli_id else None
+    employee.cli, employee.cli_id = _canonicalize_cli_name(cli, cli_id)
     employee.pme_due = to_date(pme_due)
     employee.technical_due = to_date(technical_due)
     employee.transportation_due = to_date(transportation_due)
@@ -1774,14 +1791,15 @@ def _import_employee_rows(
             pf_no_target = pf_no if has_col("pf_no") else existing.pf_no
             hrms_target = hrms if has_col("hrms") else existing.hrms
             crew_id_target = crew_id if has_col("crew_id") else existing.crew_id
-            cli_id_target = str(get("cli_id")).strip() if has_col("cli_id") and get("cli_id") else (None if has_col("cli_id") else existing.cli_id)
+            raw_cli_id = str(get("cli_id")).strip() if has_col("cli_id") and get("cli_id") else (None if has_col("cli_id") else existing.cli_id)
             dob_target = dob if has_col("dob") else existing.dob
             doa_target = doa if has_col("doa") else existing.doa
             do_report_target = do_report if has_col("do_report") else existing.do_report
             status_target = status_val if has_col("status") else existing.status
             working_at_target = working_at if (has_col("working_at") or working_at_override is not None) else existing.working_at
             new_gradation = str(get("gradation")).strip() if has_col("gradation") and get("gradation") else (None if has_col("gradation") else existing.gradation)
-            new_cli = str(get("cli")).strip() if has_col("cli") and get("cli") else (None if has_col("cli") else existing.cli)
+            raw_cli = str(get("cli")).strip() if has_col("cli") and get("cli") else (None if has_col("cli") else existing.cli)
+            new_cli, cli_id_target = _canonicalize_cli_name(raw_cli, raw_cli_id)
             pme_due_target = pme_due if has_col("pme_due") else existing.pme_due
             technical_due_target = technical_due if has_col("technical_due") else existing.technical_due
             transportation_due_target = transportation_due if has_col("transportation_due") else existing.transportation_due
@@ -1842,6 +1860,10 @@ def _import_employee_rows(
             elif sync_stats is not None:
                 sync_stats["unchanged"] = sync_stats.get("unchanged", 0) + 1
         else:
+            new_cli, new_cli_id = _canonicalize_cli_name(
+                str(get("cli")).strip() if "cli" in col_index and get("cli") else None,
+                str(get("cli_id")).strip() if "cli_id" in col_index and get("cli_id") else None,
+            )
             session.add(
                 Employee(
                     name=str(name).strip(),
@@ -1854,14 +1876,14 @@ def _import_employee_rows(
                     pf_no=pf_no,
                     hrms=hrms,
                     crew_id=crew_id,
-                    cli_id=str(get("cli_id")).strip() if "cli_id" in col_index and get("cli_id") else None,
+                    cli_id=new_cli_id,
                     dob=dob,
                     doa=doa,
                     do_report=do_report,
                     status=status_val,
                     working_at=working_at,
                     gradation=str(get("gradation")).strip() if "gradation" in col_index and get("gradation") else None,
-                    cli=str(get("cli")).strip() if "cli" in col_index and get("cli") else None,
+                    cli=new_cli,
                     pme_due=pme_due,
                     technical_due=technical_due,
                     transportation_due=transportation_due,
@@ -1874,6 +1896,7 @@ def _import_employee_rows(
                 )
 
     session.commit()
+    _normalize_employee_cli_names(session)
     unchanged = sync_stats.get("unchanged", 0) if sync_stats is not None else 0
     skipped = sync_stats.get("skipped", 0) if sync_stats is not None else 0
     if added == 0 and updated == 0 and unchanged == 0 and skipped == 0:
@@ -3259,6 +3282,7 @@ def add_employee(
         return date.fromisoformat(val) if val else None
     def to_int(val: Optional[str]) -> Optional[int]:
         return int(val) if val not in (None, "", "None") else None
+    cli_name, cli_id_value = _canonicalize_cli_name(cli, cli_id)
 
     role_norm = role.strip()
     existing = session.exec(
@@ -3281,8 +3305,8 @@ def add_employee(
         existing.status = status.strip() if status else existing.status
         existing.working_at = working_at.strip() if working_at else None
         existing.gradation = gradation.strip() if gradation else None
-        existing.cli = cli.strip() if cli else None
-        existing.cli_id = cli_id.strip() if cli_id else None
+        existing.cli = cli_name
+        existing.cli_id = cli_id_value
         existing.pme_due = to_date(pme_due)
         existing.technical_due = to_date(technical_due)
         existing.transportation_due = to_date(transportation_due)
@@ -3292,25 +3316,25 @@ def add_employee(
             role=role_norm,
             hire_date=to_date(hire_date),
             retirement_date=to_date(retirement_date),
-        promotion_role=promotion_role.strip() if promotion_role else None,
-        promotion_ready_date=to_date(promotion_ready_date),
-        category=category.strip() if category else None,
-        pf_no=pf_no.strip() if pf_no else None,
-        hrms=hrms.strip() if hrms else None,
-        crew_id=crew_id.strip() if crew_id else None,
-        dob=to_date(dob),
-        doa=to_date(doa),
-        do_report=to_date(do_report),
-        seniority_rank=to_int(seniority_rank),
-        status=status.strip() if status else "ACTIVE",
-        working_at=working_at.strip() if working_at else None,
-        gradation=gradation.strip() if gradation else None,
-        cli=cli.strip() if cli else None,
-        cli_id=cli_id.strip() if cli_id else None,
-        pme_due=to_date(pme_due),
-        technical_due=to_date(technical_due),
-        transportation_due=to_date(transportation_due),
-    )
+            promotion_role=promotion_role.strip() if promotion_role else None,
+            promotion_ready_date=to_date(promotion_ready_date),
+            category=category.strip() if category else None,
+            pf_no=pf_no.strip() if pf_no else None,
+            hrms=hrms.strip() if hrms else None,
+            crew_id=crew_id.strip() if crew_id else None,
+            dob=to_date(dob),
+            doa=to_date(doa),
+            do_report=to_date(do_report),
+            seniority_rank=to_int(seniority_rank),
+            status=status.strip() if status else "ACTIVE",
+            working_at=working_at.strip() if working_at else None,
+            gradation=gradation.strip() if gradation else None,
+            cli=cli_name,
+            cli_id=cli_id_value,
+            pme_due=to_date(pme_due),
+            technical_due=to_date(technical_due),
+            transportation_due=to_date(transportation_due),
+        )
         session.add(employee)
     session.commit()
     return RedirectResponse("/", status_code=303)
