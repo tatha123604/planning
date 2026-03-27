@@ -2622,6 +2622,70 @@ def _decode_uploaded_text(content: bytes) -> str:
     return content.decode("utf-8", errors="replace")
 
 
+def _normalize_import_name(value: object | None) -> str | None:
+    text = _clean_import_text(value)
+    if text is None:
+        return None
+    text = text.upper()
+    text = re.sub(r"\([^)]*\)", " ", text)
+    text = re.sub(r"\b(I|II|III|IV|V|VI|VII|VIII|IX|X)\b", " ", text)
+    text = re.sub(r"[^A-Z0-9]+", " ", text)
+    return " ".join(text.split()) or None
+
+
+def _emp_no_last5(value: object | None) -> str | None:
+    text = _clean_import_text(value)
+    if text is None:
+        return None
+    text = re.sub(r"[^A-Z0-9]", "", text.upper())
+    if not text:
+        return None
+    return text[-5:] if len(text) >= 5 else text
+
+
+def _find_employee_master_merge_candidate(
+    employees: list[Employee],
+    *,
+    emp_no: str | None,
+    name: str | None,
+    role: str | None,
+    dob: date | None,
+) -> Employee | None:
+    target_name = _normalize_import_name(name)
+    target_last5 = _emp_no_last5(emp_no)
+    target_role = normalize_role(role) if role else None
+
+    if target_name and dob:
+        candidates = [
+            employee
+            for employee in employees
+            if _normalize_import_name(employee.name) == target_name and employee.dob == dob
+        ]
+        if len(candidates) == 1:
+            candidate = candidates[0]
+            candidate_pf = _clean_import_text(candidate.pf_no)
+            if candidate_pf is None or emp_no is None:
+                return candidate
+            if target_last5 and _emp_no_last5(candidate_pf) == target_last5:
+                return candidate
+            return None
+
+    if target_name and target_role:
+        candidates = [
+            employee
+            for employee in employees
+            if _normalize_import_name(employee.name) == target_name
+            and normalize_role(employee.role) == target_role
+        ]
+        if len(candidates) == 1:
+            candidate = candidates[0]
+            candidate_pf = _clean_import_text(candidate.pf_no)
+            if candidate_pf and target_last5 and _emp_no_last5(candidate_pf) == target_last5:
+                return candidate
+
+    return None
+
+
 def _build_service_particular_records(
     content: bytes,
     warnings: list[str],
@@ -2829,6 +2893,23 @@ def _upsert_employee_master_records(
     updated = 0
     unchanged = 0
     skipped = 0
+    employees = session.exec(select(Employee)).all()
+
+    by_pf: dict[str, list[Employee]] = {}
+    by_crew_id: dict[str, list[Employee]] = {}
+
+    def rebuild_exact_indexes() -> None:
+        by_pf.clear()
+        by_crew_id.clear()
+        for employee in employees:
+            pf_value = _clean_import_text(employee.pf_no)
+            if pf_value:
+                by_pf.setdefault(pf_value, []).append(employee)
+            crew_value = _clean_import_text(employee.crew_id)
+            if crew_value:
+                by_crew_id.setdefault(crew_value, []).append(employee)
+
+    rebuild_exact_indexes()
 
     for emp_no, record in records.items():
         row_hint = str(record.get("row_hint") or record.get("name") or emp_no)
@@ -2842,7 +2923,7 @@ def _upsert_employee_master_records(
             skipped += 1
             continue
 
-        pf_matches = session.exec(select(Employee).where(Employee.pf_no == emp_no)).all()
+        pf_matches = by_pf.get(emp_no, [])
         if len(pf_matches) > 1:
             warnings.append(f"{row_hint}: skipped because EMP NO {emp_no} matches multiple employees in the current database.")
             skipped += 1
@@ -2851,7 +2932,7 @@ def _upsert_employee_master_records(
         existing = pf_matches[0] if pf_matches else None
         crew_id = _clean_import_text(record.get("crew_id"))
         if existing is None and crew_id:
-            crew_matches = session.exec(select(Employee).where(Employee.crew_id == crew_id)).all()
+            crew_matches = by_crew_id.get(crew_id, [])
             if len(crew_matches) > 1:
                 warnings.append(f"{row_hint}: skipped because CREW ID {crew_id} matches multiple employees in the current database.")
                 skipped += 1
@@ -2863,9 +2944,18 @@ def _upsert_employee_master_records(
                     skipped += 1
                     continue
 
+        if existing is None:
+            existing = _find_employee_master_merge_candidate(
+                employees,
+                emp_no=emp_no,
+                name=name,
+                role=role,
+                dob=record.get("dob") if isinstance(record.get("dob"), date) else None,
+            )
+
         if existing and crew_id:
-            conflict = session.exec(select(Employee).where(Employee.crew_id == crew_id, Employee.id != existing.id)).first()
-            if conflict:
+            crew_conflicts = [employee for employee in by_crew_id.get(crew_id, []) if employee is not existing]
+            if crew_conflicts:
                 warnings.append(f"{row_hint}: skipped because CREW ID {crew_id} already belongs to another employee.")
                 skipped += 1
                 continue
@@ -2912,6 +3002,7 @@ def _upsert_employee_master_records(
             if changed_fields:
                 updated += 1
                 sync_details.append(f"Updated {row_hint}: {'; '.join(changed_fields)}")
+                rebuild_exact_indexes()
             else:
                 unchanged += 1
         else:
@@ -2930,10 +3021,12 @@ def _upsert_employee_master_records(
                 status="ACTIVE",
             )
             session.add(employee)
+            employees.append(employee)
             added += 1
             sync_details.append(
                 f"Added {row_hint}: EMP NO {_format_sync_value(emp_no)}; CREW ID {_format_sync_value(crew_id)}"
             )
+            rebuild_exact_indexes()
 
     session.commit()
     return added, updated, unchanged, skipped
