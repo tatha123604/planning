@@ -446,7 +446,7 @@ ul { padding-left: 18px; margin: 6px 0; }
   vertical-align: middle;
   background: var(--employee-table-row-even);
   border-bottom-color: var(--employee-table-row-border);
-  transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+  transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, font-size 0.18s ease, letter-spacing 0.18s ease;
   padding-top: 12px;
   padding-bottom: 12px;
 }
@@ -475,6 +475,8 @@ ul { padding-left: 18px; margin: 6px 0; }
   border-top: 1px solid rgba(255, 230, 102, 0.22);
   border-bottom: 1px solid rgba(123, 215, 255, 0.34);
   box-shadow: inset 0 0 0 1px rgba(123, 215, 255, 0.16), 0 16px 30px rgba(3, 10, 24, 0.22);
+  font-size: 13.35px;
+  letter-spacing: 0.01em;
 }
 #employees-table tbody tr.table-paged-active td:first-child,
 #employees-table tbody tr.table-paged-active-odd td:first-child,
@@ -657,10 +659,11 @@ ul { padding-left: 18px; margin: 6px 0; }
 #employees-table tbody tr.table-paged-active-even .employee-data-pill,
 #employees-table tbody tr.table-paged-active-even .employee-date-pill,
 #employees-table tbody tr.table-paged-active-even .designation-pill {
-  transform: translateY(-1px);
+  transform: translateY(-2px) scale(1.035);
   border-color: rgba(255, 230, 102, 0.52);
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 14px 26px rgba(3, 10, 24, 0.22);
   filter: brightness(1.08) saturate(1.04);
+  text-shadow: 0 1px 10px rgba(6, 18, 30, 0.22);
 }
 #employees-table tbody tr.table-paged-active .employee-data-pill-name,
 #employees-table tbody tr.table-paged-active-odd .employee-data-pill-name,
