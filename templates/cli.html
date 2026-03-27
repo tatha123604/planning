@@ -233,7 +233,7 @@
           });
           if (detailItems.length > 5) {
             gradingDetailsToggle.hidden = false;
-            gradingDetailsToggle.textContent = detailsExpanded ? 'Show less' : `Show more (${detailItems.length - 5} more)`;
+            gradingDetailsToggle.textContent = detailsExpanded ? 'Show less' : 'Show more';
             gradingDetailsToggle.setAttribute('aria-expanded', detailsExpanded ? 'true' : 'false');
           } else {
             gradingDetailsToggle.hidden = true;
