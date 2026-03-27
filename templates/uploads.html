@@ -128,160 +128,171 @@
             </form>
           </div>
 
-          {% if cleanup_plan %}
-          <p class="hint success-text"><strong>Rows that will merge and delete duplicate</strong></p>
-          {% for item in cleanup_plan %}
-          <details class="collapsible-card" open>
-            <summary>{{ item.reason }} — keep 1, delete {{ item.remove | length }}</summary>
-            <div class="table-wrap">
-              <table class="table report-table">
-                <thead>
-                  <tr>
-                    <th>Row ID</th>
-                    <th>Action</th>
-                    <th>Name</th>
-                    <th>Designation</th>
-                    <th>DOB</th>
-                    <th>Hire Date</th>
-                    <th>Retirement Date</th>
-                    <th>EMP NO</th>
-                    <th>Working At</th>
-                    <th>HRMS ID</th>
-                    <th>CREW ID</th>
-                    <th>Category</th>
-                    <th>Gradation</th>
-                    <th>CLI</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr class="table-paged-active-odd">
-                    <td>{{ item.keep.id }}</td>
-                    <td>KEEP</td>
-                    <td>{{ item.keep.name }}</td>
-                    <td>{{ item.keep.designation }}</td>
-                    <td>{{ item.keep.dob }}</td>
-                    <td>{{ item.keep.hire_date }}</td>
-                    <td>{{ item.keep.retirement_date }}</td>
-                    <td>{{ item.keep.emp_no }}</td>
-                    <td>{{ item.keep.working_at }}</td>
-                    <td>{{ item.keep.hrms }}</td>
-                    <td>{{ item.keep.crew_id }}</td>
-                    <td>{{ item.keep.category }}</td>
-                    <td>{{ item.keep.gradation }}</td>
-                    <td>{{ item.keep.cli }}</td>
-                  </tr>
-                  {% for row in item.remove %}
-                  <tr>
-                    <td>{{ row.id }}</td>
-                    <td>DELETE</td>
-                    <td>{{ row.name }}</td>
-                    <td>{{ row.designation }}</td>
-                    <td>{{ row.dob }}</td>
-                    <td>{{ row.hire_date }}</td>
-                    <td>{{ row.retirement_date }}</td>
-                    <td>{{ row.emp_no }}</td>
-                    <td>{{ row.working_at }}</td>
-                    <td>{{ row.hrms }}</td>
-                    <td>{{ row.crew_id }}</td>
-                    <td>{{ row.category }}</td>
-                    <td>{{ row.gradation }}</td>
-                    <td>{{ row.cli }}</td>
-                  </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
-            </div>
-          </details>
-          {% endfor %}
-          {% endif %}
-
-          {% if cleanup_conflicts %}
-          <p class="hint warning-text"><strong>Conflicted rows kept separate</strong></p>
-          {% for item in cleanup_conflicts %}
+          {% if cleanup_groups %}
+          <p class="hint warning-text"><strong>Grouped by cleanup reason</strong></p>
+          {% for group in cleanup_groups %}
           <details class="collapsible-card">
-            <summary>{{ item.reason }}</summary>
-            <div class="button-row">
-              {% if item.allow_merge %}
-              <form method="post" action="{{ item.merge_action }}" onsubmit="return confirm('Merge these conflicted rows now and delete the duplicate row(s)?');">
-                {% if item.merge_action == '/uploads/employee-master-cleanup-merge' %}
-                <input type="hidden" name="conflict_reason" value="{{ item.reason }}" />
-                <input type="hidden" name="conflict_row_ids" value="{{ item.row_ids | join(',') }}" />
-                {% else %}
-                <input type="hidden" name="review_reason" value="{{ item.reason }}" />
-                <input type="hidden" name="keep_id" value="{{ item.keep_id }}" />
-                <input type="hidden" name="review_row_ids" value="{{ item.row_ids | join(',') }}" />
-                {% endif %}
-                <button type="submit">Merge</button>
-              </form>
-              {% endif %}
-              {% if item.allow_delete %}
-              <form method="post" action="{{ item.delete_action }}" onsubmit="return confirm('Delete these extra row(s) from the current employee table?');">
-                <input type="hidden" name="review_reason" value="{{ item.reason }}" />
-                <input type="hidden" name="review_row_ids" value="{{ item.row_ids | join(',') }}" />
-                <button type="submit" class="secondary-action">Delete</button>
-              </form>
-              {% endif %}
-              <form method="post" action="{{ item.keep_action }}" onsubmit="return confirm('Keep these rows and hide this group from the cleanup preview?');">
-                {% if item.keep_action == '/uploads/employee-master-cleanup-keep-both' %}
-                <input type="hidden" name="conflict_reason" value="{{ item.reason }}" />
-                <input type="hidden" name="conflict_row_ids" value="{{ item.row_ids | join(',') }}" />
-                {% else %}
-                <input type="hidden" name="review_reason" value="{{ item.reason }}" />
-                <input type="hidden" name="review_row_ids" value="{{ item.row_ids | join(',') }}" />
-                {% if item.keep_id %}
-                <input type="hidden" name="keep_id" value="{{ item.keep_id }}" />
-                {% endif %}
-                {% endif %}
-                <button type="submit" class="secondary-action">{{ item.keep_button_label }}</button>
-              </form>
-            </div>
-            <div class="table-wrap">
-              <table class="table report-table">
-                <thead>
-                  <tr>
-                    <th>Row ID</th>
-                    <th>Suggested</th>
-                    <th>Name</th>
-                    <th>Designation</th>
-                    <th>DOB</th>
-                    <th>Hire Date</th>
-                    <th>Retirement Date</th>
-                    <th>EMP NO</th>
-                    <th>Working At</th>
-                    <th>HRMS ID</th>
-                    <th>CREW ID</th>
-                    <th>Category</th>
-                    <th>Gradation</th>
-                    <th>CLI</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {% for row in item.rows %}
-                  <tr{% if row.id == item.suggested_keep_id %} class="table-paged-active-odd"{% endif %}>
-                    <td>{{ row.id }}</td>
-                    <td>{% if row.id == item.suggested_keep_id %}KEEP{% else %}REVIEW{% endif %}</td>
-                    <td>{{ row.name }}</td>
-                    <td>{{ row.designation }}</td>
-                    <td>{{ row.dob }}</td>
-                    <td>{{ row.hire_date }}</td>
-                    <td>{{ row.retirement_date }}</td>
-                    <td>{{ row.emp_no }}</td>
-                    <td>{{ row.working_at }}</td>
-                    <td>{{ row.hrms }}</td>
-                    <td>{{ row.crew_id }}</td>
-                    <td>{{ row.category }}</td>
-                    <td>{{ row.gradation }}</td>
-                    <td>{{ row.cli }}</td>
-                  </tr>
+            <summary>{{ group.reason }} - {{ group.item_count }} item(s)</summary>
+            <div class="cleanup-group-tools">
+              <label>Search names in this group
+                <input type="search" class="cleanup-group-search" placeholder="Type to filter names" />
+              </label>
+              <label>Name list
+                <select class="cleanup-group-name-list" size="{{ 6 if group.names|length > 6 else (group.names|length if group.names|length else 1) }}">
+                  {% for name in group.names %}
+                  <option>{{ name }}</option>
                   {% endfor %}
-                </tbody>
-              </table>
+                </select>
+              </label>
             </div>
+            {% for item in group.items %}
+            <details class="collapsible-card cleanup-item-card" data-cleanup-item data-cleanup-label="{{ item.search_text }}">
+              <summary>{{ item.summary }}</summary>
+              {% if item.remove is defined %}
+              <div class="table-wrap">
+                <table class="table report-table">
+                  <thead>
+                    <tr>
+                      <th>Row ID</th>
+                      <th>Action</th>
+                      <th>Name</th>
+                      <th>Designation</th>
+                      <th>DOB</th>
+                      <th>Hire Date</th>
+                      <th>Retirement Date</th>
+                      <th>EMP NO</th>
+                      <th>Working At</th>
+                      <th>HRMS ID</th>
+                      <th>CREW ID</th>
+                      <th>Category</th>
+                      <th>Gradation</th>
+                      <th>CLI</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr class="table-paged-active-odd">
+                      <td>{{ item.keep.id }}</td>
+                      <td>KEEP</td>
+                      <td>{{ item.keep.name }}</td>
+                      <td>{{ item.keep.designation }}</td>
+                      <td>{{ item.keep.dob }}</td>
+                      <td>{{ item.keep.hire_date }}</td>
+                      <td>{{ item.keep.retirement_date }}</td>
+                      <td>{{ item.keep.emp_no }}</td>
+                      <td>{{ item.keep.working_at }}</td>
+                      <td>{{ item.keep.hrms }}</td>
+                      <td>{{ item.keep.crew_id }}</td>
+                      <td>{{ item.keep.category }}</td>
+                      <td>{{ item.keep.gradation }}</td>
+                      <td>{{ item.keep.cli }}</td>
+                    </tr>
+                    {% for row in item.remove %}
+                    <tr>
+                      <td>{{ row.id }}</td>
+                      <td>DELETE</td>
+                      <td>{{ row.name }}</td>
+                      <td>{{ row.designation }}</td>
+                      <td>{{ row.dob }}</td>
+                      <td>{{ row.hire_date }}</td>
+                      <td>{{ row.retirement_date }}</td>
+                      <td>{{ row.emp_no }}</td>
+                      <td>{{ row.working_at }}</td>
+                      <td>{{ row.hrms }}</td>
+                      <td>{{ row.crew_id }}</td>
+                      <td>{{ row.category }}</td>
+                      <td>{{ row.gradation }}</td>
+                      <td>{{ row.cli }}</td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+              {% else %}
+              <div class="button-row">
+                {% if item.allow_merge %}
+                <form method="post" action="{{ item.merge_action }}" onsubmit="return confirm('Merge these conflicted rows now and delete the duplicate row(s)?');">
+                  {% if item.merge_action == '/uploads/employee-master-cleanup-merge' %}
+                  <input type="hidden" name="conflict_reason" value="{{ item.reason }}" />
+                  <input type="hidden" name="conflict_row_ids" value="{{ item.row_ids | join(',') }}" />
+                  {% else %}
+                  <input type="hidden" name="review_reason" value="{{ item.reason }}" />
+                  <input type="hidden" name="keep_id" value="{{ item.keep_id }}" />
+                  <input type="hidden" name="review_row_ids" value="{{ item.row_ids | join(',') }}" />
+                  {% endif %}
+                  <button type="submit">Merge</button>
+                </form>
+                {% endif %}
+                {% if item.allow_delete %}
+                <form method="post" action="{{ item.delete_action }}" onsubmit="return confirm('Delete these extra row(s) from the current employee table?');">
+                  <input type="hidden" name="review_reason" value="{{ item.reason }}" />
+                  <input type="hidden" name="review_row_ids" value="{{ item.row_ids | join(',') }}" />
+                  <button type="submit" class="secondary-action">Delete</button>
+                </form>
+                {% endif %}
+                <form method="post" action="{{ item.keep_action }}" onsubmit="return confirm('Keep these rows and hide this group from the cleanup preview?');">
+                  {% if item.keep_action == '/uploads/employee-master-cleanup-keep-both' %}
+                  <input type="hidden" name="conflict_reason" value="{{ item.reason }}" />
+                  <input type="hidden" name="conflict_row_ids" value="{{ item.row_ids | join(',') }}" />
+                  {% else %}
+                  <input type="hidden" name="review_reason" value="{{ item.reason }}" />
+                  <input type="hidden" name="review_row_ids" value="{{ item.row_ids | join(',') }}" />
+                  {% if item.keep_id %}
+                  <input type="hidden" name="keep_id" value="{{ item.keep_id }}" />
+                  {% endif %}
+                  {% endif %}
+                  <button type="submit" class="secondary-action">{{ item.keep_button_label }}</button>
+                </form>
+              </div>
+              <div class="table-wrap">
+                <table class="table report-table">
+                  <thead>
+                    <tr>
+                      <th>Row ID</th>
+                      <th>Suggested</th>
+                      <th>Name</th>
+                      <th>Designation</th>
+                      <th>DOB</th>
+                      <th>Hire Date</th>
+                      <th>Retirement Date</th>
+                      <th>EMP NO</th>
+                      <th>Working At</th>
+                      <th>HRMS ID</th>
+                      <th>CREW ID</th>
+                      <th>Category</th>
+                      <th>Gradation</th>
+                      <th>CLI</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for row in item.rows %}
+                    <tr{% if row.id == item.suggested_keep_id %} class="table-paged-active-odd"{% endif %}>
+                      <td>{{ row.id }}</td>
+                      <td>{% if row.id == item.suggested_keep_id %}KEEP{% else %}REVIEW{% endif %}</td>
+                      <td>{{ row.name }}</td>
+                      <td>{{ row.designation }}</td>
+                      <td>{{ row.dob }}</td>
+                      <td>{{ row.hire_date }}</td>
+                      <td>{{ row.retirement_date }}</td>
+                      <td>{{ row.emp_no }}</td>
+                      <td>{{ row.working_at }}</td>
+                      <td>{{ row.hrms }}</td>
+                      <td>{{ row.crew_id }}</td>
+                      <td>{{ row.category }}</td>
+                      <td>{{ row.gradation }}</td>
+                      <td>{{ row.cli }}</td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+              {% endif %}
+            </details>
+            {% endfor %}
           </details>
           {% endfor %}
           {% endif %}
 
-          {% if cleanup_details %}
+{% if cleanup_details %}
           <p class="hint success-text"><strong>Last cleanup actions</strong></p>
           <ul class="sync-warning-list">
             {% for item in cleanup_details %}
@@ -369,6 +380,38 @@
       });
       document.body.classList.remove('nav-hidden');
 
+      document.querySelectorAll('.cleanup-group-tools').forEach((tools) => {
+        const wrapper = tools.parentElement;
+        const searchInput = tools.querySelector('.cleanup-group-search');
+        const nameList = tools.querySelector('.cleanup-group-name-list');
+        const items = Array.from(wrapper.querySelectorAll('[data-cleanup-item]'));
+        if (!searchInput || !nameList || !items.length) return;
+
+        const originalNames = Array.from(nameList.options).map((option) => option.text);
+
+        const render = () => {
+          const query = searchInput.value.trim().toLowerCase();
+          items.forEach((item) => {
+            const haystack = item.dataset.cleanupLabel || '';
+            item.hidden = !!query && !haystack.includes(query);
+          });
+
+          nameList.innerHTML = '';
+          originalNames
+            .filter((name) => !query || name.toLowerCase().includes(query))
+            .forEach((name) => {
+              const option = document.createElement('option');
+              option.textContent = name;
+              nameList.appendChild(option);
+            });
+        };
+
+        searchInput.addEventListener('input', render);
+        nameList.addEventListener('change', () => {
+          searchInput.value = nameList.value;
+          render();
+        });
+      });
     })();
   </script>
   <script src="/static/sidebar-toggle.js"></script>

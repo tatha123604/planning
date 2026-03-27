@@ -666,6 +666,7 @@ def _uploads_context(
             ).strftime("%d/%m/%Y %I:%M %p")
         except Exception:
             snapshot_saved_at = ""
+    cleanup_groups = _group_cleanup_items(cleanup_plan or [], cleanup_conflicts or [])
     return {
         "request": request,
         "active_page": "uploads",
@@ -680,6 +681,7 @@ def _uploads_context(
         "cleanup_summary": cleanup_summary or {},
         "cleanup_plan": cleanup_plan or [],
         "cleanup_conflicts": cleanup_conflicts or [],
+        "cleanup_groups": cleanup_groups,
         "cleanup_details": cleanup_details or [],
         "extra_review_notice": extra_review_notice,
         "extra_review_error": extra_review_error,
@@ -3076,6 +3078,11 @@ def _employee_completeness(employee: Employee) -> int:
     return sum(1 for field in fields if _employee_has_value(getattr(employee, field)))
 
 
+def _employee_cleanup_sort_key(employee: Employee) -> tuple[int, int, int]:
+    has_crew_id = 1 if _employee_has_value(employee.crew_id) else 0
+    return (-has_crew_id, -_employee_completeness(employee), employee.id or 0)
+
+
 def _dedupe_uploaded_employee_rows(session: Session, sync_details: list[str]) -> int:
     groups: dict[tuple[str, str, str], list[Employee]] = {}
     for employee in session.exec(select(Employee)).all():
@@ -3119,10 +3126,7 @@ def _dedupe_uploaded_employee_rows(session: Session, sync_details: list[str]) ->
             if len(working_at_group) < 2:
                 continue
 
-            ordered = sorted(
-                working_at_group,
-                key=lambda employee: (-_employee_completeness(employee), employee.id or 0),
-            )
+            ordered = sorted(working_at_group, key=_employee_cleanup_sort_key)
             keeper = ordered[0]
             merged_count = 0
 
@@ -3257,7 +3261,7 @@ def _build_duplicate_cleanup_plan(session: Session) -> tuple[list[dict[str, obje
     def register_plan(reason: str, rows: list[Employee]) -> None:
         if len(rows) < 2:
             return
-        ordered = sorted(rows, key=lambda employee: (-_employee_completeness(employee), employee.id or 0))
+        ordered = sorted(rows, key=_employee_cleanup_sort_key)
         keeper = ordered[0]
         remove_rows = ordered[1:]
         used_ids.update(employee.id for employee in ordered if employee.id is not None)
@@ -3279,7 +3283,7 @@ def _build_duplicate_cleanup_plan(session: Session) -> tuple[list[dict[str, obje
         key_string = _cleanup_conflict_key(reason, rows)
         if key_string in keep_both_keys:
             return
-        ordered_rows = sorted(rows, key=lambda item: (-_employee_completeness(item), item.id or 0))
+        ordered_rows = sorted(rows, key=_employee_cleanup_sort_key)
         conflicts.append(
             {
                 "reason": reason,
@@ -3290,25 +3294,9 @@ def _build_duplicate_cleanup_plan(session: Session) -> tuple[list[dict[str, obje
             }
         )
 
-    def same_name_dob_merge_condition(first: Employee, second: Employee) -> bool:
-        first_pf = _clean_import_text(first.pf_no)
-        second_pf = _clean_import_text(second.pf_no)
-        if first_pf is None or second_pf is None:
-            return True
-        first_last5 = _emp_no_last5(first_pf)
-        second_last5 = _emp_no_last5(second_pf)
-        return bool(first_last5 and second_last5 and first_last5 == second_last5)
-
     def has_dob_mismatch(rows: list[Employee]) -> bool:
         dob_keys = {employee.dob.isoformat() for employee in rows if employee.dob}
         return len(dob_keys) > 1
-
-    def shared_nonblank_crew_id(rows: list[Employee]) -> str | None:
-        crew_ids = {_clean_import_text(employee.crew_id) for employee in rows}
-        crew_ids.discard(None)
-        if len(crew_ids) == 1:
-            return next(iter(crew_ids))
-        return None
 
     by_name_dob: dict[tuple[str, str], list[Employee]] = {}
     for employee in employees:
@@ -3321,91 +3309,7 @@ def _build_duplicate_cleanup_plan(session: Session) -> tuple[list[dict[str, obje
     for rows in by_name_dob.values():
         if len(rows) < 2:
             continue
-
-        working_groups: dict[str, list[Employee]] = {}
-        for employee in rows:
-            working_groups.setdefault(_working_at_key(employee.working_at), []).append(employee)
-
-        if len(working_groups) > 1:
-            shared_crew_id = shared_nonblank_crew_id(rows)
-            if shared_crew_id:
-                register_plan("Same Name + same CREW ID", rows)
-                continue
-
-            blank_group = working_groups.get("", [])
-            filled_groups = {key: value for key, value in working_groups.items() if key}
-            auto_merged_blank_group = False
-
-            if blank_group and len(filled_groups) == 1:
-                filled_rows = next(iter(filled_groups.values()))
-                all_rows = blank_group + filled_rows
-                nonblank_last5 = {
-                    _emp_no_last5(employee.pf_no)
-                    for employee in all_rows
-                    if _clean_import_text(employee.pf_no)
-                }
-                nonblank_last5.discard(None)
-                pairwise_ok = all(
-                    same_name_dob_merge_condition(first, second)
-                    for first in blank_group
-                    for second in filled_rows
-                )
-                if pairwise_ok and len(nonblank_last5) <= 1:
-                    register_plan("Same Name + DOB and one Working At is blank", all_rows)
-                    auto_merged_blank_group = True
-
-            if not auto_merged_blank_group:
-                conflict_rows: list[Employee] = []
-                working_keys = list(working_groups.keys())
-                for idx, working_key in enumerate(working_keys):
-                    for other_key in working_keys[idx + 1 :]:
-                        for first in working_groups[working_key]:
-                            for second in working_groups[other_key]:
-                                if same_name_dob_merge_condition(first, second):
-                                    conflict_rows = rows
-                                    break
-                            if conflict_rows:
-                                break
-                        if conflict_rows:
-                            break
-                    if conflict_rows:
-                        break
-                if conflict_rows:
-                    register_conflict("Same Name + DOB candidate but Working At differs", conflict_rows)
-
-        for working_at_rows in working_groups.values():
-            if len(working_at_rows) < 2:
-                continue
-
-            blank_pf_rows = [employee for employee in working_at_rows if _clean_import_text(employee.pf_no) is None]
-            nonblank_pf_rows = [employee for employee in working_at_rows if _clean_import_text(employee.pf_no) is not None]
-            by_last5: dict[str, list[Employee]] = {}
-            for employee in nonblank_pf_rows:
-                by_last5.setdefault(_emp_no_last5(employee.pf_no) or "", []).append(employee)
-
-            for group_rows in by_last5.values():
-                if len(group_rows) > 1:
-                    register_plan("Same Name + DOB + EMP NO last 5 match", group_rows)
-
-            distinct_nonblank_groups = [group_rows for group_rows in by_last5.values() if group_rows]
-            remaining_blank_rows = [
-                employee
-                for employee in blank_pf_rows
-                if employee.id is None or employee.id not in used_ids
-            ]
-            remaining_nonblank_rows = [
-                employee
-                for employee in nonblank_pf_rows
-                if employee.id is None or employee.id not in used_ids
-            ]
-
-            if remaining_blank_rows and len(distinct_nonblank_groups) == 1:
-                merge_rows = remaining_blank_rows + remaining_nonblank_rows
-                register_plan("Same Name + DOB and one EMP NO is blank", merge_rows)
-            elif len(remaining_blank_rows) > 1 and not remaining_nonblank_rows:
-                register_plan("Same Name + DOB and all EMP NO values are blank", remaining_blank_rows)
-            elif remaining_blank_rows and len(distinct_nonblank_groups) > 1:
-                register_conflict("Same Name + DOB but multiple conflicting EMP NO values", working_at_rows)
+        register_plan("Same Name + DOB", rows)
 
     by_name_crew: dict[tuple[str, str], list[Employee]] = {}
     for employee in employees:
@@ -3593,7 +3497,7 @@ def _merge_conflict_rows(
     if len(employees) < 2:
         return 0
 
-    ordered = sorted(employees, key=lambda employee: (-_employee_completeness(employee), employee.id or 0))
+    ordered = sorted(employees, key=_employee_cleanup_sort_key)
     keeper = ordered[0]
     removed = 0
     merge_fields = (
@@ -3756,7 +3660,7 @@ def _build_employee_master_extra_review(session: Session) -> tuple[list[dict[str
     def add_group(reason: str, keep_row: Employee | None, review_rows: list[Employee]) -> None:
         if not review_rows:
             return
-        ordered_review = sorted(review_rows, key=lambda employee: (-_employee_completeness(employee), employee.id or 0))
+        ordered_review = sorted(review_rows, key=_employee_cleanup_sort_key)
         review_ids = [employee.id for employee in ordered_review if employee.id is not None]
         if not review_ids:
             return
@@ -3912,6 +3816,77 @@ def _build_combined_cleanup_view(session: Session) -> tuple[list[dict[str, objec
         "conflict_groups": len(conflicts),
     }
     return plan, conflicts, summary
+
+
+def _cleanup_item_summary(item: dict[str, object], kind: str) -> str:
+    if kind == "plan":
+        keep = item.get("keep") or {}
+        keep_name = str(keep.get("name") or "Unknown")
+        remove_count = len(item.get("remove", []))
+        return f"{keep_name} - keep 1, delete {remove_count}"
+    rows = list(item.get("rows") or [])
+    names = [str(row.get("name") or "Unknown") for row in rows[:3]]
+    more = max(len(rows) - len(names), 0)
+    suffix = f" +{more} more" if more else ""
+    return f"{', '.join(names)}{suffix}"
+
+
+def _cleanup_group_names(items: list[dict[str, object]], kind: str) -> list[str]:
+    names: list[str] = []
+    for item in items:
+        if kind == "plan":
+            keep = item.get("keep") or {}
+            remove = list(item.get("remove") or [])
+            row_names = [str(keep.get("name") or "").strip()] + [str(row.get("name") or "").strip() for row in remove]
+        else:
+            row_names = [str(row.get("name") or "").strip() for row in list(item.get("rows") or [])]
+        for name in row_names:
+            if name and name not in names:
+                names.append(name)
+    return names
+
+
+def _group_cleanup_items(plan: list[dict[str, object]], conflicts: list[dict[str, object]]) -> list[dict[str, object]]:
+    grouped: dict[str, dict[str, object]] = {}
+
+    def add_item(reason: str, kind: str, item: dict[str, object]) -> None:
+        group = grouped.setdefault(
+            reason,
+            {
+                "reason": reason,
+                "plan_items": [],
+                "conflict_items": [],
+            },
+        )
+        key = "plan_items" if kind == "plan" else "conflict_items"
+        item_copy = dict(item)
+        item_copy["summary"] = _cleanup_item_summary(item, kind)
+        search_names = _cleanup_group_names([item], kind)
+        item_copy["search_text"] = " ".join(search_names).lower()
+        group[key].append(item_copy)
+
+    for item in plan:
+        add_item(str(item.get("reason") or "Auto merge"), "plan", item)
+    for item in conflicts:
+        add_item(str(item.get("reason") or "Conflict"), "conflict", item)
+
+    output: list[dict[str, object]] = []
+    for reason, group in grouped.items():
+        all_items = list(group["plan_items"]) + list(group["conflict_items"])
+        names = _cleanup_group_names(group["plan_items"], "plan") + [
+            name for name in _cleanup_group_names(group["conflict_items"], "conflict")
+            if name not in _cleanup_group_names(group["plan_items"], "plan")
+        ]
+        output.append(
+            {
+                "reason": reason,
+                "item_count": len(all_items),
+                "names": names,
+                "items": all_items,
+            }
+        )
+    output.sort(key=lambda item: (item["reason"].lower(), item["item_count"]))
+    return output
 
 
 def _cleanup_employee_master_duplicates_for_record(
