@@ -131,6 +131,24 @@ input, select, button {
   border-radius: 6px;
   font-size: 14px;
 }
+select {
+  color-scheme: dark;
+}
+select option,
+select optgroup {
+  background: #10213a;
+  color: #eefbff;
+}
+select option:checked,
+select option:hover,
+select option:focus {
+  background: linear-gradient(135deg, rgba(123, 215, 255, 0.34), rgba(18, 189, 231, 0.28));
+  color: #07111f;
+}
+select optgroup {
+  font-weight: 700;
+  color: #9be7ff;
+}
 form.inline input, form.inline select { width: 100%; }
 input:focus, select:focus { outline: 1px solid #12bde7; }
 input[type="date"] {
