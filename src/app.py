@@ -63,6 +63,7 @@ BASE_PATH = Path(__file__).resolve().parent.parent
 GOOGLE_EMPLOYEE_STATION_TABS = ["North", "South", "KOAA", "DDJ", "RHA", "NH", "BT"]
 TEMPLATE_STORE_DIR = DB_PATH.parent / "saved_templates"
 CLI_MATRIX_2026_03_24_CLEANUP_SENTINEL = DB_PATH.parent / ".cli_matrix_cleanup_2026_03_24.done"
+EMPLOYEE_MASTER_SMART_CLEANUP_SENTINEL = DB_PATH.parent / ".employee_master_smart_cleanup_2026_03_27.done"
 GOOGLE_SHEETS_READONLY_SCOPE = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 NON_CONTINUOUS_VARIANTS = {
     "non_sub": {
@@ -236,6 +237,7 @@ def on_startup() -> None:
     try:
         seed_all(session)
         _run_one_time_cli_matrix_cleanup(session)
+        _run_one_time_employee_master_cleanup(session)
     finally:
         session.close()
 
@@ -1341,6 +1343,25 @@ def _run_one_time_cli_matrix_cleanup(session: Session) -> None:
             session.delete(row)
     session.commit()
     CLI_MATRIX_2026_03_24_CLEANUP_SENTINEL.write_text("done", encoding="utf-8")
+
+
+def _run_one_time_employee_master_cleanup(session: Session) -> None:
+    if EMPLOYEE_MASTER_SMART_CLEANUP_SENTINEL.exists():
+        return
+    plan, _, summary = _build_duplicate_cleanup_plan(session)
+    details: list[str] = []
+    removed = _apply_duplicate_cleanup_plan(session, plan, details) if plan else 0
+    EMPLOYEE_MASTER_SMART_CLEANUP_SENTINEL.write_text(
+        json.dumps(
+            {
+                "merge_groups": summary.get("merge_groups", 0),
+                "rows_to_delete": summary.get("rows_to_delete", 0),
+                "removed": removed,
+                "ran_on": datetime.now().isoformat(timespec="seconds"),
+            }
+        ),
+        encoding="utf-8",
+    )
 
 
 def _cli_matrix_record_date(value) -> date | None:
