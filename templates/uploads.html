@@ -92,7 +92,8 @@
           <h2>Smart Cleanup Existing Duplicates</h2>
           <p class="hint">
             Preview duplicate candidates first. Cleanup will merge matching rows and delete the duplicate row only when
-            <code>working_at</code> is the same. If <code>working_at</code> differs, both rows stay.
+            <code>working_at</code> is the same, or when a safe blank-vs-filled <code>working_at</code> match is found.
+            If DOB differs, both rows stay in conflict review.
           </p>
           {% if cleanup_error %}
           <p class="error-text" role="alert">{{ cleanup_error }}</p>
@@ -125,37 +126,55 @@
               <table class="table report-table">
                 <thead>
                   <tr>
+                    <th>Row ID</th>
                     <th>Action</th>
                     <th>Name</th>
                     <th>Designation</th>
                     <th>DOB</th>
+                    <th>Hire Date</th>
+                    <th>Retirement Date</th>
                     <th>EMP NO</th>
                     <th>Working At</th>
                     <th>HRMS ID</th>
                     <th>CREW ID</th>
+                    <th>Category</th>
+                    <th>Gradation</th>
+                    <th>CLI</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr class="table-paged-active-odd">
+                    <td>{{ item.keep.id }}</td>
                     <td>KEEP</td>
                     <td>{{ item.keep.name }}</td>
                     <td>{{ item.keep.designation }}</td>
                     <td>{{ item.keep.dob }}</td>
+                    <td>{{ item.keep.hire_date }}</td>
+                    <td>{{ item.keep.retirement_date }}</td>
                     <td>{{ item.keep.emp_no }}</td>
                     <td>{{ item.keep.working_at }}</td>
                     <td>{{ item.keep.hrms }}</td>
                     <td>{{ item.keep.crew_id }}</td>
+                    <td>{{ item.keep.category }}</td>
+                    <td>{{ item.keep.gradation }}</td>
+                    <td>{{ item.keep.cli }}</td>
                   </tr>
                   {% for row in item.remove %}
                   <tr>
+                    <td>{{ row.id }}</td>
                     <td>DELETE</td>
                     <td>{{ row.name }}</td>
                     <td>{{ row.designation }}</td>
                     <td>{{ row.dob }}</td>
+                    <td>{{ row.hire_date }}</td>
+                    <td>{{ row.retirement_date }}</td>
                     <td>{{ row.emp_no }}</td>
                     <td>{{ row.working_at }}</td>
                     <td>{{ row.hrms }}</td>
                     <td>{{ row.crew_id }}</td>
+                    <td>{{ row.category }}</td>
+                    <td>{{ row.gradation }}</td>
+                    <td>{{ row.cli }}</td>
                   </tr>
                   {% endfor %}
                 </tbody>
@@ -186,27 +205,39 @@
               <table class="table report-table">
                 <thead>
                   <tr>
+                    <th>Row ID</th>
                     <th>Suggested</th>
                     <th>Name</th>
                     <th>Designation</th>
                     <th>DOB</th>
+                    <th>Hire Date</th>
+                    <th>Retirement Date</th>
                     <th>EMP NO</th>
                     <th>Working At</th>
                     <th>HRMS ID</th>
                     <th>CREW ID</th>
+                    <th>Category</th>
+                    <th>Gradation</th>
+                    <th>CLI</th>
                   </tr>
                 </thead>
                 <tbody>
                   {% for row in item.rows %}
                   <tr{% if row.id == item.suggested_keep_id %} class="table-paged-active-odd"{% endif %}>
+                    <td>{{ row.id }}</td>
                     <td>{% if row.id == item.suggested_keep_id %}KEEP{% else %}REVIEW{% endif %}</td>
                     <td>{{ row.name }}</td>
                     <td>{{ row.designation }}</td>
                     <td>{{ row.dob }}</td>
+                    <td>{{ row.hire_date }}</td>
+                    <td>{{ row.retirement_date }}</td>
                     <td>{{ row.emp_no }}</td>
                     <td>{{ row.working_at }}</td>
                     <td>{{ row.hrms }}</td>
                     <td>{{ row.crew_id }}</td>
+                    <td>{{ row.category }}</td>
+                    <td>{{ row.gradation }}</td>
+                    <td>{{ row.cli }}</td>
                   </tr>
                   {% endfor %}
                 </tbody>

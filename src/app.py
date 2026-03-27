@@ -2967,10 +2967,15 @@ def _cleanup_row_payload(employee: Employee) -> dict[str, object]:
         "name": employee.name,
         "designation": employee.role,
         "dob": employee.dob.strftime("%d/%m/%Y") if employee.dob else "",
+        "hire_date": employee.hire_date.strftime("%d/%m/%Y") if employee.hire_date else "",
+        "retirement_date": employee.retirement_date.strftime("%d/%m/%Y") if employee.retirement_date else "",
         "emp_no": employee.pf_no or "",
         "working_at": employee.working_at or "",
         "crew_id": employee.crew_id or "",
         "hrms": employee.hrms or "",
+        "category": employee.category or "",
+        "gradation": employee.gradation or "",
+        "cli": employee.cli or "",
     }
 
 
@@ -3003,7 +3008,7 @@ def _build_duplicate_cleanup_plan(session: Session) -> tuple[list[dict[str, obje
     plan: list[dict[str, object]] = []
     conflicts: list[dict[str, object]] = []
     used_ids: set[int] = set()
-    seen_conflicts: set[tuple[str, tuple[int, ...]]] = set()
+    seen_conflicts: set[tuple[int, ...]] = set()
     keep_both_keys = _load_keep_both_decisions()
 
     def register_plan(reason: str, rows: list[Employee]) -> None:
@@ -3025,10 +3030,9 @@ def _build_duplicate_cleanup_plan(session: Session) -> tuple[list[dict[str, obje
         if len(rows) < 2:
             return
         row_ids = tuple(sorted(employee.id or 0 for employee in rows))
-        conflict_key = (reason, row_ids)
-        if conflict_key in seen_conflicts:
+        if row_ids in seen_conflicts:
             return
-        seen_conflicts.add(conflict_key)
+        seen_conflicts.add(row_ids)
         key_string = _cleanup_conflict_key(reason, rows)
         if key_string in keep_both_keys:
             return
@@ -3052,6 +3056,17 @@ def _build_duplicate_cleanup_plan(session: Session) -> tuple[list[dict[str, obje
         second_last5 = _emp_no_last5(second_pf)
         return bool(first_last5 and second_last5 and first_last5 == second_last5)
 
+    def has_dob_mismatch(rows: list[Employee]) -> bool:
+        dob_keys = {employee.dob.isoformat() for employee in rows if employee.dob}
+        return len(dob_keys) > 1
+
+    def shared_nonblank_crew_id(rows: list[Employee]) -> str | None:
+        crew_ids = {_clean_import_text(employee.crew_id) for employee in rows}
+        crew_ids.discard(None)
+        if len(crew_ids) == 1:
+            return next(iter(crew_ids))
+        return None
+
     by_name_dob: dict[tuple[str, str], list[Employee]] = {}
     for employee in employees:
         name_key = _normalize_import_name(employee.name)
@@ -3069,6 +3084,11 @@ def _build_duplicate_cleanup_plan(session: Session) -> tuple[list[dict[str, obje
             working_groups.setdefault(_working_at_key(employee.working_at), []).append(employee)
 
         if len(working_groups) > 1:
+            shared_crew_id = shared_nonblank_crew_id(rows)
+            if shared_crew_id:
+                register_plan("Same Name + same CREW ID", rows)
+                continue
+
             blank_group = working_groups.get("", [])
             filled_groups = {key: value for key, value in working_groups.items() if key}
             auto_merged_blank_group = False
@@ -3144,6 +3164,56 @@ def _build_duplicate_cleanup_plan(session: Session) -> tuple[list[dict[str, obje
             elif remaining_blank_rows and len(distinct_nonblank_groups) > 1:
                 register_conflict("Same Name + DOB but multiple conflicting EMP NO values", working_at_rows)
 
+    by_name_crew: dict[tuple[str, str], list[Employee]] = {}
+    for employee in employees:
+        if employee.id is not None and employee.id in used_ids:
+            continue
+        name_key = _normalize_import_name(employee.name)
+        crew_key = _clean_import_text(employee.crew_id)
+        if not name_key or not crew_key:
+            continue
+        by_name_crew.setdefault((name_key, crew_key), []).append(employee)
+
+    for rows in by_name_crew.values():
+        if len(rows) < 2:
+            continue
+        if has_dob_mismatch(rows):
+            register_conflict("Same Name + same CREW ID but DOB differs", rows)
+            continue
+        register_plan("Same Name + same CREW ID", rows)
+
+    by_name_last5: dict[tuple[str, str], list[Employee]] = {}
+    for employee in employees:
+        if employee.id is not None and employee.id in used_ids:
+            continue
+        name_key = _normalize_import_name(employee.name)
+        last5_key = _emp_no_last5(employee.pf_no)
+        if not name_key or not last5_key:
+            continue
+        by_name_last5.setdefault((name_key, last5_key), []).append(employee)
+
+    for rows in by_name_last5.values():
+        if len(rows) < 2:
+            continue
+
+        working_groups: dict[str, list[Employee]] = {}
+        for employee in rows:
+            working_groups.setdefault(_working_at_key(employee.working_at), []).append(employee)
+
+        blank_group = working_groups.get("", [])
+        filled_groups = [group for key, group in working_groups.items() if key]
+        if not blank_group:
+            continue
+
+        if has_dob_mismatch(rows):
+            register_conflict("Same Name + EMP NO last 5 match but DOB differs", rows)
+            continue
+
+        if len(filled_groups) == 1:
+            register_plan("Same Name + EMP NO last 5 match and one Working At is blank", rows)
+        else:
+            register_conflict("Same Name + EMP NO last 5 match but Working At differs", rows)
+
     by_name_role: dict[tuple[str, str], list[Employee]] = {}
     for employee in employees:
         if employee.id is not None and employee.id in used_ids:
@@ -3180,7 +3250,16 @@ def _build_duplicate_cleanup_plan(session: Session) -> tuple[list[dict[str, obje
 
         for group_rows in by_working_last5.values():
             if len(group_rows) > 1:
-                register_plan("Same Name + Designation + EMP NO last 5 match", group_rows)
+                if has_dob_mismatch(group_rows):
+                    register_conflict("Same Name + Designation + EMP NO last 5 match but DOB differs", group_rows)
+                else:
+                    register_plan("Same Name + Designation + EMP NO last 5 match", group_rows)
+
+    conflicts = [
+        item
+        for item in conflicts
+        if not any(row_id and row_id in used_ids for row_id in item["row_ids"])
+    ]
 
     summary = {
         "merge_groups": len(plan),
