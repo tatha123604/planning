@@ -417,6 +417,17 @@ ul { padding-left: 18px; margin: 6px 0; }
   --employee-table-row-hover: linear-gradient(135deg, rgba(123, 215, 255, 0.16), rgba(102, 225, 182, 0.12));
   --employee-table-row-border: rgba(123, 215, 255, 0.08);
   --employee-table-row-hover-border: rgba(123, 215, 255, 0.18);
+  --employee-table-pill-bg: linear-gradient(135deg, rgba(23, 43, 68, 0.92), rgba(16, 34, 54, 0.86));
+  --employee-table-pill-border: rgba(123, 215, 255, 0.16);
+  --employee-table-pill-text: #eaf9ff;
+  --employee-table-pill-soft-bg: linear-gradient(135deg, rgba(123, 215, 255, 0.18), rgba(18, 189, 231, 0.1));
+  --employee-table-pill-soft-border: rgba(123, 215, 255, 0.24);
+  --employee-table-pill-role-bg: linear-gradient(135deg, rgba(255, 230, 102, 0.2), rgba(18, 189, 231, 0.14));
+  --employee-table-pill-role-border: rgba(255, 230, 102, 0.34);
+  --employee-table-pill-id-bg: linear-gradient(135deg, rgba(17, 34, 58, 0.94), rgba(14, 29, 46, 0.9));
+  --employee-table-pill-id-border: rgba(160, 228, 255, 0.18);
+  --employee-table-pill-name-bg: linear-gradient(135deg, rgba(123, 215, 255, 0.2), rgba(102, 225, 182, 0.16));
+  --employee-table-pill-name-border: rgba(102, 225, 182, 0.24);
   --employee-table-date-due-bg: linear-gradient(135deg, rgba(123, 215, 255, 0.22), rgba(18, 189, 231, 0.14));
   --employee-table-date-retirement-bg: linear-gradient(135deg, rgba(255, 228, 92, 0.24), rgba(18, 189, 231, 0.12));
   --employee-table-date-birth-bg: linear-gradient(135deg, rgba(203, 234, 255, 0.18), rgba(123, 215, 255, 0.12));
@@ -436,6 +447,8 @@ ul { padding-left: 18px; margin: 6px 0; }
   background: var(--employee-table-row-even);
   border-bottom-color: var(--employee-table-row-border);
   transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+  padding-top: 12px;
+  padding-bottom: 12px;
 }
 #employees-table tbody tr:nth-child(odd) td {
   background: var(--employee-table-row-odd);
@@ -451,6 +464,53 @@ ul { padding-left: 18px; margin: 6px 0; }
 #employees-table tbody tr:not(.table-paged-active):not(.table-paged-active-odd):not(.table-paged-active-even):hover td {
   background: var(--employee-table-row-hover);
   border-bottom-color: var(--employee-table-row-hover-border);
+}
+.employee-data-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  max-width: 100%;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--employee-table-pill-bg);
+  border: 1px solid var(--employee-table-pill-border);
+  color: var(--employee-table-pill-text);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.2;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 10px 22px rgba(3, 10, 24, 0.12);
+}
+.employee-data-pill-index {
+  min-width: 44px;
+  padding-left: 10px;
+  padding-right: 10px;
+  background: var(--employee-table-pill-soft-bg);
+  border-color: var(--employee-table-pill-soft-border);
+  color: #d8f6ff;
+}
+.employee-data-pill-name {
+  justify-content: flex-start;
+  background: var(--employee-table-pill-name-bg);
+  border-color: var(--employee-table-pill-name-border);
+  color: #f2fffb;
+}
+.employee-data-pill-id {
+  background: var(--employee-table-pill-id-bg);
+  border-color: var(--employee-table-pill-id-border);
+  color: #d7f4ff;
+  letter-spacing: 0.04em;
+}
+.employee-data-pill-role,
+.employee-data-pill-cli {
+  background: var(--employee-table-pill-role-bg);
+  border-color: var(--employee-table-pill-role-border);
+  color: #fff2a4;
+}
+.employee-data-pill-meta {
+  background: var(--employee-table-pill-soft-bg);
+  border-color: var(--employee-table-pill-soft-border);
+  color: #dff8ff;
 }
 .employee-date-pill {
   display: inline-flex;
@@ -476,8 +536,21 @@ ul { padding-left: 18px; margin: 6px 0; }
 }
 .employee-table .working-at-col .designation-pill,
 .employee-table .cli-roster-link,
+.employee-data-pill,
 .employee-date-pill {
   max-width: 100%;
+}
+.employee-table .working-at-col .designation-pill {
+  min-height: 32px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 10px 22px rgba(3, 10, 24, 0.12);
+}
+#employees-table tbody tr:not(.table-paged-active):not(.table-paged-active-odd):not(.table-paged-active-even):hover .employee-data-pill,
+#employees-table tbody tr:not(.table-paged-active):not(.table-paged-active-odd):not(.table-paged-active-even):hover .employee-date-pill,
+#employees-table tbody tr:not(.table-paged-active):not(.table-paged-active-odd):not(.table-paged-active-even):hover .designation-pill {
+  filter: brightness(1.06);
+  border-color: rgba(123, 215, 255, 0.34);
 }
 .metric-table tbody tr { cursor: pointer; }
 .metric-table tbody tr:hover td {
