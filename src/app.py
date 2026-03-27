@@ -133,6 +133,15 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         return RedirectResponse(url="/login", status_code=302)
 
+
+def _sensitive_action_password() -> str:
+    return os.getenv("SENSITIVE_ACTION_PASSWORD") or ADMIN_PASS
+
+
+def _validate_sensitive_action_password(password: str | None) -> None:
+    if (password or "") != _sensitive_action_password():
+        raise HTTPException(status_code=403, detail="Password validation failed. Enter the current site password to continue.")
+
 def _parse_as_of(request: Request, as_of: Optional[str]) -> date:
     """Resolve as_of date from query or cookie; fallback to today."""
     if as_of:
@@ -451,9 +460,14 @@ def employees_page(
 
 
 @app.post("/employees/sync-google")
-def sync_employees_from_google_sheet(request: Request, session: Session = Depends(get_session)):
+def sync_employees_from_google_sheet(
+    request: Request,
+    action_password: str = Form(...),
+    session: Session = Depends(get_session),
+):
     wants_json = request.headers.get("x-requested-with", "").lower() == "fetch"
     try:
+        _validate_sensitive_action_password(action_password)
         sources, source_label = _fetch_google_employee_rows()
         added = 0
         updated = 0
@@ -691,37 +705,51 @@ def preview_employee_master_cleanup(request: Request, session: Session = Depends
 
 
 @app.post("/uploads/employee-master-cleanup-apply")
-def apply_employee_master_cleanup(request: Request, session: Session = Depends(get_session)):
-    plan, conflicts, summary = _build_duplicate_cleanup_plan(session)
-    if not plan:
-        notice = "No cleanup candidate found"
+def apply_employee_master_cleanup(
+    request: Request,
+    action_password: str = Form(...),
+    session: Session = Depends(get_session),
+):
+    try:
+        _validate_sensitive_action_password(action_password)
+        plan, conflicts, summary = _build_duplicate_cleanup_plan(session)
+        if not plan:
+            notice = "No cleanup candidate found"
+            return templates.TemplateResponse(
+                "uploads.html",
+                _uploads_context(
+                    request,
+                    cleanup_notice=notice,
+                    cleanup_summary=summary,
+                    cleanup_conflicts=conflicts,
+                ),
+                status_code=200,
+            )
+
+        cleanup_details: list[str] = []
+        removed = _apply_duplicate_cleanup_plan(session, plan, cleanup_details)
+        notice = f"Smart cleanup complete: {removed} duplicate row(s) deleted."
         return templates.TemplateResponse(
             "uploads.html",
             _uploads_context(
                 request,
                 cleanup_notice=notice,
-                cleanup_summary=summary,
+                cleanup_summary={
+                    "merge_groups": len(plan),
+                    "rows_to_delete": removed,
+                    "conflict_groups": len(conflicts),
+                },
                 cleanup_conflicts=conflicts,
+                cleanup_details=cleanup_details,
             ),
         )
-
-    cleanup_details: list[str] = []
-    removed = _apply_duplicate_cleanup_plan(session, plan, cleanup_details)
-    notice = f"Smart cleanup complete: {removed} duplicate row(s) deleted."
-    return templates.TemplateResponse(
-        "uploads.html",
-        _uploads_context(
-            request,
-            cleanup_notice=notice,
-            cleanup_summary={
-                "merge_groups": len(plan),
-                "rows_to_delete": removed,
-                "conflict_groups": len(conflicts),
-            },
-            cleanup_conflicts=conflicts,
-            cleanup_details=cleanup_details,
-        ),
-    )
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "Smart cleanup failed."
+        return templates.TemplateResponse(
+            "uploads.html",
+            _uploads_context(request, cleanup_error=detail),
+            status_code=exc.status_code,
+        )
 
 
 @app.post("/uploads/employee-master-cleanup-merge")
@@ -4211,9 +4239,11 @@ async def upload_employee_master_sync(
     request: Request,
     service_file: UploadFile = File(...),
     cms_file: UploadFile = File(...),
+    action_password: str = Form(...),
     session: Session = Depends(get_session),
 ):
     try:
+        _validate_sensitive_action_password(action_password)
         service_name = service_file.filename or ""
         cms_name = cms_file.filename or ""
         if not service_name.lower().endswith((".xlsx", ".xlsm")):

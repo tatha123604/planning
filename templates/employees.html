@@ -71,6 +71,9 @@
         {% if google_sync_ready %}
         <p class="hint">Configured source: <strong>{{ google_sync_range }}</strong></p>
         <form method="post" action="/employees/sync-google" class="inline" data-google-sync-form>
+          <label>Site Password
+            <input type="password" name="action_password" autocomplete="current-password" required />
+          </label>
           <div class="actions">
             <button type="submit" data-sync-button>Sync from Google Sheet</button>
           </div>
@@ -358,9 +361,11 @@
           syncWarningWrap.hidden = true;
           syncWarningList.innerHTML = '';
           try {
+            const formData = new FormData(syncForm);
             const response = await fetch(syncForm.action, {
               method: 'POST',
               headers: { 'X-Requested-With': 'fetch' },
+              body: formData,
             });
             const data = await response.json();
             syncLive.textContent = data.message || (response.ok ? 'Sync complete.' : 'Sync failed.');
