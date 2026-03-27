@@ -64,6 +64,7 @@ GOOGLE_EMPLOYEE_STATION_TABS = ["North", "South", "KOAA", "DDJ", "RHA", "NH", "B
 TEMPLATE_STORE_DIR = DB_PATH.parent / "saved_templates"
 CLI_MATRIX_2026_03_24_CLEANUP_SENTINEL = DB_PATH.parent / ".cli_matrix_cleanup_2026_03_24.done"
 EMPLOYEE_MASTER_SMART_CLEANUP_SENTINEL = DB_PATH.parent / ".employee_master_smart_cleanup_2026_03_27.done"
+EMPLOYEE_MASTER_KEEP_BOTH_FILE = DB_PATH.parent / "employee_master_keep_both.json"
 GOOGLE_SHEETS_READONLY_SCOPE = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 NON_CONTINUOUS_VARIANTS = {
     "non_sub": {
@@ -707,6 +708,85 @@ def apply_employee_master_cleanup(request: Request, session: Session = Depends(g
             },
             cleanup_conflicts=conflicts,
             cleanup_details=cleanup_details,
+        ),
+    )
+
+
+@app.post("/uploads/employee-master-cleanup-merge")
+def merge_employee_master_conflict(
+    request: Request,
+    conflict_reason: str = Form(...),
+    conflict_row_ids: str = Form(...),
+    session: Session = Depends(get_session),
+):
+    try:
+        row_ids = [int(value) for value in conflict_row_ids.split(",") if value.strip()]
+    except ValueError:
+        return templates.TemplateResponse(
+            "uploads.html",
+            _uploads_context(request, cleanup_error="Invalid conflict row selection."),
+            status_code=400,
+        )
+
+    cleanup_details: list[str] = []
+    removed = _merge_conflict_rows(
+        session,
+        reason=conflict_reason,
+        row_ids=row_ids,
+        details=cleanup_details,
+    )
+    plan, conflicts, summary = _build_duplicate_cleanup_plan(session)
+    notice = (
+        f"Manual merge complete: {removed} duplicate row(s) deleted."
+        if removed
+        else "Manual merge could not be applied."
+    )
+    return templates.TemplateResponse(
+        "uploads.html",
+        _uploads_context(
+            request,
+            cleanup_notice=notice,
+            cleanup_summary=summary,
+            cleanup_plan=plan,
+            cleanup_conflicts=conflicts,
+            cleanup_details=cleanup_details,
+        ),
+    )
+
+
+@app.post("/uploads/employee-master-cleanup-keep-both")
+def keep_both_employee_master_conflict(
+    request: Request,
+    conflict_reason: str = Form(...),
+    conflict_row_ids: str = Form(...),
+    session: Session = Depends(get_session),
+):
+    try:
+        row_ids = sorted(int(value) for value in conflict_row_ids.split(",") if value.strip())
+    except ValueError:
+        return templates.TemplateResponse(
+            "uploads.html",
+            _uploads_context(request, cleanup_error="Invalid conflict row selection."),
+            status_code=400,
+        )
+
+    employees = [session.get(Employee, row_id) for row_id in row_ids]
+    rows = [employee for employee in employees if employee is not None]
+    keep_both_keys = _load_keep_both_decisions()
+    if len(rows) >= 2:
+        keep_both_keys.add(_cleanup_conflict_key(conflict_reason, rows))
+        _save_keep_both_decisions(keep_both_keys)
+
+    plan, conflicts, summary = _build_duplicate_cleanup_plan(session)
+    notice = "Conflict marked as keep both."
+    return templates.TemplateResponse(
+        "uploads.html",
+        _uploads_context(
+            request,
+            cleanup_notice=notice,
+            cleanup_summary=summary,
+            cleanup_plan=plan,
+            cleanup_conflicts=conflicts,
         ),
     )
 
@@ -2888,12 +2968,37 @@ def _cleanup_row_payload(employee: Employee) -> dict[str, object]:
     }
 
 
+def _cleanup_conflict_key(reason: str, rows: list[Employee]) -> str:
+    row_ids = ",".join(str(employee.id or 0) for employee in sorted(rows, key=lambda item: item.id or 0))
+    return f"{reason}|{row_ids}"
+
+
+def _load_keep_both_decisions() -> set[str]:
+    if not EMPLOYEE_MASTER_KEEP_BOTH_FILE.exists():
+        return set()
+    try:
+        raw = json.loads(EMPLOYEE_MASTER_KEEP_BOTH_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return set()
+    if not isinstance(raw, list):
+        return set()
+    return {str(item) for item in raw if item}
+
+
+def _save_keep_both_decisions(keys: set[str]) -> None:
+    EMPLOYEE_MASTER_KEEP_BOTH_FILE.write_text(
+        json.dumps(sorted(keys), ensure_ascii=True, indent=2),
+        encoding="utf-8",
+    )
+
+
 def _build_duplicate_cleanup_plan(session: Session) -> tuple[list[dict[str, object]], list[dict[str, object]], dict[str, int]]:
     employees = session.exec(select(Employee)).all()
     plan: list[dict[str, object]] = []
     conflicts: list[dict[str, object]] = []
     used_ids: set[int] = set()
     seen_conflicts: set[tuple[str, tuple[int, ...]]] = set()
+    keep_both_keys = _load_keep_both_decisions()
 
     def register_plan(reason: str, rows: list[Employee]) -> None:
         if len(rows) < 2:
@@ -2918,9 +3023,16 @@ def _build_duplicate_cleanup_plan(session: Session) -> tuple[list[dict[str, obje
         if conflict_key in seen_conflicts:
             return
         seen_conflicts.add(conflict_key)
+        key_string = _cleanup_conflict_key(reason, rows)
+        if key_string in keep_both_keys:
+            return
+        ordered_rows = sorted(rows, key=lambda item: (-_employee_completeness(item), item.id or 0))
         conflicts.append(
             {
                 "reason": reason,
+                "conflict_key": key_string,
+                "row_ids": [employee.id for employee in sorted(rows, key=lambda item: item.id or 0)],
+                "suggested_keep_id": ordered_rows[0].id if ordered_rows else None,
                 "rows": [_cleanup_row_payload(employee) for employee in sorted(rows, key=lambda item: item.id or 0)],
             }
         )
@@ -3099,6 +3211,56 @@ def _apply_duplicate_cleanup_plan(
                 f"{item['reason']}: kept {keeper.name} ({_format_sync_value(keeper.pf_no)}), removed {merged_count} duplicate row(s)."
             )
 
+    session.commit()
+    return removed
+
+
+def _merge_conflict_rows(
+    session: Session,
+    *,
+    reason: str,
+    row_ids: list[int],
+    details: list[str],
+) -> int:
+    rows = [session.get(Employee, row_id) for row_id in row_ids]
+    employees = [row for row in rows if row is not None]
+    if len(employees) < 2:
+        return 0
+
+    ordered = sorted(employees, key=lambda employee: (-_employee_completeness(employee), employee.id or 0))
+    keeper = ordered[0]
+    removed = 0
+    merge_fields = (
+        "role",
+        "hire_date",
+        "retirement_date",
+        "promotion_role",
+        "promotion_ready_date",
+        "category",
+        "hrms",
+        "crew_id",
+        "doa",
+        "do_report",
+        "status",
+        "working_at",
+        "gradation",
+        "cli",
+        "pme_due",
+        "technical_due",
+        "transportation_due",
+    )
+
+    for duplicate in ordered[1:]:
+        for field_name in merge_fields:
+            if not _employee_has_value(getattr(keeper, field_name)) and _employee_has_value(getattr(duplicate, field_name)):
+                setattr(keeper, field_name, getattr(duplicate, field_name))
+        session.delete(duplicate)
+        removed += 1
+
+    if removed:
+        details.append(
+            f"Manual merge applied for {reason}: kept {keeper.name} ({_format_sync_value(keeper.pf_no)}), removed {removed} duplicate row(s)."
+        )
     session.commit()
     return removed
 
