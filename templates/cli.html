@@ -77,10 +77,15 @@
         </ul>
         {% endif %}
         {% if grading_warning_details %}
-        <p class="hint warning-text"><strong>Mismatch / Auto-fixed records</strong></p>
-        <ul class="sync-warning-list">
+        <div class="sync-list-header">
+          <p class="hint warning-text"><strong>Mismatch / Auto-fixed records</strong></p>
+          {% if grading_warning_details|length > 10 %}
+          <button type="button" class="ghost small sync-list-toggle" id="grading-warning-toggle" aria-expanded="false">Show more</button>
+          {% endif %}
+        </div>
+        <ul class="sync-warning-list" id="grading-warning-list">
           {% for item in grading_warning_details %}
-          <li>{{ item }}</li>
+          <li{% if loop.index > 10 %} class="grading-warning-extra" hidden{% endif %}>{{ item }}</li>
           {% endfor %}
         </ul>
         {% endif %}
@@ -241,6 +246,25 @@
           renderDetails();
         });
         renderDetails();
+      }
+
+      const gradingWarningToggle = document.getElementById('grading-warning-toggle');
+      const gradingWarningList = document.getElementById('grading-warning-list');
+      if (gradingWarningToggle && gradingWarningList) {
+        const warningItems = Array.from(gradingWarningList.querySelectorAll('.grading-warning-extra'));
+        let warningsExpanded = false;
+        const renderWarnings = () => {
+          warningItems.forEach((item) => {
+            item.hidden = !warningsExpanded;
+          });
+          gradingWarningToggle.textContent = warningsExpanded ? 'Show less' : 'Show more';
+          gradingWarningToggle.setAttribute('aria-expanded', warningsExpanded ? 'true' : 'false');
+        };
+        gradingWarningToggle.addEventListener('click', () => {
+          warningsExpanded = !warningsExpanded;
+          renderWarnings();
+        });
+        renderWarnings();
       }
     })();
   </script>
