@@ -448,6 +448,52 @@ ul { padding-left: 18px; margin: 6px 0; }
   flex: 0 1 260px;
   min-width: 210px;
 }
+.cleanup-group-tools {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+  margin: 12px 0 18px;
+  padding: 14px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(18, 31, 52, 0.82), rgba(11, 46, 70, 0.5));
+  border: 1px solid rgba(123, 215, 255, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 14px 28px rgba(3, 10, 24, 0.16);
+}
+.cleanup-group-tools label {
+  min-width: 0;
+}
+.cleanup-group-search,
+.cleanup-group-name-list {
+  width: 100%;
+  border: 1px solid rgba(123, 215, 255, 0.22);
+  background: linear-gradient(180deg, rgba(12, 24, 42, 0.95), rgba(16, 38, 58, 0.86));
+  color: #eaf9ff;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 10px 22px rgba(3, 10, 24, 0.12);
+}
+.cleanup-group-search {
+  min-height: 42px;
+}
+.cleanup-group-search:focus,
+.cleanup-group-name-list:focus {
+  outline: none;
+  border-color: rgba(123, 215, 255, 0.46);
+  box-shadow: 0 0 0 3px rgba(123, 215, 255, 0.14), inset 0 1px 0 rgba(255,255,255,0.06);
+}
+.cleanup-group-name-list {
+  min-height: 188px;
+  padding: 10px 12px;
+  border-radius: 14px;
+}
+.cleanup-group-name-list option {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #10213a;
+  color: #eefbff;
+}
+.cleanup-group-name-list option:checked {
+  background: linear-gradient(135deg, rgba(123, 215, 255, 0.34), rgba(18, 189, 231, 0.28));
+  color: #07111f;
+}
 .cleanup-apply-form button[disabled] {
   opacity: 0.45;
   cursor: not-allowed;
