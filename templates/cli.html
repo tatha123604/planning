@@ -66,11 +66,13 @@
         {% if grading_update_details %}
         <div class="sync-list-header">
           <p class="hint success-text"><strong>Gradation update details</strong></p>
-          <button type="button" class="ghost small sync-list-toggle" id="grading-details-toggle" hidden aria-expanded="false">Show more</button>
+          {% if grading_update_details|length > 10 %}
+          <button type="button" class="ghost small sync-list-toggle" id="grading-details-toggle" aria-expanded="false">Show more</button>
+          {% endif %}
         </div>
         <ul class="sync-warning-list" id="grading-details-list">
           {% for item in grading_update_details %}
-          <li>{{ item }}</li>
+          <li{% if loop.index > 10 %} class="grading-detail-extra" hidden{% endif %}>{{ item }}</li>
           {% endfor %}
         </ul>
         {% endif %}
@@ -225,21 +227,14 @@
       const gradingDetailsToggle = document.getElementById('grading-details-toggle');
       const gradingDetailsList = document.getElementById('grading-details-list');
       if (gradingDetailsToggle && gradingDetailsList) {
-        const detailItems = Array.from(gradingDetailsList.querySelectorAll('li'));
-        const collapsedCount = 10;
+        const detailItems = Array.from(gradingDetailsList.querySelectorAll('.grading-detail-extra'));
         let detailsExpanded = false;
         const renderDetails = () => {
-          detailItems.forEach((item, index) => {
-            item.hidden = !detailsExpanded && index >= collapsedCount;
+          detailItems.forEach((item) => {
+            item.hidden = !detailsExpanded;
           });
-          if (detailItems.length > collapsedCount) {
-            gradingDetailsToggle.hidden = false;
-            gradingDetailsToggle.textContent = detailsExpanded ? 'Show less' : 'Show more';
-            gradingDetailsToggle.setAttribute('aria-expanded', detailsExpanded ? 'true' : 'false');
-          } else {
-            gradingDetailsToggle.hidden = true;
-            gradingDetailsToggle.setAttribute('aria-expanded', 'false');
-          }
+          gradingDetailsToggle.textContent = detailsExpanded ? 'Show less' : 'Show more';
+          gradingDetailsToggle.setAttribute('aria-expanded', detailsExpanded ? 'true' : 'false');
         };
         gradingDetailsToggle.addEventListener('click', () => {
           detailsExpanded = !detailsExpanded;
