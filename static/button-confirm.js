@@ -22,6 +22,14 @@
         if (inlineConfirm) return;
       }
 
+      if (
+        button.classList.contains("sidebar-toggle-btn") ||
+        button.closest(".sidebar-toggle-btn") ||
+        button.closest(".brand")
+      ) {
+        return;
+      }
+
       const ok = window.confirm(buildMessage(button));
       if (!ok) {
         event.preventDefault();
