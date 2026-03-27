@@ -177,7 +177,7 @@
                   <td>{{ e.gradation or '' }}</td>
                   <td>{{ e.cli | cli_label(e.cli_id) }}</td>
                   <td>{{ e.dob | dmy }}</td>
-                  <td class="working-at-col">{{ e.working_at or '' }}</td>
+                  <td class="working-at-col">{% if e.working_at %}<span class="designation-pill">{{ e.working_at }}</span>{% endif %}</td>
                   <td class="actions-cell actions-col">
                     <a class="ghost small employee-edit-link" href="/employees/{{ e.id }}" data-employee-name="{{ e.name }}">Edit</a>
                     <form method="post" action="/employees/{{ e.id }}/delete" class="employee-delete-form" data-employee-name="{{ e.name }}" style="display:inline;">

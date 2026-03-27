@@ -183,7 +183,7 @@
                       <td>{{ item.keep.hire_date }}</td>
                       <td>{{ item.keep.retirement_date }}</td>
                       <td>{{ item.keep.emp_no }}</td>
-                      <td>{{ item.keep.working_at }}</td>
+                      <td>{% if item.keep.working_at %}<span class="designation-pill">{{ item.keep.working_at }}</span>{% endif %}</td>
                       <td>{{ item.keep.hrms }}</td>
                       <td>{{ item.keep.crew_id }}</td>
                       <td>{{ item.keep.category }}</td>
@@ -200,7 +200,7 @@
                       <td>{{ row.hire_date }}</td>
                       <td>{{ row.retirement_date }}</td>
                       <td>{{ row.emp_no }}</td>
-                      <td>{{ row.working_at }}</td>
+                      <td>{% if row.working_at %}<span class="designation-pill">{{ row.working_at }}</span>{% endif %}</td>
                       <td>{{ row.hrms }}</td>
                       <td>{{ row.crew_id }}</td>
                       <td>{{ row.category }}</td>
@@ -278,7 +278,7 @@
                       <td>{{ row.hire_date }}</td>
                       <td>{{ row.retirement_date }}</td>
                       <td>{{ row.emp_no }}</td>
-                      <td>{{ row.working_at }}</td>
+                      <td>{% if row.working_at %}<span class="designation-pill">{{ row.working_at }}</span>{% endif %}</td>
                       <td>{{ row.hrms }}</td>
                       <td>{{ row.crew_id }}</td>
                       <td>{{ row.category }}</td>
