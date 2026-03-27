@@ -223,6 +223,9 @@
             <button type="submit">Filter</button>
             <a class="ghost" href="/employees#cli-roster">Reset</a>
           </form>
+          <div class="actions">
+            <a class="ghost" href="/uploads#li-grading-card">Gradation Update</a>
+          </div>
           <div class="table-wrap">
             <table class="employee-table paged">
               <thead>
@@ -233,6 +236,7 @@
                   <th>CREW ID</th>
                   <th>Designation</th>
                   <th>Gradation</th>
+                  <th>Grading Due</th>
                 </tr>
               </thead>
               <tbody>
@@ -244,6 +248,7 @@
                   <td>{{ e.crew_id or '' }}</td>
                   <td>{{ e.role }}</td>
                   <td>{{ e.gradation or '' }}</td>
+                  <td>{{ e.grading_due | dmy if e.grading_due else '' }}</td>
                 </tr>
                 {% endfor %}
               </tbody>

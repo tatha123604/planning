@@ -23,6 +23,7 @@ class Employee(SQLModel, table=True):
     status: str | None = None
     working_at: str | None = None
     gradation: str | None = None
+    grading_due: date | None = None
     cli: str | None = None
     pme_due: date | None = None
     technical_due: date | None = None

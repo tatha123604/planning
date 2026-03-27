@@ -33,6 +33,7 @@ def init_db() -> None:
             ("status", "TEXT"),
             ("working_at", "TEXT"),
             ("gradation", "TEXT"),
+            ("grading_due", "DATE"),
             ("cli", "TEXT"),
             ("pme_due", "DATE"),
             ("technical_due", "DATE"),
@@ -104,6 +105,7 @@ def init_db() -> None:
                     status TEXT,
                     working_at TEXT,
                     gradation TEXT,
+                    grading_due DATE,
                     cli TEXT,
                     pme_due DATE,
                     technical_due DATE,
@@ -115,14 +117,14 @@ def init_db() -> None:
                 """
                 INSERT INTO employee (
                     id, name, role, hire_date, retirement_date, promotion_role, promotion_ready_date,
-                    seniority_rank, category, pf_no, hrms, dob, doa, do_report, status, working_at,
-                    gradation, cli, pme_due, technical_due, transportation_due
+                    seniority_rank, category, pf_no, hrms, crew_id, dob, doa, do_report, status, working_at,
+                    gradation, grading_due, cli, pme_due, technical_due, transportation_due
                 )
                 SELECT
                     id, name, role, hire_date,
                     CASE WHEN retirement_date = '2026-03-18' THEN NULL ELSE retirement_date END,
                     promotion_role, promotion_ready_date, seniority_rank, category, pf_no, hrms, crew_id,
-                    dob, doa, do_report, status, working_at, gradation, cli, pme_due,
+                    dob, doa, do_report, status, working_at, gradation, grading_due, cli, pme_due,
                     technical_due, transportation_due
                 FROM employee_old;
                 """

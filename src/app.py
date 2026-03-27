@@ -645,6 +645,11 @@ def _uploads_context(
     update_warning: str = "",
     update_details: Optional[list[str]] = None,
     warning_details: Optional[list[str]] = None,
+    grading_update_error: Optional[str] = None,
+    grading_update_notice: str = "",
+    grading_update_warning: str = "",
+    grading_update_details: Optional[list[str]] = None,
+    grading_warning_details: Optional[list[str]] = None,
     cleanup_notice: str = "",
     cleanup_error: Optional[str] = None,
     cleanup_summary: Optional[dict[str, int]] = None,
@@ -676,6 +681,11 @@ def _uploads_context(
         "update_warning": update_warning,
         "update_details": update_details or [],
         "warning_details": warning_details or [],
+        "grading_update_error": grading_update_error,
+        "grading_update_notice": grading_update_notice,
+        "grading_update_warning": grading_update_warning,
+        "grading_update_details": grading_update_details or [],
+        "grading_warning_details": grading_warning_details or [],
         "cleanup_notice": cleanup_notice,
         "cleanup_error": cleanup_error,
         "cleanup_summary": cleanup_summary or {},
@@ -4406,6 +4416,233 @@ async def upload_employee_master_sync(
             "uploads.html",
             _uploads_context(request, update_error=str(exc)),
             status_code=500,
+        )
+
+
+def _normalize_li_grading_header(value: object | None) -> str:
+    text = _clean_import_text(value)
+    if text is None:
+        return ""
+    return re.sub(r"[^A-Z0-9]+", "", text.upper())
+
+
+def _parse_li_grading_workbook(content: bytes) -> tuple[list[dict[str, object]], list[str]]:
+    workbook = load_workbook(filename=BytesIO(content), data_only=True)
+    worksheet = workbook.active
+    rows = list(worksheet.iter_rows(values_only=True))
+    if not rows:
+        raise HTTPException(status_code=400, detail="LI Grading workbook is empty.")
+
+    header_row_index: int | None = None
+    crew_idx: int | None = None
+    name_idx: int | None = None
+    role_idx: int | None = None
+    current_grade_idx: int | None = None
+    due_date_idx: int | None = None
+
+    for idx, row in enumerate(rows):
+        normalized = [_normalize_li_grading_header(cell) for cell in row]
+        if "CREWID" not in normalized or "NAME" not in normalized or "CURRENTGRADE" not in normalized:
+            continue
+        role_idx = next((i for i, value in enumerate(normalized) if value in {"DESIG", "DESIGNATION", "ROLE"}), None)
+        if role_idx is None:
+            continue
+        current_grade_idx = normalized.index("CURRENTGRADE")
+        due_date_idx = next((i for i in range(current_grade_idx + 1, len(normalized)) if normalized[i] == "DUEDATE"), None)
+        if due_date_idx is None:
+            due_date_idx = next((i for i, value in enumerate(normalized) if value == "DUEDATE"), None)
+        if due_date_idx is None:
+            continue
+        crew_idx = normalized.index("CREWID")
+        name_idx = normalized.index("NAME")
+        header_row_index = idx
+        break
+
+    if header_row_index is None or None in {crew_idx, name_idx, role_idx, current_grade_idx, due_date_idx}:
+        raise HTTPException(
+            status_code=400,
+            detail="Could not find the LI Grading columns. Required columns: CREW ID, NAME, DESIG., CURRENT GRADE, DUE DATE.",
+        )
+
+    warnings: list[str] = []
+    records: list[dict[str, object]] = []
+
+    for row_number, row in enumerate(rows[header_row_index + 1 :], start=header_row_index + 2):
+        def get(column_index: int | None) -> object | None:
+            if column_index is None or column_index >= len(row):
+                return None
+            return row[column_index]
+
+        crew_id = _clean_import_text(get(crew_idx))
+        name = _clean_import_text(get(name_idx))
+        role_raw = _clean_import_text(get(role_idx))
+        current_grade = _clean_import_text(get(current_grade_idx))
+        due_raw = get(due_date_idx)
+
+        if not any([crew_id, name, role_raw, current_grade, due_raw]):
+            continue
+
+        row_hint = name or crew_id or f"row {row_number}"
+        if not name:
+            warnings.append(f"LI Grading row {row_number}: skipped because NAME is blank.")
+            continue
+        if not role_raw:
+            warnings.append(f"LI Grading {row_hint}: skipped because DESIG. is blank.")
+            continue
+        if not current_grade:
+            warnings.append(f"LI Grading {row_hint}: skipped because CURRENT GRADE is blank.")
+            continue
+
+        try:
+            due_date = _excel_to_date_with_correction(due_raw, warnings, "LI Grading", row_hint, "due_date") if due_raw not in (None, "") else None
+        except ValueError as exc:
+            warnings.append(f"LI Grading {row_hint}: skipped because DUE DATE is invalid ({exc}).")
+            continue
+
+        records.append(
+            {
+                "crew_id": crew_id,
+                "name": name,
+                "role": normalize_role(role_raw),
+                "gradation": current_grade.upper(),
+                "grading_due": due_date,
+                "row_hint": row_hint,
+            }
+        )
+
+    if not records:
+        raise HTTPException(status_code=400, detail="LI Grading workbook did not produce any usable rows.")
+    return records, warnings
+
+
+@app.post("/upload-li-grading")
+async def upload_li_grading(
+    request: Request,
+    file: UploadFile = File(...),
+    action_password: str = Form(...),
+    session: Session = Depends(get_session),
+):
+    try:
+        _validate_sensitive_action_password(action_password)
+        filename = file.filename or ""
+        if not filename.lower().endswith((".xlsx", ".xlsm")):
+            raise HTTPException(status_code=400, detail="Upload the LI Grading .xlsx workbook.")
+
+        records, warnings = _parse_li_grading_workbook(await file.read())
+        employees = session.exec(select(Employee)).all()
+
+        by_crew: dict[str, list[Employee]] = {}
+        by_name_role: dict[tuple[str, str], list[Employee]] = {}
+        for employee in employees:
+            crew_key = (_clean_import_text(employee.crew_id) or "").upper()
+            if crew_key:
+                by_crew.setdefault(crew_key, []).append(employee)
+            name_key = _normalize_import_name(employee.name)
+            role_key = normalize_role(employee.role)
+            if name_key and role_key:
+                by_name_role.setdefault((name_key, role_key), []).append(employee)
+
+        updated = 0
+        unchanged = 0
+        skipped = 0
+        details: list[str] = []
+        touched_ids: set[int] = set()
+
+        for record in records:
+            row_hint = str(record["row_hint"])
+            crew_key = str(record.get("crew_id") or "").upper()
+            name_key = _normalize_import_name(record.get("name"))
+            role_key = str(record.get("role") or "")
+            target: Employee | None = None
+
+            if crew_key:
+                crew_matches = by_crew.get(crew_key, [])
+                filtered_matches = [
+                    employee
+                    for employee in crew_matches
+                    if _normalize_import_name(employee.name) == name_key and normalize_role(employee.role) == role_key
+                ]
+                if len(filtered_matches) == 1:
+                    target = filtered_matches[0]
+                elif len(filtered_matches) > 1:
+                    warnings.append(f"LI Grading {row_hint}: skipped because CREW ID, NAME, and DESIGNATION matched multiple roster rows.")
+                    skipped += 1
+                    continue
+                elif crew_matches:
+                    warnings.append(f"LI Grading {row_hint}: skipped because CREW ID {crew_key} matched the roster but NAME / DESIGNATION did not match.")
+                    skipped += 1
+                    continue
+
+            if target is None:
+                if not name_key or not role_key:
+                    warnings.append(f"LI Grading {row_hint}: no matching CLI Roster row found.")
+                    skipped += 1
+                    continue
+                fallback_matches = by_name_role.get((name_key, role_key), [])
+                if len(fallback_matches) == 1:
+                    target = fallback_matches[0]
+                elif len(fallback_matches) > 1:
+                    warnings.append(f"LI Grading {row_hint}: skipped because NAME + DESIGNATION matched multiple CLI Roster rows.")
+                    skipped += 1
+                    continue
+                else:
+                    warnings.append(f"LI Grading {row_hint}: no matching CLI Roster row found.")
+                    skipped += 1
+                    continue
+
+            if target.id is not None and target.id in touched_ids:
+                warnings.append(f"LI Grading {row_hint}: skipped because that roster row already received a grading update from another row in this workbook.")
+                skipped += 1
+                continue
+
+            new_grade = _clean_import_text(record.get("gradation"))
+            new_due = record.get("grading_due")
+            old_grade = _clean_import_text(target.gradation)
+            old_due = target.grading_due
+
+            if old_grade == new_grade and old_due == new_due:
+                unchanged += 1
+                if target.id is not None:
+                    touched_ids.add(target.id)
+                continue
+
+            changes: list[str] = []
+            if old_grade != new_grade:
+                changes.append(f"Gradation: {_format_sync_value(old_grade)} -> {_format_sync_value(new_grade)}")
+            if old_due != new_due:
+                changes.append(f"Grading Due: {_format_sync_value(old_due)} -> {_format_sync_value(new_due)}")
+
+            target.gradation = new_grade
+            target.grading_due = new_due
+            updated += 1
+            if target.id is not None:
+                touched_ids.add(target.id)
+            details.append(
+                f"Updated {target.name} ({target.crew_id or target.hrms or target.id}): " + "; ".join(changes)
+            )
+
+        session.commit()
+        notice = f"LI grading update complete: {updated} updated, {unchanged} unchanged, {skipped} skipped."
+        warning_message = f"Mismatch / auto-fixed records: {len(warnings)}" if warnings else ""
+        return templates.TemplateResponse(
+            "uploads.html",
+            _uploads_context(
+                request,
+                grading_update_notice=notice,
+                grading_update_warning=warning_message,
+                grading_update_details=details,
+                grading_warning_details=warnings,
+            ),
+        )
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "LI grading update failed."
+        return templates.TemplateResponse(
+            "uploads.html",
+            _uploads_context(
+                request,
+                grading_update_error=detail,
+            ),
+            status_code=exc.status_code,
         )
 
 
