@@ -535,6 +535,77 @@ ul { padding-left: 18px; margin: 6px 0; }
   border-color: var(--employee-table-pill-soft-border);
   color: #dff8ff;
 }
+.employee-data-pill-category,
+.employee-data-pill-gradation {
+  min-width: 62px;
+  justify-content: center;
+  letter-spacing: 0.03em;
+}
+.employee-data-pill-category[data-category="UR"],
+.employee-data-pill-category[data-category="GENERAL"],
+.employee-data-pill-category[data-category="GEN"] {
+  background: linear-gradient(135deg, rgba(123, 215, 255, 0.24), rgba(18, 189, 231, 0.14));
+  border-color: rgba(123, 215, 255, 0.38);
+  color: #e9fbff;
+}
+.employee-data-pill-category[data-category="OBC"],
+.employee-data-pill-category[data-category="OBC-NCL"],
+.employee-data-pill-category[data-category="OBC (NCL)"],
+.employee-data-pill-category[data-category="OBC(NCL)"] {
+  background: linear-gradient(135deg, rgba(255, 179, 71, 0.24), rgba(255, 228, 92, 0.16));
+  border-color: rgba(255, 196, 110, 0.44);
+  color: #fff1c2;
+}
+.employee-data-pill-category[data-category="SC"] {
+  background: linear-gradient(135deg, rgba(255, 122, 198, 0.24), rgba(194, 109, 255, 0.16));
+  border-color: rgba(255, 153, 214, 0.42);
+  color: #ffe9f8;
+}
+.employee-data-pill-category[data-category="ST"] {
+  background: linear-gradient(135deg, rgba(82, 214, 163, 0.24), rgba(68, 199, 255, 0.14));
+  border-color: rgba(102, 225, 182, 0.42);
+  color: #e6fff5;
+}
+.employee-data-pill-category[data-category="EWS"] {
+  background: linear-gradient(135deg, rgba(170, 235, 106, 0.24), rgba(255, 228, 92, 0.16));
+  border-color: rgba(198, 241, 122, 0.42);
+  color: #f5ffd7;
+}
+.employee-data-pill-category[data-category="MINORITY"] {
+  background: linear-gradient(135deg, rgba(143, 170, 255, 0.24), rgba(123, 215, 255, 0.16));
+  border-color: rgba(156, 188, 255, 0.4);
+  color: #edf1ff;
+}
+.employee-data-pill-gradation[data-gradation^="A"] {
+  background: linear-gradient(135deg, rgba(255, 228, 92, 0.28), rgba(255, 179, 71, 0.18));
+  border-color: rgba(255, 230, 102, 0.5);
+  color: #fff6bf;
+}
+.employee-data-pill-gradation[data-gradation^="B"] {
+  background: linear-gradient(135deg, rgba(123, 215, 255, 0.26), rgba(102, 225, 182, 0.16));
+  border-color: rgba(123, 215, 255, 0.44);
+  color: #eafaff;
+}
+.employee-data-pill-gradation[data-gradation^="C"] {
+  background: linear-gradient(135deg, rgba(102, 225, 182, 0.26), rgba(120, 255, 214, 0.16));
+  border-color: rgba(120, 239, 188, 0.42);
+  color: #effff8;
+}
+.employee-data-pill-gradation[data-gradation^="D"] {
+  background: linear-gradient(135deg, rgba(255, 156, 110, 0.24), rgba(255, 228, 92, 0.16));
+  border-color: rgba(255, 176, 134, 0.42);
+  color: #fff0d9;
+}
+.employee-data-pill-gradation[data-gradation^="E"] {
+  background: linear-gradient(135deg, rgba(211, 129, 255, 0.24), rgba(255, 122, 198, 0.16));
+  border-color: rgba(221, 153, 255, 0.42);
+  color: #faecff;
+}
+.employee-data-pill-gradation[data-gradation^="F"] {
+  background: linear-gradient(135deg, rgba(178, 191, 214, 0.24), rgba(123, 215, 255, 0.12));
+  border-color: rgba(188, 204, 232, 0.4);
+  color: #f0f6ff;
+}
 .employee-date-pill {
   display: inline-flex;
   align-items: center;

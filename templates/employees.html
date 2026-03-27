@@ -172,9 +172,9 @@
                 <td>{% if e.pme_due %}<span class="employee-date-pill employee-date-pill-due">{{ e.pme_due | dmy }}</span>{% endif %}</td>
                 <td>{% if e.technical_due %}<span class="employee-date-pill employee-date-pill-due">{{ e.technical_due | dmy }}</span>{% endif %}</td>
                 <td>{% if e.transportation_due %}<span class="employee-date-pill employee-date-pill-due">{{ e.transportation_due | dmy }}</span>{% endif %}</td>
-                  <td>{% if e.category %}<span class="employee-data-pill employee-data-pill-meta">{{ e.category }}</span>{% endif %}</td>
+                  <td>{% if e.category %}<span class="employee-data-pill employee-data-pill-category" data-category="{{ e.category | trim | upper }}">{{ e.category }}</span>{% endif %}</td>
                   <td>{% if e.pf_no %}<span class="employee-data-pill employee-data-pill-id">{{ e.pf_no }}</span>{% endif %}</td>
-                  <td>{% if e.gradation %}<span class="employee-data-pill employee-data-pill-meta">{{ e.gradation }}</span>{% endif %}</td>
+                  <td>{% if e.gradation %}<span class="employee-data-pill employee-data-pill-gradation" data-gradation="{{ e.gradation | trim | upper }}">{{ e.gradation }}</span>{% endif %}</td>
                   <td>{% if e.cli or e.cli_id %}<span class="employee-data-pill employee-data-pill-cli">{{ e.cli | cli_label(e.cli_id) }}</span>{% endif %}</td>
                   <td>{% if e.dob %}<span class="employee-date-pill employee-date-pill-birth">{{ e.dob | dmy }}</span>{% endif %}</td>
                   <td class="working-at-col">{% if e.working_at %}<span class="designation-pill">{{ e.working_at }}</span>{% endif %}</td>
