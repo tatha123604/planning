@@ -471,10 +471,11 @@ ul { padding-left: 18px; margin: 6px 0; }
 #employees-table tbody tr.table-paged-active td,
 #employees-table tbody tr.table-paged-active-odd td,
 #employees-table tbody tr.table-paged-active-even td {
-  background: linear-gradient(135deg, rgba(53, 34, 112, 0.98), rgba(11, 84, 104, 0.97), rgba(8, 116, 94, 0.94));
-  border-top: 1px solid rgba(255, 230, 102, 0.28);
-  border-bottom: 1px solid rgba(125, 240, 211, 0.34);
-  box-shadow: inset 0 0 0 1px rgba(149, 235, 255, 0.18), 0 18px 34px rgba(9, 14, 38, 0.3);
+  background: #d6fff1;
+  color: #0f2534;
+  border-top: 1px solid rgba(255, 230, 102, 0.42);
+  border-bottom: 1px solid rgba(60, 198, 171, 0.44);
+  box-shadow: inset 0 0 0 1px rgba(105, 225, 205, 0.38), 0 18px 34px rgba(9, 14, 38, 0.18);
   font-size: 13.75px;
   letter-spacing: 0.015em;
 }
@@ -482,12 +483,12 @@ ul { padding-left: 18px; margin: 6px 0; }
 #employees-table tbody tr.table-paged-active-odd td:first-child,
 #employees-table tbody tr.table-paged-active-even td:first-child {
   border-left: 1px solid rgba(255, 230, 102, 0.38);
-  box-shadow: inset 5px 0 0 rgba(255, 230, 102, 0.78), inset 0 0 0 1px rgba(149, 235, 255, 0.18), 0 18px 34px rgba(9, 14, 38, 0.3);
+  box-shadow: inset 5px 0 0 rgba(255, 230, 102, 0.78), inset 0 0 0 1px rgba(105, 225, 205, 0.38), 0 18px 34px rgba(9, 14, 38, 0.18);
 }
 #employees-table tbody tr.table-paged-active td:last-child,
 #employees-table tbody tr.table-paged-active-odd td:last-child,
 #employees-table tbody tr.table-paged-active-even td:last-child {
-  border-right: 1px solid rgba(149, 235, 255, 0.3);
+  border-right: 1px solid rgba(105, 225, 205, 0.36);
 }
 .employee-data-pill {
   display: inline-flex;
