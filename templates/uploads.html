@@ -75,6 +75,61 @@
             {% endfor %}
           </ul>
           {% endif %}
+          {% if update_mismatch_actions %}
+          <div class="conflict-group">
+            <p class="hint warning-text"><strong>Mismatch actions</strong></p>
+            {% for item in update_mismatch_actions %}
+            <div class="conflict-card">
+              <p><strong>{{ item.reason }}</strong> — {{ item.row_hint }}</p>
+              <div class="conflict-split">
+                <div>
+                  <p class="hint">Existing row</p>
+                  <div class="conflict-meta">
+                    <div>Name: {{ item.existing.name }}</div>
+                    <div>Designation: {{ item.existing.role }}</div>
+                    <div>EMP NO: {{ item.existing.pf_no }}</div>
+                    <div>CREW ID: {{ item.existing.crew_id }}</div>
+                    <div>DOB: {{ item.existing.dob }}</div>
+                    <div>Working At: {{ item.existing.working_at }}</div>
+                  </div>
+                </div>
+                <div>
+                  <p class="hint">Incoming row</p>
+                  <div class="conflict-meta">
+                    <div>Name: {{ item.incoming.name }}</div>
+                    <div>Designation: {{ item.incoming.role }}</div>
+                    <div>EMP NO: {{ item.incoming.pf_no }}</div>
+                    <div>CREW ID: {{ item.incoming.crew_id }}</div>
+                    <div>DOB: {{ item.incoming.dob }}</div>
+                  </div>
+                </div>
+              </div>
+              <form method="post" action="/uploads/employee-master-mismatch-merge" class="inline" onsubmit="return confirm('Merge these rows and keep both?');">
+                <input type="hidden" name="existing_id" value="{{ item.existing_id }}" />
+                <input type="hidden" name="incoming_payload" value='{{ item.incoming_json | e }}' />
+                <label>Action Code
+                  <input type="password" name="action_password" autocomplete="current-password" required />
+                </label>
+                <button type="submit">Merge (keep both)</button>
+              </form>
+              <form method="post" action="/uploads/employee-master-mismatch-delete" class="inline" onsubmit="return confirm('Delete the selected row?');">
+                <input type="hidden" name="existing_id" value="{{ item.existing_id }}" />
+                <input type="hidden" name="incoming_payload" value='{{ item.incoming_json | e }}' />
+                <label>Delete which row?
+                  <select name="delete_target" required>
+                    <option value="existing">Delete existing, keep incoming</option>
+                    <option value="incoming">Delete incoming, keep existing</option>
+                  </select>
+                </label>
+                <label>Action Code
+                  <input type="password" name="action_password" autocomplete="current-password" required />
+                </label>
+                <button type="submit" class="danger">Delete</button>
+              </form>
+            </div>
+            {% endfor %}
+          </div>
+          {% endif %}
           <form method="post" action="/uploads/employee-master-sync" enctype="multipart/form-data">
             <label>Service Particulars (.xlsx)
               <input type="file" name="service_file" accept=".xlsx,.xlsm" required />

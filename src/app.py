@@ -1520,6 +1520,7 @@ def _uploads_context(
     update_warning: str = "",
     update_details: Optional[list[str]] = None,
     warning_details: Optional[list[str]] = None,
+    update_mismatch_actions: Optional[list[dict[str, object]]] = None,
     grading_update_error: Optional[str] = None,
     grading_update_notice: str = "",
     grading_update_warning: str = "",
@@ -1556,6 +1557,7 @@ def _uploads_context(
         "update_warning": update_warning,
         "update_details": update_details or [],
         "warning_details": warning_details or [],
+        "update_mismatch_actions": update_mismatch_actions or [],
         "grading_update_error": grading_update_error,
         "grading_update_notice": grading_update_notice,
         "grading_update_warning": grading_update_warning,
@@ -5161,17 +5163,86 @@ def _merge_cms_other_bio(
             warnings.append(f"CMS other bio data {record['row_hint']}: {exc}")
 
 
+def _serialize_employee_payload(record_values: dict[str, object]) -> dict[str, object]:
+    def _date_to_iso(value: object) -> str | None:
+        return value.isoformat() if isinstance(value, date) else None
+
+    return {
+        "name": record_values.get("name"),
+        "role": record_values.get("role"),
+        "hire_date": _date_to_iso(record_values.get("hire_date")),
+        "doa": _date_to_iso(record_values.get("doa")),
+        "retirement_date": _date_to_iso(record_values.get("retirement_date")),
+        "promotion_ready_date": _date_to_iso(record_values.get("promotion_ready_date")),
+        "category": record_values.get("category"),
+        "pf_no": record_values.get("pf_no"),
+        "crew_id": record_values.get("crew_id"),
+        "dob": _date_to_iso(record_values.get("dob")),
+        "pme_due": _date_to_iso(record_values.get("pme_due")),
+    }
+
+
+def _deserialize_employee_payload(payload: dict[str, object]) -> dict[str, object]:
+    def _iso_to_date(value: object) -> date | None:
+        if isinstance(value, str) and value:
+            try:
+                return date.fromisoformat(value)
+            except ValueError:
+                return None
+        return None
+
+    return {
+        "name": _clean_import_text(payload.get("name")),
+        "role": normalize_role(_clean_import_text(payload.get("role")) or ""),
+        "hire_date": _iso_to_date(payload.get("hire_date")),
+        "doa": _iso_to_date(payload.get("doa")),
+        "retirement_date": _iso_to_date(payload.get("retirement_date")),
+        "promotion_ready_date": _iso_to_date(payload.get("promotion_ready_date")),
+        "category": _clean_import_text(payload.get("category"), blank_na=True),
+        "pf_no": _clean_import_text(payload.get("pf_no")),
+        "crew_id": _clean_import_text(payload.get("crew_id")),
+        "dob": _iso_to_date(payload.get("dob")),
+        "pme_due": _iso_to_date(payload.get("pme_due")),
+    }
+
+
+def _build_mismatch_action(
+    *,
+    reason: str,
+    row_hint: str,
+    existing: Employee,
+    incoming_values: dict[str, object],
+) -> dict[str, object]:
+    incoming_payload = _serialize_employee_payload(incoming_values)
+    return {
+        "reason": reason,
+        "row_hint": row_hint,
+        "existing_id": existing.id,
+        "existing": {
+            "name": existing.name,
+            "role": existing.role,
+            "pf_no": existing.pf_no,
+            "crew_id": existing.crew_id,
+            "dob": existing.dob.isoformat() if existing.dob else "",
+            "working_at": existing.working_at or "",
+        },
+        "incoming": incoming_payload,
+        "incoming_json": json.dumps(incoming_payload, default=str),
+    }
+
+
 def _upsert_employee_master_records(
     session: Session,
     records: dict[str, dict[str, object]],
     warnings: list[str],
     sync_details: list[str],
-) -> tuple[int, int, int, int, int]:
+) -> tuple[int, int, int, int, int, list[dict[str, object]]]:
     added = 0
     updated = 0
     unchanged = 0
     skipped = 0
     deduplicated = 0
+    mismatch_actions: list[dict[str, object]] = []
     employees = session.exec(select(Employee)).all()
 
     by_pf: dict[str, list[Employee]] = {}
@@ -5219,7 +5290,29 @@ def _upsert_employee_master_records(
             if len(crew_matches) == 1:
                 existing = crew_matches[0]
                 if existing.pf_no and existing.pf_no != emp_no:
-                    warnings.append(f"{row_hint}: skipped because EMP NO {emp_no} conflicts with existing employee EMP NO {existing.pf_no}.")
+                    warnings.append(
+                        f"{row_hint}: skipped because EMP NO {emp_no} conflicts with existing employee EMP NO {existing.pf_no}."
+                    )
+                    mismatch_actions.append(
+                        _build_mismatch_action(
+                            reason="EMP NO conflicts with existing employee",
+                            row_hint=row_hint,
+                            existing=existing,
+                            incoming_values={
+                                "name": name,
+                                "role": normalize_role(role),
+                                "hire_date": hire_date,
+                                "doa": record.get("doa"),
+                                "retirement_date": record.get("retirement_date"),
+                                "promotion_ready_date": record.get("promotion_ready_date"),
+                                "category": record.get("category"),
+                                "pf_no": emp_no,
+                                "crew_id": crew_id,
+                                "dob": record.get("dob"),
+                                "pme_due": record.get("pme_due"),
+                            },
+                        )
+                    )
                     skipped += 1
                     continue
 
@@ -5329,7 +5422,7 @@ def _upsert_employee_master_records(
 
     deduplicated += _dedupe_uploaded_employee_rows(session, sync_details)
     session.commit()
-    return added, updated, unchanged, skipped, deduplicated
+    return added, updated, unchanged, skipped, deduplicated, mismatch_actions
 
 
 @app.post("/uploads/employee-master-sync")
@@ -5357,7 +5450,7 @@ async def upload_employee_master_sync(
         records, hrms_to_emp = _build_service_particular_records(service_content, warnings)
         _merge_cms_other_bio(records, hrms_to_emp, cms_content, warnings)
         _save_employee_master_source_snapshot(records)
-        added, updated, unchanged, skipped, deduplicated = _upsert_employee_master_records(
+        added, updated, unchanged, skipped, deduplicated, mismatch_actions = _upsert_employee_master_records(
             session,
             records,
             warnings,
@@ -5383,10 +5476,113 @@ async def upload_employee_master_sync(
                 update_warning=warning_text,
                 update_details=sync_details,
                 warning_details=warnings,
+                update_mismatch_actions=mismatch_actions,
             ),
         )
     except HTTPException as exc:
         detail = exc.detail if isinstance(exc.detail, str) else "Employee table update failed."
+        return templates.TemplateResponse(
+            "uploads.html",
+            _uploads_context(request, update_error=detail),
+            status_code=exc.status_code,
+        )
+    except Exception as exc:
+        return templates.TemplateResponse(
+            "uploads.html",
+            _uploads_context(request, update_error=str(exc)),
+            status_code=500,
+        )
+
+
+def _create_employee_from_payload(payload: dict[str, object]) -> Employee:
+    values = _deserialize_employee_payload(payload)
+    name = _clean_import_text(values.get("name"))
+    role = _clean_import_text(values.get("role"))
+    hire_date = values.get("hire_date")
+    if not name or not role or not isinstance(hire_date, date):
+        raise ValueError("Incoming row is missing name, designation, or appoint date.")
+    return Employee(
+        name=name,
+        role=normalize_role(role),
+        hire_date=hire_date,
+        retirement_date=values.get("retirement_date"),
+        promotion_ready_date=values.get("promotion_ready_date"),
+        category=values.get("category"),
+        pf_no=values.get("pf_no"),
+        crew_id=values.get("crew_id"),
+        dob=values.get("dob"),
+        doa=values.get("doa"),
+        pme_due=values.get("pme_due"),
+        status="ACTIVE",
+    )
+
+
+@app.post("/uploads/employee-master-mismatch-merge")
+async def upload_employee_master_mismatch_merge(
+    request: Request,
+    existing_id: int = Form(...),
+    incoming_payload: str = Form(...),
+    action_password: str = Form(...),
+    session: Session = Depends(get_session),
+):
+    try:
+        _validate_sensitive_action_password(action_password)
+        incoming_data = json.loads(incoming_payload)
+        existing = session.get(Employee, existing_id)
+        if not existing:
+            raise HTTPException(status_code=404, detail="Existing row not found.")
+        employee = _create_employee_from_payload(incoming_data)
+        session.add(employee)
+        session.commit()
+        notice = "Mismatch merge complete: incoming row added alongside existing."
+        return templates.TemplateResponse(
+            "uploads.html",
+            _uploads_context(request, update_notice=notice),
+        )
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "Merge failed."
+        return templates.TemplateResponse(
+            "uploads.html",
+            _uploads_context(request, update_error=detail),
+            status_code=exc.status_code,
+        )
+    except Exception as exc:
+        return templates.TemplateResponse(
+            "uploads.html",
+            _uploads_context(request, update_error=str(exc)),
+            status_code=500,
+        )
+
+
+@app.post("/uploads/employee-master-mismatch-delete")
+async def upload_employee_master_mismatch_delete(
+    request: Request,
+    existing_id: int = Form(...),
+    incoming_payload: str = Form(...),
+    delete_target: str = Form(...),
+    action_password: str = Form(...),
+    session: Session = Depends(get_session),
+):
+    try:
+        _validate_sensitive_action_password(action_password)
+        incoming_data = json.loads(incoming_payload)
+        existing = session.get(Employee, existing_id)
+        if not existing:
+            raise HTTPException(status_code=404, detail="Existing row not found.")
+        if delete_target == "existing":
+            session.delete(existing)
+            employee = _create_employee_from_payload(incoming_data)
+            session.add(employee)
+            session.commit()
+            notice = "Delete complete: existing row removed, incoming row kept."
+        else:
+            notice = "Delete complete: incoming row ignored, existing row kept."
+        return templates.TemplateResponse(
+            "uploads.html",
+            _uploads_context(request, update_notice=notice),
+        )
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "Delete failed."
         return templates.TemplateResponse(
             "uploads.html",
             _uploads_context(request, update_error=detail),
