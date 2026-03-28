@@ -572,15 +572,40 @@ ul { padding-left: 18px; margin: 6px 0; }
 }
 .employee-data-pill-name {
   justify-content: flex-start;
-  background: var(--employee-table-pill-name-bg);
-  border-color: var(--employee-table-pill-name-border);
-  color: #f2fffb;
+  background: linear-gradient(135deg, rgba(72, 211, 181, 0.3), rgba(52, 144, 220, 0.24));
+  border-color: rgba(117, 240, 217, 0.5);
+  color: #f1fff9;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 12px 24px rgba(52, 182, 180, 0.16);
 }
 .employee-data-pill-id {
   background: var(--employee-table-pill-id-bg);
   border-color: var(--employee-table-pill-id-border);
   color: #d7f4ff;
   letter-spacing: 0.04em;
+}
+.employee-data-pill-hrms,
+.employee-data-pill-crew,
+.employee-data-pill-pf {
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+}
+.employee-data-pill-hrms {
+  background: linear-gradient(135deg, rgba(76, 110, 245, 0.32), rgba(34, 197, 255, 0.22));
+  border-color: rgba(128, 169, 255, 0.52);
+  color: #edf4ff;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 12px 24px rgba(67, 110, 255, 0.16);
+}
+.employee-data-pill-crew {
+  background: linear-gradient(135deg, rgba(255, 159, 67, 0.34), rgba(255, 94, 58, 0.22));
+  border-color: rgba(255, 187, 118, 0.54);
+  color: #fff2de;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 12px 24px rgba(255, 133, 72, 0.16);
+}
+.employee-data-pill-pf {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.32), rgba(34, 211, 238, 0.2));
+  border-color: rgba(94, 234, 196, 0.52);
+  color: #effff8;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 12px 24px rgba(22, 182, 162, 0.14);
 }
 .employee-data-pill-role,
 .employee-data-pill-cli {
@@ -738,6 +763,24 @@ ul { padding-left: 18px; margin: 6px 0; }
 #employees-table tbody tr.table-paged-active-odd .employee-data-pill-name,
 #employees-table tbody tr.table-paged-active-even .employee-data-pill-name {
   background: linear-gradient(135deg, rgba(123, 215, 255, 0.26), rgba(102, 225, 182, 0.22));
+}
+#employees-table tbody tr.table-paged-active .employee-data-pill-hrms,
+#employees-table tbody tr.table-paged-active-odd .employee-data-pill-hrms,
+#employees-table tbody tr.table-paged-active-even .employee-data-pill-hrms {
+  background: linear-gradient(135deg, rgba(110, 143, 255, 0.38), rgba(82, 217, 255, 0.24));
+  color: #f2f7ff;
+}
+#employees-table tbody tr.table-paged-active .employee-data-pill-crew,
+#employees-table tbody tr.table-paged-active-odd .employee-data-pill-crew,
+#employees-table tbody tr.table-paged-active-even .employee-data-pill-crew {
+  background: linear-gradient(135deg, rgba(255, 183, 77, 0.38), rgba(255, 120, 77, 0.24));
+  color: #fff7eb;
+}
+#employees-table tbody tr.table-paged-active .employee-data-pill-pf,
+#employees-table tbody tr.table-paged-active-odd .employee-data-pill-pf,
+#employees-table tbody tr.table-paged-active-even .employee-data-pill-pf {
+  background: linear-gradient(135deg, rgba(52, 211, 153, 0.38), rgba(45, 212, 191, 0.22));
+  color: #f0fff9;
 }
 #employees-table tbody tr.table-paged-active .employee-data-pill-role,
 #employees-table tbody tr.table-paged-active .employee-data-pill-cli,

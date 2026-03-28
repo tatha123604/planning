@@ -199,15 +199,15 @@
                 <tr>
                   <td><span class="employee-data-pill employee-data-pill-index">{{ page_start + loop.index }}</span></td>
                   <td><span class="employee-data-pill employee-data-pill-name">{{ e.name }}</span></td>
-                  <td>{% if e.hrms %}<span class="employee-data-pill employee-data-pill-id">{{ e.hrms }}</span>{% endif %}</td>
-                  <td>{% if e.crew_id %}<span class="employee-data-pill employee-data-pill-id">{{ e.crew_id }}</span>{% endif %}</td>
+                  <td>{% if e.hrms %}<span class="employee-data-pill employee-data-pill-hrms">{{ e.hrms }}</span>{% endif %}</td>
+                  <td>{% if e.crew_id %}<span class="employee-data-pill employee-data-pill-crew">{{ e.crew_id }}</span>{% endif %}</td>
                   <td><span class="employee-data-pill employee-data-pill-role">{{ e.role }}</span></td>
                 <td>{% if e.retirement_date %}<span class="employee-date-pill employee-date-pill-retirement">{{ e.retirement_date | dmy }}</span>{% endif %}</td>
                 <td>{% if e.pme_due %}<span class="employee-date-pill employee-date-pill-due">{{ e.pme_due | dmy }}</span>{% endif %}</td>
                 <td>{% if e.technical_due %}<span class="employee-date-pill employee-date-pill-due">{{ e.technical_due | dmy }}</span>{% endif %}</td>
                 <td>{% if e.transportation_due %}<span class="employee-date-pill employee-date-pill-due">{{ e.transportation_due | dmy }}</span>{% endif %}</td>
                   <td>{% if e.category %}<span class="employee-data-pill employee-data-pill-category" data-category="{{ e.category | trim | upper }}">{{ e.category }}</span>{% endif %}</td>
-                  <td>{% if e.pf_no %}<span class="employee-data-pill employee-data-pill-id">{{ e.pf_no }}</span>{% endif %}</td>
+                  <td>{% if e.pf_no %}<span class="employee-data-pill employee-data-pill-pf">{{ e.pf_no }}</span>{% endif %}</td>
                   <td>{% if e.gradation %}<span class="employee-data-pill employee-data-pill-gradation" data-gradation="{{ e.gradation | trim | upper }}">{{ e.gradation }}</span>{% endif %}</td>
                   <td>{% if e.cli or e.cli_id %}<span class="employee-data-pill employee-data-pill-cli">{{ e.cli | cli_label(e.cli_id) }}</span>{% endif %}</td>
                   <td>{% if e.dob %}<span class="employee-date-pill employee-date-pill-birth">{{ e.dob | dmy }}</span>{% endif %}</td>
