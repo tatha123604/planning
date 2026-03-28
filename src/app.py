@@ -4312,11 +4312,16 @@ def _build_duplicate_cleanup_plan(session: Session) -> tuple[list[dict[str, obje
         keeper = ordered[0]
         remove_rows = ordered[1:]
         used_ids.update(employee.id for employee in ordered if employee.id is not None)
+        keep_payload = _cleanup_row_payload(keeper)
+        remove_payloads = [_cleanup_row_payload(employee) for employee in remove_rows]
         plan.append(
             {
                 "reason": reason,
-                "keep": _cleanup_row_payload(keeper),
-                "remove": [_cleanup_row_payload(employee) for employee in remove_rows],
+                "keep": keep_payload,
+                "remove": remove_payloads,
+                "rows": [keep_payload] + remove_payloads,
+                "row_ids": [employee.id for employee in ordered if employee.id is not None],
+                "suggested_keep_id": keeper.id if keeper.id is not None else None,
             }
         )
 
@@ -4811,11 +4816,22 @@ def _extra_group_to_conflict_item(group: dict[str, object]) -> dict[str, object]
 def _build_combined_cleanup_view(session: Session) -> tuple[list[dict[str, object]], list[dict[str, object]], dict[str, int]]:
     base_plan, base_conflicts, _ = _build_duplicate_cleanup_plan(session)
 
-    plan: list[dict[str, object]] = list(base_plan)
+    plan: list[dict[str, object]] = []
     conflicts: list[dict[str, object]] = []
     covered_review_ids: set[int] = set()
 
     for item in base_plan:
+        item = {
+            **item,
+            "merge_action": "/uploads/employee-master-cleanup-merge",
+            "delete_action": "/uploads/employee-master-cleanup-delete-row",
+            "keep_action": "/uploads/employee-master-cleanup-keep-both",
+            "keep_button_label": "Keep Both",
+            "keep_id": item.get("suggested_keep_id"),
+            "allow_merge": True,
+            "allow_delete": True,
+        }
+        plan.append(item)
         if isinstance(item.get("keep"), dict) and item["keep"].get("id") is not None:
             covered_review_ids.add(int(item["keep"]["id"]))
         for row in item.get("remove", []):

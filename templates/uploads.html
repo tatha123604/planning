@@ -207,7 +207,40 @@
             {% for item in group["items"] %}
             <details class="collapsible-card cleanup-item-card" data-cleanup-item data-cleanup-label="{{ item.search_text }}">
               <summary>{{ item.summary }}</summary>
-              {% if item.remove is defined %}
+            {% if item.remove is defined %}
+              <div class="button-row cleanup-action-grid">
+                <form method="post" action="{{ item.merge_action }}" class="cleanup-action-card" onsubmit="return confirm('Merge these rows now and delete the duplicate row(s)?');">
+                  <input type="hidden" name="conflict_reason" value="{{ item.reason }}" />
+                  <input type="hidden" name="conflict_row_ids" value="{{ item.row_ids | join(',') }}" />
+                  <label>Action Code
+                    <input type="password" name="action_password" autocomplete="current-password" required />
+                  </label>
+                  <button type="submit">Merge</button>
+                </form>
+                <form method="post" action="{{ item.keep_action }}" class="cleanup-action-card" onsubmit="return confirm('Keep both rows and hide this group from cleanup preview?');">
+                  <input type="hidden" name="conflict_reason" value="{{ item.reason }}" />
+                  <input type="hidden" name="conflict_row_ids" value="{{ item.row_ids | join(',') }}" />
+                  <label>Action Code
+                    <input type="password" name="action_password" autocomplete="current-password" required />
+                  </label>
+                  <button type="submit" class="secondary-action cleanup-keep-button">Keep Both</button>
+                </form>
+                <form method="post" action="{{ item.delete_action }}" class="cleanup-action-card" onsubmit="return confirm('Delete the selected row from this group?');">
+                  <input type="hidden" name="conflict_reason" value="{{ item.reason }}" />
+                  <input type="hidden" name="conflict_row_ids" value="{{ item.row_ids | join(',') }}" />
+                  <label>Delete which row?
+                    <select name="delete_row_id" required>
+                      {% for row in item.rows %}
+                      <option value="{{ row.id }}">Row {{ loop.index }} - {{ row.name }} ({{ row.emp_no }})</option>
+                      {% endfor %}
+                    </select>
+                  </label>
+                  <label>Action Code
+                    <input type="password" name="action_password" autocomplete="current-password" required />
+                  </label>
+                  <button type="submit" class="secondary-action cleanup-delete-button">Delete</button>
+                </form>
+              </div>
               <div class="table-wrap">
                 <table class="table report-table">
                   <thead>
