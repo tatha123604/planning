@@ -254,10 +254,27 @@
     (() => {
       const brand = document.querySelector('.brand');
       if (!brand) return;
+      const NAV_STORAGE_KEY = 'sdah-nav-hidden';
+      const applyStoredNavState = () => {
+        let hidden = false;
+        try {
+          hidden = window.localStorage.getItem(NAV_STORAGE_KEY) === '1';
+        } catch (error) {
+          hidden = document.body.classList.contains('nav-hidden');
+        }
+        document.body.classList.toggle('nav-hidden', hidden);
+      };
       brand.style.cursor = 'pointer';
       brand.setAttribute('title', 'Click to hide/show navigation');
       brand.setAttribute('tabindex', '0');
-      const toggle = () => document.body.classList.toggle('nav-hidden');
+      const toggle = () => {
+        const hidden = !document.body.classList.contains('nav-hidden');
+        document.body.classList.toggle('nav-hidden', hidden);
+        try {
+          window.localStorage.setItem(NAV_STORAGE_KEY, hidden ? '1' : '0');
+        } catch (error) {
+        }
+      };
       brand.addEventListener('click', toggle);
       brand.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -265,7 +282,7 @@
           toggle();
         }
       });
-      document.body.classList.remove('nav-hidden');
+      applyStoredNavState();
 
       document.querySelectorAll('[data-password-gated-form]').forEach((form) => {
         const passwordInput = form.querySelector('[data-password-gated-input]');
