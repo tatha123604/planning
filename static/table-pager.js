@@ -1,5 +1,6 @@
 (() => {
   const DEFAULT_PAGE_SIZE = 10;
+  const PAGE_SIZE_OPTIONS = ["10", "20", "50", "100", "200", "500", "All"];
   const isFilterHidden = (row) => row?.dataset?.filterHidden === "true";
 
   function styleGroup(group, justifyContent = "flex-start") {
@@ -44,7 +45,7 @@
 
       select = document.createElement("select");
       select.className = "table-pager-select";
-      ["10", "20", "All"].forEach((optText) => {
+      PAGE_SIZE_OPTIONS.forEach((optText) => {
         const opt = document.createElement("option");
         opt.value = optText === "All" ? "0" : optText;
         opt.textContent = optText;
@@ -77,7 +78,7 @@
 
   function injectControls(table) {
     if (!table.tBodies.length) return;
-    const rows = Array.from(table.tBodies[0].rows || []);
+    const rows = Array.from(table.querySelectorAll("tbody > tr"));
     if (!rows.length) return;
     const scrollContainer = table.closest(".table-wrap");
     const pagerAnchor = scrollContainer || table;
@@ -99,6 +100,7 @@
     const infos = [topPager.info, bottomPager.info];
     const prevButtons = [topPager.prev, bottomPager.prev];
     const nextButtons = [topPager.next, bottomPager.next];
+    const getVisiblePageableRows = () => pageableRows.filter((row) => !isFilterHidden(row));
     const syncPagerWidths = () => {
       const hostWidth = pagerAnchor.clientWidth || pagerHost.clientWidth || table.clientWidth || 0;
       [topPager.wrapper, bottomPager.wrapper].forEach((wrapper) => {
@@ -108,7 +110,7 @@
 
     function render() {
       syncPagerWidths();
-      const visiblePageableRows = pageableRows.filter((row) => !isFilterHidden(row));
+      const visiblePageableRows = getVisiblePageableRows();
       const total = visiblePageableRows.length;
       const ps = pageSize === 0 ? total : pageSize;
       const maxPage = ps === 0 ? 0 : Math.max(0, Math.ceil(total / ps) - 1);
@@ -147,7 +149,7 @@
         const endIdx = ps === 0 ? total : Math.min(total, (page + 1) * ps);
         const message = ps === 0
           ? `Showing all ${total}`
-          : `${startIdx}-${endIdx} of ${total}`;
+          : `${startIdx}-${endIdx} of ${total} (Page ${page + 1}/${maxPage + 1})`;
         infos.forEach((info) => {
           info.textContent = message;
         });
@@ -178,7 +180,7 @@
 
     nextButtons.forEach((button) => {
       button.addEventListener("click", () => {
-        const total = pageableRows.filter((row) => !isFilterHidden(row)).length;
+        const total = getVisiblePageableRows().length;
         const ps = pageSize === 0 ? total : pageSize;
         const maxPage = ps === 0 ? 0 : Math.max(0, Math.ceil(total / ps) - 1);
         if (page < maxPage) {

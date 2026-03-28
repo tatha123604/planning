@@ -256,7 +256,7 @@
       }
 
       if (employeesFilterForm && employeesSearchInput && employeesTable && employeesTable.tBodies.length) {
-        const employeeRows = Array.from(employeesTable.tBodies[0].rows || []);
+        const employeeRows = Array.from(employeesTable.querySelectorAll('tbody > tr'));
         let composing = false;
 
         const normalizeText = (value) =>
