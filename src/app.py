@@ -1694,6 +1694,60 @@ def merge_employee_master_conflict(
     )
 
 
+@app.post("/uploads/employee-master-cleanup-delete-row")
+def delete_employee_master_conflict_row(
+    request: Request,
+    conflict_reason: str = Form(...),
+    conflict_row_ids: str = Form(...),
+    delete_row_id: int = Form(...),
+    action_password: str = Form(...),
+    session: Session = Depends(get_session),
+):
+    try:
+        _validate_sensitive_action_password(action_password)
+        row_ids = [int(value) for value in conflict_row_ids.split(",") if value.strip()]
+        if delete_row_id not in row_ids:
+            return templates.TemplateResponse(
+                "uploads.html",
+                _uploads_context(request, cleanup_error="Invalid row selection."),
+                status_code=400,
+            )
+        row = session.get(Employee, delete_row_id)
+        if not row:
+            return templates.TemplateResponse(
+                "uploads.html",
+                _uploads_context(request, cleanup_error="Row not found."),
+                status_code=404,
+            )
+        session.delete(row)
+        session.commit()
+        plan, conflicts, summary = _build_combined_cleanup_view(session)
+        notice = f"Deleted row {delete_row_id} from conflict group."
+        return templates.TemplateResponse(
+            "uploads.html",
+            _uploads_context(
+                request,
+                cleanup_notice=notice,
+                cleanup_summary=summary,
+                cleanup_plan=plan,
+                cleanup_conflicts=conflicts,
+            ),
+        )
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "Delete failed."
+        return templates.TemplateResponse(
+            "uploads.html",
+            _uploads_context(request, cleanup_error=detail),
+            status_code=exc.status_code,
+        )
+    except Exception as exc:
+        return templates.TemplateResponse(
+            "uploads.html",
+            _uploads_context(request, cleanup_error=str(exc)),
+            status_code=500,
+        )
+
+
 @app.post("/uploads/employee-master-cleanup-keep-both")
 def keep_both_employee_master_conflict(
     request: Request,
@@ -4775,12 +4829,12 @@ def _build_combined_cleanup_view(session: Session) -> tuple[list[dict[str, objec
             {
                 **item,
                 "merge_action": "/uploads/employee-master-cleanup-merge",
-                "delete_action": "",
+                "delete_action": "/uploads/employee-master-cleanup-delete-row",
                 "keep_action": "/uploads/employee-master-cleanup-keep-both",
                 "keep_button_label": "Keep Both",
                 "keep_id": item.get("suggested_keep_id"),
                 "allow_merge": True,
-                "allow_delete": False,
+                "allow_delete": True,
             }
         )
 

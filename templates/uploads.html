@@ -282,11 +282,29 @@
                 </form>
                 {% endif %}
                 {% if item.allow_delete %}
-                <form method="post" action="{{ item.delete_action }}" onsubmit="return confirm('Delete these extra row(s) from the current employee table?');">
-                  <input type="hidden" name="review_reason" value="{{ item.reason }}" />
-                  <input type="hidden" name="review_row_ids" value="{{ item.row_ids | join(',') }}" />
-                  <button type="submit" class="secondary-action cleanup-delete-button">Delete</button>
-                </form>
+                  {% if item.delete_action == '/uploads/employee-master-cleanup-delete-row' %}
+                  <form method="post" action="{{ item.delete_action }}" onsubmit="return confirm('Delete the selected row from this conflict group?');">
+                    <input type="hidden" name="conflict_reason" value="{{ item.reason }}" />
+                    <input type="hidden" name="conflict_row_ids" value="{{ item.row_ids | join(',') }}" />
+                    <label>Delete which row?
+                      <select name="delete_row_id" required>
+                        {% for row in item.rows %}
+                        <option value="{{ row.id }}">Row {{ loop.index }} - {{ row.name }} ({{ row.emp_no }})</option>
+                        {% endfor %}
+                      </select>
+                    </label>
+                    <label>Action Code
+                      <input type="password" name="action_password" autocomplete="current-password" required />
+                    </label>
+                    <button type="submit" class="secondary-action cleanup-delete-button">Delete</button>
+                  </form>
+                  {% else %}
+                  <form method="post" action="{{ item.delete_action }}" onsubmit="return confirm('Delete these extra row(s) from the current employee table?');">
+                    <input type="hidden" name="review_reason" value="{{ item.reason }}" />
+                    <input type="hidden" name="review_row_ids" value="{{ item.row_ids | join(',') }}" />
+                    <button type="submit" class="secondary-action cleanup-delete-button">Delete</button>
+                  </form>
+                  {% endif %}
                 {% endif %}
                 <form method="post" action="{{ item.keep_action }}" onsubmit="return confirm('Keep these rows and hide this group from the cleanup preview?');">
                   {% if item.keep_action == '/uploads/employee-master-cleanup-keep-both' %}
