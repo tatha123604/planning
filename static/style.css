@@ -495,6 +495,43 @@ ul { padding-left: 18px; margin: 6px 0; }
   gap: 8px;
   flex-wrap: wrap;
 }
+.pager-link {
+  min-width: 84px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.pager-link-prev {
+  background: linear-gradient(135deg, rgba(88, 20, 24, 0.92), rgba(162, 45, 55, 0.84));
+  border-color: rgba(255, 150, 150, 0.28);
+  color: #ffe9e7;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 12px 24px rgba(76, 12, 22, 0.24);
+}
+.pager-link-prev:hover,
+.pager-link-prev:focus-visible {
+  background: linear-gradient(135deg, rgba(115, 26, 30, 0.98), rgba(198, 60, 74, 0.92));
+  border-color: rgba(255, 184, 184, 0.48);
+  box-shadow: 0 0 0 3px rgba(255, 120, 120, 0.16), inset 0 1px 0 rgba(255,255,255,0.12), 0 16px 30px rgba(92, 16, 26, 0.28);
+}
+.pager-link-next {
+  background: linear-gradient(135deg, rgba(18, 76, 44, 0.94), rgba(34, 146, 78, 0.86));
+  border-color: rgba(151, 235, 183, 0.28);
+  color: #ebfff0;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 12px 24px rgba(9, 70, 33, 0.24);
+}
+.pager-link-next:hover,
+.pager-link-next:focus-visible {
+  background: linear-gradient(135deg, rgba(24, 104, 56, 0.98), rgba(47, 182, 97, 0.92));
+  border-color: rgba(170, 248, 200, 0.5);
+  box-shadow: 0 0 0 3px rgba(104, 228, 142, 0.18), inset 0 1px 0 rgba(255,255,255,0.12), 0 16px 30px rgba(14, 90, 40, 0.28);
+}
+.pager-link.disabled {
+  opacity: 0.58;
+  filter: saturate(0.7);
+  transform: none;
+}
 .pager-rows {
   margin-left: auto;
   padding: 8px 12px;
@@ -1171,23 +1208,26 @@ ul { padding-left: 18px; margin: 6px 0; }
 }
 .table-pager-button {
   min-width: 74px;
-  background: linear-gradient(135deg, rgba(123, 215, 255, 0.14), rgba(255,255,255,0.08));
-  border-color: rgba(123, 215, 255, 0.3);
-  color: #dff6ff;
+  background: linear-gradient(135deg, rgba(88, 20, 24, 0.92), rgba(162, 45, 55, 0.84));
+  border-color: rgba(255, 150, 150, 0.28);
+  color: #ffe9e7;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 12px 24px rgba(76, 12, 22, 0.22);
 }
 .table-pager-button-next {
-  background: linear-gradient(135deg, rgba(123, 215, 255, 0.26), rgba(18,189,231,0.22));
-  border-color: rgba(123, 215, 255, 0.45);
-  color: #effbff;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.1), 0 14px 28px rgba(18, 189, 231, 0.12);
+  background: linear-gradient(135deg, rgba(18, 76, 44, 0.94), rgba(34, 146, 78, 0.86));
+  border-color: rgba(151, 235, 183, 0.28);
+  color: #ebfff0;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 12px 24px rgba(9, 70, 33, 0.22);
 }
 .table-pager-button:hover {
-  background: linear-gradient(135deg, rgba(123, 215, 255, 0.22), rgba(255,255,255,0.12));
-  border-color: rgba(123, 215, 255, 0.45);
+  background: linear-gradient(135deg, rgba(115, 26, 30, 0.98), rgba(198, 60, 74, 0.92));
+  border-color: rgba(255, 184, 184, 0.48);
+  box-shadow: 0 0 0 3px rgba(255, 120, 120, 0.16), inset 0 1px 0 rgba(255,255,255,0.12), 0 16px 30px rgba(92, 16, 26, 0.28);
 }
 .table-pager-button-next:hover {
-  background: linear-gradient(135deg, rgba(155, 231, 255, 0.38), rgba(18,189,231,0.28));
-  border-color: rgba(155, 231, 255, 0.55);
+  background: linear-gradient(135deg, rgba(24, 104, 56, 0.98), rgba(47, 182, 97, 0.92));
+  border-color: rgba(170, 248, 200, 0.5);
+  box-shadow: 0 0 0 3px rgba(104, 228, 142, 0.18), inset 0 1px 0 rgba(255,255,255,0.12), 0 16px 30px rgba(14, 90, 40, 0.28);
 }
 .table-pager-button:disabled,
 .table-pager-button-next:disabled {
@@ -1195,6 +1235,7 @@ ul { padding-left: 18px; margin: 6px 0; }
   box-shadow: none;
   transform: none;
   cursor: not-allowed;
+  filter: saturate(0.7);
 }
 .table-export-bar {
   width: 100%;
