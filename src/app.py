@@ -1161,6 +1161,8 @@ def employees_page(
     cli: Optional[str] = None,
     gradation: Optional[str] = None,
     sort: str = "role",
+    page: int = 1,
+    per_page: int = 100,
     roster_name: Optional[str] = None,
     roster_cli: Optional[str] = None,
     roster_gradation: Optional[str] = None,
