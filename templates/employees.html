@@ -343,6 +343,48 @@
         }
       }
 
+      const employeesTable = document.getElementById('employees-table');
+      if (employeesTable && employeesTable.tHead && employeesTable.tBodies.length) {
+        const headerCells = Array.from(employeesTable.tHead.rows[0]?.cells || []);
+        const bodyRows = Array.from(employeesTable.tBodies[0].rows || []);
+        let activeRowIndex = -1;
+        let activeColumnIndex = -1;
+
+        const applyEmployeeSelection = () => {
+          headerCells.forEach((cell, columnIndex) => {
+            cell.classList.toggle('employee-col-active', columnIndex === activeColumnIndex);
+          });
+
+          bodyRows.forEach((row, rowIndex) => {
+            const isRowActive = rowIndex === activeRowIndex;
+            row.classList.toggle('employee-row-active', isRowActive);
+            Array.from(row.cells || []).forEach((cell, columnIndex) => {
+              const isColumnActive = columnIndex === activeColumnIndex;
+              cell.classList.toggle('employee-col-active', isColumnActive);
+              cell.classList.toggle('employee-cell-cross', isRowActive && isColumnActive);
+            });
+          });
+        };
+
+        headerCells.forEach((cell, columnIndex) => {
+          cell.title = `${cell.textContent?.trim() || 'Column'} select`;
+          cell.addEventListener('click', () => {
+            activeColumnIndex = activeColumnIndex === columnIndex ? -1 : columnIndex;
+            applyEmployeeSelection();
+          });
+        });
+
+        bodyRows.forEach((row, rowIndex) => {
+          row.addEventListener('click', (event) => {
+            if (event.target.closest('a, button, input, select, textarea, label, form')) {
+              return;
+            }
+            activeRowIndex = activeRowIndex === rowIndex ? -1 : rowIndex;
+            applyEmployeeSelection();
+          });
+        });
+      }
+
       document.querySelectorAll('.employee-edit-link').forEach((link) => {
         link.addEventListener('click', (event) => {
           const name = link.dataset.employeeName || 'this employee';
