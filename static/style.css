@@ -399,6 +399,16 @@ ul { padding-left: 18px; margin: 6px 0; }
   border: 1px solid rgba(18,189,231,0.35);
   font-weight: 700;
 }
+.pager {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 10px 0 6px;
+}
+.pager .disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
 .employee-table tbody tr:nth-child(odd) td { background: rgba(255,255,255,0.02); }
 .employee-table td { font-size: 13px; white-space: nowrap; }
 .employee-table th {

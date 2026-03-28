@@ -143,10 +143,23 @@
                 <option value="working_at" {% if sort == 'working_at' %}selected{% endif %}>Working at</option>
               </select>
             </label>
-            <button type="submit" data-no-confirm="true">Filter</button>
-            <a class="ghost filter-reset-link" href="/employees#employees-card">Reset</a>
-            <div class="summary-chip" id="employees-total-chip">Total: {{ employees | length }}</div>
+              <button type="submit" data-no-confirm="true">Filter</button>
+              <a class="ghost filter-reset-link" href="/employees#employees-card">Reset</a>
+              <div class="summary-chip" id="employees-total-chip">Total: {{ total_count }}</div>
+              <div class="summary-chip">Page {{ page }} of {{ total_pages }}</div>
           </form>
+          <div class="pager">
+            {% if prev_url %}
+              <a class="ghost" href="{{ prev_url }}#employees-card">Prev</a>
+            {% else %}
+              <span class="ghost disabled">Prev</span>
+            {% endif %}
+            {% if next_url %}
+              <a class="ghost" href="{{ next_url }}#employees-card">Next</a>
+            {% else %}
+              <span class="ghost disabled">Next</span>
+            {% endif %}
+          </div>
           <div class="table-wrap">
             <table class="employee-table paged" id="employees-table">
               <thead>
@@ -172,7 +185,7 @@
               <tbody>
                 {% for e in employees %}
                 <tr>
-                  <td><span class="employee-data-pill employee-data-pill-index">{{ loop.index }}</span></td>
+                  <td><span class="employee-data-pill employee-data-pill-index">{{ page_start + loop.index }}</span></td>
                   <td><span class="employee-data-pill employee-data-pill-name">{{ e.name }}</span></td>
                   <td>{% if e.hrms %}<span class="employee-data-pill employee-data-pill-id">{{ e.hrms }}</span>{% endif %}</td>
                   <td>{% if e.crew_id %}<span class="employee-data-pill employee-data-pill-id">{{ e.crew_id }}</span>{% endif %}</td>
