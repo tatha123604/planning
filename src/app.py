@@ -1162,7 +1162,7 @@ def employees_page(
     gradation: Optional[str] = None,
     sort: str = "role",
     page: int = 1,
-    per_page: int = 100,
+    per_page: int = 10,
     roster_name: Optional[str] = None,
     roster_cli: Optional[str] = None,
     roster_gradation: Optional[str] = None,
@@ -1192,7 +1192,7 @@ def employees_page(
     gradation_opts = sorted({value for value in session.exec(select(Employee.gradation).distinct()) if value})
 
     page = max(int(page or 1), 1)
-    per_page_selected = int(per_page if per_page is not None else 100)
+    per_page_selected = int(per_page if per_page is not None else 10)
     if per_page_selected not in {0, 10, 20, 50, 100, 200, 500}:
         if per_page_selected <= 0:
             per_page_selected = 0
