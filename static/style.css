@@ -236,6 +236,30 @@ button:hover { filter: brightness(1.05); }
 .button-row form {
   margin: 0;
 }
+.cleanup-action-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  align-items: stretch;
+}
+.cleanup-action-card {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(123, 215, 255, 0.18);
+  background: rgba(7, 17, 31, 0.5);
+}
+.cleanup-action-card label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  color: #cfe9f6;
+}
+.cleanup-action-card input,
+.cleanup-action-card select {
+  width: 100%;
+}
 .ghost {
   display: inline-flex;
   align-items: center;
