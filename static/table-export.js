@@ -98,6 +98,81 @@
     return `${sanitizeFilename(fallbackTitle)}.${extension}`;
   };
 
+  const ensureScrollSync = (wrap) => {
+    if (!wrap || !wrap.classList?.contains("table-wrap")) {
+      return null;
+    }
+    if (wrap.dataset.scrollSyncReady === "true") {
+      return wrap.previousElementSibling?.classList.contains("table-scroll-sync")
+        ? wrap.previousElementSibling
+        : null;
+    }
+
+    const host = wrap.parentElement;
+    if (!host) {
+      return null;
+    }
+
+    const table = wrap.querySelector("table");
+    const syncBar = document.createElement("div");
+    syncBar.className = "table-scroll-sync";
+    syncBar.hidden = true;
+
+    const syncInner = document.createElement("div");
+    syncInner.className = "table-scroll-sync-inner";
+    syncBar.appendChild(syncInner);
+    host.insertBefore(syncBar, wrap);
+
+    let lockSync = false;
+    const update = () => {
+      const scrollWidth = table ? table.scrollWidth : wrap.scrollWidth;
+      syncInner.style.width = `${scrollWidth}px`;
+      const hasOverflow = scrollWidth > wrap.clientWidth + 2;
+      syncBar.hidden = !hasOverflow;
+      if (!hasOverflow) {
+        syncBar.scrollLeft = 0;
+        wrap.scrollLeft = 0;
+        return;
+      }
+      syncBar.scrollLeft = wrap.scrollLeft;
+    };
+
+    wrap.addEventListener(
+      "scroll",
+      () => {
+        if (lockSync) return;
+        lockSync = true;
+        syncBar.scrollLeft = wrap.scrollLeft;
+        lockSync = false;
+      },
+      { passive: true }
+    );
+
+    syncBar.addEventListener(
+      "scroll",
+      () => {
+        if (lockSync) return;
+        lockSync = true;
+        wrap.scrollLeft = syncBar.scrollLeft;
+        lockSync = false;
+      },
+      { passive: true }
+    );
+
+    window.addEventListener("resize", update);
+    if ("ResizeObserver" in window) {
+      const observer = new ResizeObserver(update);
+      observer.observe(wrap);
+      if (table) {
+        observer.observe(table);
+      }
+    }
+
+    wrap.dataset.scrollSyncReady = "true";
+    update();
+    return syncBar;
+  };
+
   const downloadSnapshot = async (
     snapshot,
     endpoint,
@@ -149,6 +224,8 @@
     if (!host) {
       return;
     }
+    const scrollSync =
+      primaryAnchor.classList?.contains("table-wrap") ? ensureScrollSync(primaryAnchor) : null;
 
     const toolbar = document.createElement("div");
     toolbar.className = "table-export-bar";
@@ -225,10 +302,13 @@
     actions.append(pdfButton, excelButton);
     toolbar.append(label, status, actions);
 
-    const insertionPoint =
-      primaryAnchor.previousElementSibling?.classList.contains("table-pager")
-        ? primaryAnchor.previousElementSibling
-        : primaryAnchor;
+    let insertionPoint = primaryAnchor;
+    if (scrollSync && scrollSync.parentElement === host) {
+      insertionPoint = scrollSync;
+    }
+    if (insertionPoint.previousElementSibling?.classList.contains("table-pager")) {
+      insertionPoint = insertionPoint.previousElementSibling;
+    }
     host.insertBefore(toolbar, insertionPoint);
     table.dataset.exportReady = "true";
   };
