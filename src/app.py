@@ -1174,7 +1174,7 @@ def employees_page(
     roster_open = roster_filter_active
 
     employees_all = []
-    raw_working = {row[0] for row in session.exec(select(Employee.working_at).distinct()) if row[0]}
+    raw_working = {value for value in session.exec(select(Employee.working_at).distinct()) if value}
     working_opts_filtered = {wa for wa in raw_working if wa.upper().startswith("CC(")}
     working_opts = sorted(working_opts_filtered if working_opts_filtered else raw_working)
     cli_opts_map: dict[str, str] = {}
@@ -1186,8 +1186,8 @@ def employees_page(
         if key not in cli_opts_map:
             cli_opts_map[key] = val.strip()
     cli_opts = [v for _, v in sorted(cli_opts_map.items(), key=lambda item: item[0])]
-    category_opts = sorted({row[0] for row in session.exec(select(Employee.category).distinct()) if row[0]})
-    gradation_opts = sorted({row[0] for row in session.exec(select(Employee.gradation).distinct()) if row[0]})
+    category_opts = sorted({value for value in session.exec(select(Employee.category).distinct()) if value})
+    gradation_opts = sorted({value for value in session.exec(select(Employee.gradation).distinct()) if value})
 
     page = max(int(page or 1), 1)
     per_page = int(per_page or 100)
