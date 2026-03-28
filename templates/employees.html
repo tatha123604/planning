@@ -143,8 +143,18 @@
                 <option value="working_at" {% if sort == 'working_at' %}selected{% endif %}>Working at</option>
               </select>
             </label>
+            <label>Rows
+              <select name="per_page" id="employees-per-page-select">
+                <option value="10" {% if per_page_selected == 10 %}selected{% endif %}>10</option>
+                <option value="20" {% if per_page_selected == 20 %}selected{% endif %}>20</option>
+                <option value="50" {% if per_page_selected == 50 %}selected{% endif %}>50</option>
+                <option value="100" {% if per_page_selected == 100 %}selected{% endif %}>100</option>
+                <option value="200" {% if per_page_selected == 200 %}selected{% endif %}>200</option>
+                <option value="500" {% if per_page_selected == 500 %}selected{% endif %}>500</option>
+                <option value="0" {% if per_page_selected == 0 %}selected{% endif %}>All</option>
+              </select>
+            </label>
               <input type="hidden" name="page" id="employees-page-input" value="1" />
-              <input type="hidden" name="per_page" value="{{ per_page }}" />
               <button type="submit" data-no-confirm="true">Filter</button>
               <a class="ghost filter-reset-link" href="/employees#employees-card">Reset</a>
               <div class="summary-chip summary-chip-total" id="employees-total-chip">Total: {{ total_count }}</div>
@@ -240,6 +250,7 @@
       const sortSelect = document.getElementById('sort-select');
       const cliSelect = document.getElementById('filter-cli');
       const workingSelect = document.getElementById('filter-working');
+      const employeesPerPageSelect = document.getElementById('employees-per-page-select');
       const employeesFilterForm = document.getElementById('employees-filter-form');
       const employeesSearchInput = document.getElementById('employees-search-input');
       const employeesPageInput = document.getElementById('employees-page-input');
@@ -306,6 +317,13 @@
           composing = false;
           scheduleEmployeeSearch();
         });
+
+        if (employeesPerPageSelect) {
+          employeesPerPageSelect.addEventListener('change', () => {
+            window.clearTimeout(searchTimer);
+            submitEmployeeFilters();
+          });
+        }
       }
 
       document.querySelectorAll('.employee-edit-link').forEach((link) => {

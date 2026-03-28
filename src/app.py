@@ -1192,8 +1192,13 @@ def employees_page(
     gradation_opts = sorted({value for value in session.exec(select(Employee.gradation).distinct()) if value})
 
     page = max(int(page or 1), 1)
-    per_page = int(per_page or 100)
-    per_page = 20 if per_page < 20 else 500 if per_page > 500 else per_page
+    per_page_selected = int(per_page if per_page is not None else 100)
+    if per_page_selected not in {0, 10, 20, 50, 100, 200, 500}:
+        if per_page_selected <= 0:
+            per_page_selected = 0
+        else:
+            per_page_selected = max(10, min(per_page_selected, 500))
+    show_all = per_page_selected == 0
 
     query_employees = select(Employee)
     if role:
@@ -1206,7 +1211,7 @@ def employees_page(
     if gradation:
         query_employees = query_employees.where(Employee.gradation.ilike(f"%{gradation}%"))
 
-    total_count = None
+    total_count = 0
     employees = []
     if q or cli:
         employees_all = session.exec(query_employees).all()
@@ -1244,8 +1249,6 @@ def employees_page(
 
         employees = sorted(employees, key=sort_key)
         total_count = len(employees)
-        start = (page - 1) * per_page
-        employees = employees[start : start + per_page]
     else:
         role_case = case(
             {role: idx for idx, role in enumerate(ROLE_ORDER)},
@@ -1272,7 +1275,6 @@ def employees_page(
         total_count = session.exec(
             select(func.count()).select_from(query_employees.subquery())
         ).one()
-        employees = session.exec(query_employees.offset((page - 1) * per_page).limit(per_page)).all()
 
     cli_roster = []
     if roster_filter_active:
@@ -1289,20 +1291,41 @@ def employees_page(
         grad_lower = roster_gradation.lower()
         cli_roster = [e for e in cli_roster if e.gradation and grad_lower in e.gradation.lower()]
     cli_roster = sorted(cli_roster, key=lambda e: (_employee_cli_key(e), e.name))
-    total_pages = max(1, (total_count + per_page - 1) // per_page) if total_count is not None else 1
+    effective_per_page = max(total_count, 1) if show_all else per_page_selected
+    total_pages = max(1, (total_count + effective_per_page - 1) // effective_per_page)
     page = min(page, total_pages)
-    page_start = (page - 1) * per_page
-    prev_url = str(request.url.include_query_params(page=page - 1, per_page=per_page)) if page > 1 else ""
-    next_url = str(request.url.include_query_params(page=page + 1, per_page=per_page)) if page < total_pages else ""
+    page_start = (page - 1) * effective_per_page
+
+    if q or cli:
+        if not show_all:
+            employees = employees[page_start : page_start + effective_per_page]
+    elif show_all:
+        employees = session.exec(query_employees).all()
+    else:
+        employees = session.exec(
+            query_employees.offset(page_start).limit(effective_per_page)
+        ).all()
+
+    prev_url = (
+        str(request.url.include_query_params(page=page - 1, per_page=per_page_selected))
+        if page > 1
+        else ""
+    )
+    next_url = (
+        str(request.url.include_query_params(page=page + 1, per_page=per_page_selected))
+        if page < total_pages
+        else ""
+    )
 
     return templates.TemplateResponse(
         "employees.html",
         {
             "request": request,
             "employees": employees,
-            "total_count": total_count or 0,
+            "total_count": total_count,
             "page": page,
-            "per_page": per_page,
+            "per_page": effective_per_page,
+            "per_page_selected": per_page_selected,
             "total_pages": total_pages,
             "page_start": page_start,
             "prev_url": prev_url,
