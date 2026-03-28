@@ -59,24 +59,26 @@
         <div class="card dashboard-headcount-card">
           <h2>Headcount vs Requirement</h2>
           <p class="hint">Target date: {{ target_date | dmy }}</p>
-          <table class="employee-table paged metric-table">
-            <thead>
-              <tr><th>Designation</th><th>Man on Designation</th><th>No. of Retirements</th><th>IN HAND</th></tr>
-            </thead>
-            <tbody>
-              {% for req in requirements %}
-              {% set have = counts.get(req.role, 0) %}
-              {% set retiring = retire_counts.get(req.role, 0) %}
-              {% set deficiency = have - retiring %}
-              <tr class="{{ 'ok' if deficiency > 0 else 'warn' }}">
-                <td><span class="designation-pill">{{ req.role }}</span></td>
-                <td>{{ have }}</td>
-                <td>{{ retiring }}</td>
-                <td>{{ deficiency }}</td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
+          <div class="table-wrap">
+            <table class="employee-table paged metric-table">
+              <thead>
+                <tr><th>Designation</th><th>Man on Designation</th><th>No. of Retirements</th><th>IN HAND</th></tr>
+              </thead>
+              <tbody>
+                {% for req in requirements %}
+                {% set have = counts.get(req.role, 0) %}
+                {% set retiring = retire_counts.get(req.role, 0) %}
+                {% set deficiency = have - retiring %}
+                <tr class="{{ 'ok' if deficiency > 0 else 'warn' }}">
+                  <td><span class="designation-pill">{{ req.role }}</span></td>
+                  <td>{{ have }}</td>
+                  <td>{{ retiring }}</td>
+                  <td>{{ deficiency }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <div class="card">

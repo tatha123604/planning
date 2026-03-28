@@ -86,19 +86,21 @@
             <button type="submit">Recalculate</button>
             {# <a class="ghost" href="{{ dashboard_link }}">Apply dates to Dashboard</a> #}
           </form>
-          <table class="paged clickable-table" id="retirements-by-designation-table">
-            <thead>
-              <tr><th>Designation</th><th>Retirements</th></tr>
-            </thead>
-            <tbody>
-              {% for role, count in retirements.items() %}
-              <tr data-href="/reports?start_date={{ start_date.isoformat() }}&end_date={{ end_date.isoformat() }}&role={{ role }}#retirement-details-card">
-                <td><a class="cli-roster-link" href="/reports?start_date={{ start_date.isoformat() }}&end_date={{ end_date.isoformat() }}&role={{ role }}#retirement-details-card">{{ role }}</a></td>
-                <td>{{ count }}</td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
+          <div class="table-wrap">
+            <table class="paged clickable-table" id="retirements-by-designation-table">
+              <thead>
+                <tr><th>Designation</th><th>Retirements</th></tr>
+              </thead>
+              <tbody>
+                {% for role, count in retirements.items() %}
+                <tr data-href="/reports?start_date={{ start_date.isoformat() }}&end_date={{ end_date.isoformat() }}&role={{ role }}#retirement-details-card">
+                  <td><a class="cli-roster-link" href="/reports?start_date={{ start_date.isoformat() }}&end_date={{ end_date.isoformat() }}&role={{ role }}#retirement-details-card">{{ role }}</a></td>
+                  <td>{{ count }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
         </details>
       </section>
 
