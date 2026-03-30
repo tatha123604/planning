@@ -423,43 +423,50 @@
 
       if (employeesTable) {
         let frozenIndex = null;
-        const clearFrozen = () => {
-          employeesTable.querySelectorAll('.col-frozen').forEach((cell) => {
-            cell.classList.remove('col-frozen', 'col-frozen-active');
-            cell.style.left = '';
-          });
-        };
-        const applyFrozen = (idx) => {
-          clearFrozen();
-          frozenIndex = idx;
-          const headerRow = employeesTable.tHead && employeesTable.tHead.rows[0];
-          const allRows = Array.from(employeesTable.tBodies[0]?.rows || []);
-          if (!headerRow) return;
-          let left = 0;
-          for (let i = 0; i < idx; i += 1) {
-            left += headerRow.cells[i]?.offsetWidth || 0;
-          }
-          const markCell = (cell) => {
-            if (!cell) return;
-            cell.classList.add('col-frozen', 'col-frozen-active');
-            cell.style.left = `${left}px`;
+          const clearFrozen = () => {
+            employeesTable.querySelectorAll('.col-frozen').forEach((cell) => {
+              cell.classList.remove('col-frozen', 'col-frozen-active');
+              cell.style.left = '';
+            });
           };
-          markCell(headerRow.cells[idx]);
-          allRows.forEach((row) => markCell(row.cells[idx]));
-        };
-        const headers = employeesTable.querySelectorAll('thead th');
-        headers.forEach((th, idx) => {
-          th.style.cursor = 'pointer';
-          th.addEventListener('click', () => {
-            if (frozenIndex === idx) {
-              clearFrozen();
-              frozenIndex = null;
-            } else {
-              applyFrozen(idx);
+          const applyFrozen = (idx) => {
+            clearFrozen();
+            frozenIndex = idx;
+            const headerRow = employeesTable.tHead && employeesTable.tHead.rows[0];
+            const allRows = Array.from(employeesTable.tBodies[0]?.rows || []);
+            if (!headerRow) return;
+            let left = 0;
+            for (let i = 0; i < idx; i += 1) {
+              left += headerRow.cells[i]?.offsetWidth || 0;
             }
+            const markCell = (cell) => {
+              if (!cell) return;
+              cell.classList.add('col-frozen', 'col-frozen-active');
+              cell.style.left = `${left}px`;
+            };
+            markCell(headerRow.cells[idx]);
+            allRows.forEach((row) => markCell(row.cells[idx]));
+          };
+        const headers = employeesTable.querySelectorAll('thead th');
+          const clearRowSelection = () => {
+            employeesTable.querySelectorAll('tbody tr').forEach((row) => {
+              row.classList.remove('table-paged-active', 'table-paged-active-odd', 'table-paged-active-even');
+            });
+          };
+
+          headers.forEach((th, idx) => {
+            th.style.cursor = 'pointer';
+            th.addEventListener('click', () => {
+              if (frozenIndex === idx) {
+                clearFrozen();
+                frozenIndex = null;
+              } else {
+                applyFrozen(idx);
+              }
+              clearRowSelection();
+            });
           });
-        });
-      }
+        }
 
       const syncForm = document.querySelector('[data-google-sync-form]');
       const syncLive = document.getElementById('google-sync-live');
