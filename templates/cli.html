@@ -116,6 +116,9 @@
           <div class="table-wrap">
             <table class="paged clickable-table" id="cli-distribution-table">
               <thead>
+                <tr class="table-report-date">
+                  <th colspan="6">Updated on: {{ grading_report_date or '—' }}</th>
+                </tr>
                 <tr>
                   <th>CLI</th>
                   <th>CLI ID</th>
@@ -150,6 +153,9 @@
           <div class="table-wrap">
             <table class="paged">
               <thead>
+                <tr class="table-report-date">
+                  <th colspan="5">Updated on: {{ grading_report_date or '—' }}</th>
+                </tr>
                 <tr>
                   <th>Designation</th>
                   <th>Gradation A</th>
@@ -219,6 +225,9 @@
           <div class="table-wrap">
             <table class="employee-table paged">
               <thead>
+                <tr class="table-report-date">
+                  <th colspan="8">Updated on: {{ grading_report_date or '—' }}</th>
+                </tr>
                 <tr>
                   <th>CLI</th>
                   <th>CLI ID</th>
@@ -266,6 +275,15 @@
         }
       });
       document.body.classList.remove('nav-hidden');
+
+      const sourceReportDate = document.querySelector('#source-report-date');
+      if (!sourceReportDate) {
+        const hidden = document.createElement('input');
+        hidden.type = 'hidden';
+        hidden.id = 'source-report-date';
+        hidden.value = '{{ grading_report_date_iso or "" }}';
+        document.body.appendChild(hidden);
+      }
 
       document.querySelectorAll('[data-password-gated-form]').forEach((form) => {
         const passwordInput = form.querySelector('[data-password-gated-input]');

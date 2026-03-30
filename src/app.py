@@ -622,7 +622,7 @@ def _build_table_pdf_bytes(
                 9.4,
                 margin_left,
                 548.0,
-                f"Report date: {report_date_label}",
+                f"Updated on: {report_date_label}",
                 (0.306, 0.427, 0.529),
             )
         add_text(
@@ -1080,6 +1080,7 @@ def _cli_page_context(
     )
     grading_meta = _load_li_grading_metadata()
     grading_report_date = coerce_report_date(grading_meta.get("report_date"))
+    grading_report_date_iso = grading_report_date.isoformat() if grading_report_date else ""
     grading_saved_at = ""
     saved_at_raw = grading_meta.get("saved_at", "")
     if saved_at_raw:
@@ -1136,6 +1137,7 @@ def _cli_page_context(
         "cli_distribution_totals": cli_distribution_totals or {},
         "grading_source_name": grading_meta.get("filename", ""),
         "grading_report_date": grading_report_date.strftime("%d-%m-%Y") if grading_report_date else "",
+        "grading_report_date_iso": grading_report_date_iso,
         "grading_saved_at": grading_saved_at,
         "grading_update_notice": grading_update_notice,
         "grading_update_warning": grading_update_warning,
@@ -3867,7 +3869,7 @@ async def export_table_xlsx(request: Request):
     column_count = max(1, len(headers))
     if report_date_label:
         ws.append([title])
-        ws.append([f"Report date: {report_date_label}"])
+        ws.append([f"Updated on: {report_date_label}"])
         header_row_index = 3
     else:
         ws.append([title])
