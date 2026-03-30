@@ -98,9 +98,10 @@
     const pagerHost = pagerAnchor.parentElement;
     if (!pagerHost) return;
     const isTotalRow = (row) =>
-      Array.from(row.cells || []).some((cell) =>
-        String(cell.textContent || "").trim().toUpperCase() === "TOTAL"
-      );
+      Array.from(row.cells || []).some((cell) => {
+        const text = String(cell.textContent || "").trim().toUpperCase();
+        return text === "TOTAL" || text.startsWith("TOTAL ");
+      });
     const stickyRows = rows.filter(isTotalRow);
     const pageableRows = rows.filter((row) => !isTotalRow(row));
     if (!pageableRows.length) return;
