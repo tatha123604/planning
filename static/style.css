@@ -538,6 +538,8 @@ ul { padding-left: 18px; margin: 6px 0; }
   background: var(--employee-table-shell);
   border: 1px solid var(--employee-table-shell-border);
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 18px 36px rgba(3, 10, 24, 0.16);
+  width: calc(100% - 24px);
+  margin: 0 auto;
 }
 #employees-table tbody tr td {
   vertical-align: middle;
