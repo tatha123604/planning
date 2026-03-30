@@ -414,6 +414,20 @@ thead th {
   position: relative;
   overflow: hidden;
 }
+.col-frozen {
+  position: sticky;
+  z-index: 3;
+  background: rgba(14, 18, 32, 0.96);
+  box-shadow: 6px 0 12px rgba(0, 0, 0, 0.35);
+}
+th.col-frozen {
+  z-index: 4;
+}
+.col-frozen-active {
+  font-weight: 700;
+  color: #ffe680;
+  transform: scale(1.02);
+}
 thead th::after {
   content: "";
   position: absolute;
