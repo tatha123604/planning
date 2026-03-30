@@ -277,7 +277,7 @@ def _normalize_export_text(value: object | None) -> str:
     return re.sub(r"\s+", " ", str(value or "").strip())
 
 
-def _coerce_export_table_payload(payload: object) -> tuple[str, list[str], list[list[str]]]:
+def _coerce_export_table_payload(payload: object) -> tuple[str, list[str], list[list[str]], str]:
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="Export payload must be an object.")
 
@@ -289,6 +289,9 @@ def _coerce_export_table_payload(payload: object) -> tuple[str, list[str], list[
         raise HTTPException(status_code=400, detail="Export rows payload is invalid.")
 
     title = _sanitize_export_title(payload.get("title"))
+    report_date_raw = str(payload.get("report_date") or "").strip()
+    report_date_value = coerce_report_date(report_date_raw) if report_date_raw else None
+    report_date_label = report_date_value.strftime("%d-%m-%Y") if report_date_value else ""
     headers = [
         _normalize_export_text(header) or f"Column {index + 1}"
         for index, header in enumerate(headers_payload)
@@ -302,7 +305,7 @@ def _coerce_export_table_payload(payload: object) -> tuple[str, list[str], list[
         if len(normalized) < width:
             normalized.extend([""] * (width - len(normalized)))
         rows.append(normalized)
-    return title, headers, rows
+    return title, headers, rows, report_date_label
 
 
 def _pdf_escape_text(value: object | None) -> str:
@@ -514,7 +517,12 @@ def _build_pdf_row_layout(
     }
 
 
-def _build_table_pdf_bytes(title: str, headers: list[str], rows: list[list[str]]) -> bytes:
+def _build_table_pdf_bytes(
+    title: str,
+    headers: list[str],
+    rows: list[list[str]],
+    report_date_label: str,
+) -> bytes:
     page_width = 842.0
     page_height = 595.0
     margin_left = 26.0
@@ -607,12 +615,22 @@ def _build_table_pdf_bytes(title: str, headers: list[str], rows: list[list[str]]
     for page_index, page_rows in enumerate(pages, start=1):
         commands: list[str] = []
         add_text(commands, "F2", 15.5, margin_left, 560.0, title, (0.086, 0.192, 0.298))
+        if report_date_label:
+            add_text(
+                commands,
+                "F1",
+                9.4,
+                margin_left,
+                548.0,
+                f"Report date: {report_date_label}",
+                (0.306, 0.427, 0.529),
+            )
         add_text(
             commands,
             "F1",
             9.0,
             margin_left,
-            544.0,
+            536.0 if report_date_label else 544.0,
             f"Rows: {len(rows)}   Page: {page_index}/{total_pages}",
             (0.306, 0.427, 0.529),
         )
@@ -1932,6 +1950,8 @@ def _cli_matrix_context(
     request: Request,
     error: Optional[str] = None,
     report_date: str = "",
+    source_report_date: str = "",
+    source_report_date_label: str = "",
     summary_rows: Optional[list[dict]] = None,
     overdue_rows: Optional[list[dict]] = None,
     saved_notice: str = "",
@@ -1943,6 +1963,8 @@ def _cli_matrix_context(
         "role_order": ROLE_ORDER,
         "error": error,
         "report_date": report_date,
+        "source_report_date": source_report_date,
+        "source_report_date_label": source_report_date_label,
         "summary_rows": summary_rows or [],
         "overdue_rows": overdue_rows or [],
         "saved_notice": saved_notice,
@@ -2976,6 +2998,8 @@ def cli_matrix_page(
             request,
             error=error,
             report_date=selected_date.isoformat(),
+            source_report_date=selected_date.isoformat(),
+            source_report_date_label=selected_date.strftime("%d-%m-%Y"),
             summary_rows=summary_rows,
             overdue_rows=overdue_rows,
             saved_notice=saved_notice,
@@ -3002,6 +3026,8 @@ async def preview_cli_matrix(
                 request,
                 error="Latest CLI Matrix must be an .xlsx file.",
                 report_date=selected_date,
+                source_report_date=inferred_date.isoformat() if inferred_date else "",
+                source_report_date_label=inferred_date.strftime("%d-%m-%Y") if inferred_date else "",
             ),
         )
 
@@ -3029,6 +3055,8 @@ async def preview_cli_matrix(
                 request,
                 error=f"CLI Matrix preview failed: {exc}",
                 report_date=selected_date,
+                source_report_date=inferred_date.isoformat() if inferred_date else "",
+                source_report_date_label=inferred_date.strftime("%d-%m-%Y") if inferred_date else "",
                 cached_template_name=cached_template_name if "cached_template_name" in locals() else "",
             ),
         )
@@ -3038,6 +3066,8 @@ async def preview_cli_matrix(
         _cli_matrix_context(
             request,
             report_date=selected_date,
+            source_report_date=inferred_date.isoformat() if inferred_date else "",
+            source_report_date_label=inferred_date.strftime("%d-%m-%Y") if inferred_date else "",
             summary_rows=summary_df.to_dict(orient="records"),
             overdue_rows=overdue_df.to_dict(orient="records"),
             cached_template_name=cached_template_name,
@@ -3063,6 +3093,8 @@ async def generate_cli_matrix(
                 request,
                 error="Latest CLI Matrix must be an .xlsx file.",
                 report_date=selected_date,
+                source_report_date=inferred_date.isoformat() if inferred_date else "",
+                source_report_date_label=inferred_date.strftime("%d-%m-%Y") if inferred_date else "",
                 cached_template_name=_load_persistent_template("cli_matrix")[1],
             ),
         )
@@ -3099,6 +3131,8 @@ async def generate_cli_matrix(
                 request,
                 error=f"CLI Matrix generation failed: {exc}",
                 report_date=selected_date,
+                source_report_date=inferred_date.isoformat() if inferred_date else "",
+                source_report_date_label=inferred_date.strftime("%d-%m-%Y") if inferred_date else "",
                 cached_template_name=cached_template_name if "cached_template_name" in locals() else _load_persistent_template("cli_matrix")[1],
             ),
         )
@@ -3126,6 +3160,8 @@ async def reset_cli_matrix_data(
         _cli_matrix_context(
             request,
             report_date=selected_date.isoformat(),
+            source_report_date=selected_date.isoformat(),
+            source_report_date_label=selected_date.strftime("%d-%m-%Y"),
             saved_notice=f"Saved CLI Matrix data for {selected_date.strftime('%d-%m-%Y')} has been deleted.",
             cached_template_name=cached_template_name,
         ),
@@ -3787,11 +3823,19 @@ async def export_table_xlsx(request: Request):
         payload = await request.json()
     except json.JSONDecodeError as exc:
         raise HTTPException(status_code=400, detail="Invalid export payload.") from exc
-    title, headers, rows = _coerce_export_table_payload(payload)
+    title, headers, rows, report_date_label = _coerce_export_table_payload(payload)
 
     wb = Workbook()
     ws = wb.active
     ws.title = _sanitize_excel_sheet_title(title)
+    column_count = max(1, len(headers))
+    if report_date_label:
+        ws.append([title])
+        ws.append([f"Report date: {report_date_label}"])
+        header_row_index = 3
+    else:
+        ws.append([title])
+        header_row_index = 2
     ws.append(headers)
     for row in rows:
         ws.append(row)
@@ -3799,13 +3843,28 @@ async def export_table_xlsx(request: Request):
     header_fill = PatternFill(fill_type="solid", fgColor="16314C")
     header_font = Font(bold=True, color="F3FBFF")
     header_alignment = Alignment(horizontal="center", vertical="center")
-    for cell in ws[1]:
+    for cell in ws[header_row_index]:
         cell.fill = header_fill
         cell.font = header_font
         cell.alignment = header_alignment
 
-    ws.freeze_panes = "A2"
-    ws.auto_filter.ref = ws.dimensions
+    ws.freeze_panes = f"A{header_row_index + 1}"
+    last_row = header_row_index + max(len(rows), 1)
+    ws.auto_filter.ref = f"A{header_row_index}:{get_column_letter(column_count)}{last_row}"
+
+    title_alignment = Alignment(horizontal="left", vertical="center")
+    title_font = Font(bold=True, color="16314C")
+    for row_index in range(1, header_row_index):
+        cell = ws.cell(row=row_index, column=1)
+        cell.font = title_font
+        cell.alignment = title_alignment
+        ws.merge_cells(
+            start_row=row_index,
+            start_column=1,
+            end_row=row_index,
+            end_column=column_count,
+        )
+
     for column_index, header in enumerate(headers, start=1):
         max_length = len(header)
         for row in rows:
@@ -3830,8 +3889,8 @@ async def export_table_pdf(request: Request):
     except json.JSONDecodeError as exc:
         raise HTTPException(status_code=400, detail="Invalid export payload.") from exc
 
-    title, headers, rows = _coerce_export_table_payload(payload)
-    pdf_bytes = _build_table_pdf_bytes(title, headers, rows)
+    title, headers, rows, report_date_label = _coerce_export_table_payload(payload)
+    pdf_bytes = _build_table_pdf_bytes(title, headers, rows, report_date_label)
     filename = _sanitize_export_filename(title, "pdf")
     return StreamingResponse(
         BytesIO(pdf_bytes),

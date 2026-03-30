@@ -47,6 +47,9 @@
   };
 
   const buildSnapshot = (table, tableIndex) => {
+    const reportDateInput = document.querySelector('input[name="report_date"]');
+    const sourceReportDateInput = document.querySelector("#source-report-date");
+    const reportDateValue = sourceReportDateInput?.value || reportDateInput?.value || "";
     const headerRows = Array.from(table.tHead?.rows || []);
     const headerSource = headerRows.length ? headerRows[headerRows.length - 1] : null;
     const rawHeaders = headerSource ? extractExpandedTexts(headerSource.cells) : [];
@@ -82,6 +85,7 @@
       title: getTableTitle(table, tableIndex),
       headers: filteredHeaders,
       rows,
+      report_date: reportDateValue,
     };
   };
 

@@ -54,12 +54,17 @@ def infer_report_date(filename: str | None) -> date | None:
     for pattern in (
         r"(?P<day>\d{2})[.\-_](?P<month>\d{2})[.\-_](?P<year>\d{4})",
         r"(?P<year>\d{4})[.\-_](?P<month>\d{2})[.\-_](?P<day>\d{2})",
+        r"(?P<day>\d{2})[.\-_](?P<month>\d{2})[.\-_](?P<year>\d{2})",
     ):
         match = re.search(pattern, stem)
         if match:
             try:
+                year_text = match.group("year")
+                year = int(year_text)
+                if len(year_text) == 2:
+                    year += 2000
                 return date(
-                    int(match.group("year")),
+                    year,
                     int(match.group("month")),
                     int(match.group("day")),
                 )
@@ -76,7 +81,7 @@ def coerce_report_date(value) -> date | None:
     if isinstance(value, date):
         return value
     text = str(value).strip()
-    for fmt in ("%Y-%m-%d", "%d.%m.%Y", "%d-%m-%Y", "%d_%m_%Y"):
+    for fmt in ("%Y-%m-%d", "%d.%m.%Y", "%d-%m-%Y", "%d_%m_%Y", "%d.%m.%y", "%d-%m-%y", "%d_%m_%y"):
         try:
             return datetime.strptime(text, fmt).date()
         except ValueError:

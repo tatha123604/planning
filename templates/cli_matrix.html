@@ -52,6 +52,8 @@
           {% endif %}
           <form id="cli-matrix-form" method="post" action="/cli-matrix/generate" enctype="multipart/form-data">
             <input type="hidden" name="template_ready" value="{{ '1' if cached_template_name else '' }}" />
+            <input type="hidden" id="source-report-date" value="{{ source_report_date or '' }}" />
+            <input type="hidden" id="source-report-date-label" value="{{ source_report_date_label or '' }}" />
             <label>Latest CLI Matrix file
               <input id="source-file" type="file" name="source_file" accept=".xlsx,.xlsm" required />
             </label>
@@ -113,6 +115,9 @@
                 {% set summary_total = namespace(fp=0) %}
                 <table class="employee-table paged">
                   <thead>
+                    <tr class="table-report-date">
+                      <th colspan="6">Report date: {{ source_report_date_label or (report_date | dmy) or '—' }}</th>
+                    </tr>
                     <tr>
                     <th>S.No.</th>
                     <th>CLI ID</th>
@@ -153,6 +158,9 @@
             <div class="table-wrap">
               <table class="employee-table paged">
                 <thead>
+                  <tr class="table-report-date">
+                    <th colspan="11">Report date: {{ source_report_date_label or (report_date | dmy) or '—' }}</th>
+                  </tr>
                   <tr>
                     <th>S.No.</th>
                     <th>CLI ID</th>
