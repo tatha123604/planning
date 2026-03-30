@@ -129,7 +129,10 @@ CLI_NAME_MANUAL_ALIASES = {
 
 
 def _normalize_cli_tokens(value: str) -> list[str]:
-    cleaned = re.sub(r"[^A-Za-z]+", " ", value or "").strip()
+    text = str(value or "").strip()
+    # Remove inline CLI IDs like "NAME (SDAH0123)" before tokenizing.
+    text = re.sub(r"\s*\([A-Za-z]{2,}[A-Za-z0-9-]*\d+[A-Za-z0-9-]*\)\s*$", "", text)
+    cleaned = re.sub(r"[^A-Za-z]+", " ", text).strip()
     return [token for token in cleaned.upper().split() if token]
 
 
