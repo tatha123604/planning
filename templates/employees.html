@@ -148,20 +148,8 @@
               <div class="summary-chip" id="employees-total-chip">Total: {{ total_count }}</div>
               <div class="summary-chip">Page {{ page }} of {{ total_pages }}</div>
           </form>
-          <div class="pager">
-            {% if prev_url %}
-              <a class="ghost" href="{{ prev_url }}#employees-card">Prev</a>
-            {% else %}
-              <span class="ghost disabled">Prev</span>
-            {% endif %}
-            {% if next_url %}
-              <a class="ghost" href="{{ next_url }}#employees-card">Next</a>
-            {% else %}
-              <span class="ghost disabled">Next</span>
-            {% endif %}
-          </div>
           <div class="table-wrap">
-            <table class="employee-table paged" id="employees-table" data-pager="server">
+            <table class="employee-table paged" id="employees-table">
               <thead>
                 <tr>
                   <th>Sl No.</th>

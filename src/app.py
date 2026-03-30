@@ -1211,9 +1211,8 @@ def employees_page(
     category_opts = sorted({value for value in session.exec(select(Employee.category).distinct()) if value})
     gradation_opts = sorted({value for value in session.exec(select(Employee.gradation).distinct()) if value})
 
-    page = max(int(page or 1), 1)
-    per_page = int(per_page or 100)
-    per_page = 20 if per_page < 20 else 500 if per_page > 500 else per_page
+    page = 1
+    per_page = 0
 
     query_employees = select(Employee)
     if role:
@@ -1264,8 +1263,6 @@ def employees_page(
 
         employees = sorted(employees, key=sort_key)
         total_count = len(employees)
-        start = (page - 1) * per_page
-        employees = employees[start : start + per_page]
     else:
         role_case = case(
             {role: idx for idx, role in enumerate(ROLE_ORDER)},
@@ -1289,10 +1286,8 @@ def employees_page(
         else:
             query_employees = query_employees.order_by(role_case, Employee.name)
 
-        total_count = session.exec(
-            select(func.count()).select_from(query_employees.subquery())
-        ).one()
-        employees = session.exec(query_employees.offset((page - 1) * per_page).limit(per_page)).all()
+        employees = session.exec(query_employees).all()
+        total_count = len(employees)
 
     cli_roster = []
     if roster_filter_active:
@@ -1309,11 +1304,10 @@ def employees_page(
         grad_lower = roster_gradation.lower()
         cli_roster = [e for e in cli_roster if e.gradation and grad_lower in e.gradation.lower()]
     cli_roster = sorted(cli_roster, key=lambda e: (_employee_cli_key(e), e.name))
-    total_pages = max(1, (total_count + per_page - 1) // per_page) if total_count is not None else 1
-    page = min(page, total_pages)
-    page_start = (page - 1) * per_page
-    prev_url = str(request.url.include_query_params(page=page - 1, per_page=per_page)) if page > 1 else ""
-    next_url = str(request.url.include_query_params(page=page + 1, per_page=per_page)) if page < total_pages else ""
+    total_pages = 1
+    page_start = 0
+    prev_url = ""
+    next_url = ""
 
     return templates.TemplateResponse(
         "employees.html",
