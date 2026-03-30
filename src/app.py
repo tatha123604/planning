@@ -1346,7 +1346,7 @@ def _cli_page_context(
     employees_all = session.exec(select(Employee)).all()
     selected_distribution_cli = (distribution_cli or "").strip()
     cli_distribution = build_cli_distribution(employees_all)
-    cli_distribution_totals = {
+    cli_distribution_totals_all = {
         "A": sum(int(row.get("A", 0)) for row in cli_distribution),
         "B": sum(int(row.get("B", 0)) for row in cli_distribution),
         "C": sum(int(row.get("C", 0)) for row in cli_distribution),
@@ -1423,7 +1423,7 @@ def _cli_page_context(
         "request": request,
         "active_page": "cli",
         "cli_distribution": cli_distribution,
-        "cli_distribution_totals": cli_distribution_totals,
+        "cli_distribution_totals_all": cli_distribution_totals_all,
         "cli_roster": cli_roster,
         "cli_opts": cli_opts,
         "role_opts": role_opts,
