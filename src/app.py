@@ -2303,6 +2303,9 @@ def _import_employee_rows(
     if global_hrms_counts is None:
         global_hrms_counts = Counter()
 
+    existing_cli_rows = session.exec(select(Employee.cli, Employee.cli_id)).all()
+    canonical_by_id, alias_map, id_by_name = _build_cli_name_maps(existing_cli_rows)
+
     added = 0
     updated = 0
     data_rows = rows[rows.index(header_raw) + 1 :]
@@ -2454,8 +2457,20 @@ def _import_employee_rows(
             working_at_target = working_at if (has_col("working_at") or working_at_override is not None) else existing.working_at
             new_gradation = str(get("gradation")).strip() if has_col("gradation") and get("gradation") else (None if has_col("gradation") else existing.gradation)
             raw_cli = str(get("cli")).strip() if has_col("cli") and get("cli") else (None if has_col("cli") else existing.cli)
-            existing_cli_clean, existing_cli_id_clean = _canonicalize_cli_name(existing.cli, existing.cli_id)
-            new_cli, cli_id_target = _canonicalize_cli_name(raw_cli, raw_cli_id)
+            existing_cli_clean, existing_cli_id_clean = _canonicalize_cli_name(
+                existing.cli,
+                existing.cli_id,
+                canonical_by_id=canonical_by_id,
+                alias_map=alias_map,
+                id_by_name=id_by_name,
+            )
+            new_cli, cli_id_target = _canonicalize_cli_name(
+                raw_cli,
+                raw_cli_id,
+                canonical_by_id=canonical_by_id,
+                alias_map=alias_map,
+                id_by_name=id_by_name,
+            )
             if _cli_names_equivalent(existing_cli_clean, new_cli) and existing_cli_clean:
                 new_cli = existing_cli_clean
             pme_due_target = pme_due if has_col("pme_due") else existing.pme_due
@@ -2521,6 +2536,9 @@ def _import_employee_rows(
             new_cli, new_cli_id = _canonicalize_cli_name(
                 str(get("cli")).strip() if "cli" in col_index and get("cli") else None,
                 str(get("cli_id")).strip() if "cli_id" in col_index and get("cli_id") else None,
+                canonical_by_id=canonical_by_id,
+                alias_map=alias_map,
+                id_by_name=id_by_name,
             )
             session.add(
                 Employee(
