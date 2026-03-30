@@ -207,8 +207,19 @@
           </form>
 
           {% if cli_plan_summary %}
+          <h3>Distribution Summary</h3>
+          <div class="inline">
+            <label>CLI Filter
+              <select id="cli-plan-summary-filter">
+                <option value="">All</option>
+                {% for row in cli_plan_summary %}
+                  <option value="{{ row.cli }}">{{ row.cli }}</option>
+                {% endfor %}
+              </select>
+            </label>
+          </div>
           <div class="table-wrap">
-            <table class="paged">
+            <table class="paged" id="cli-plan-summary-table">
               <thead>
                 <tr>
                   <th>CLI</th>
@@ -221,7 +232,7 @@
               </thead>
               <tbody>
                 {% for row in cli_plan_summary %}
-                <tr>
+                <tr data-cli="{{ row.cli }}">
                   <td>{{ row.cli }}</td>
                   <td>{{ row.cli_id }}</td>
                   <td>{{ row.A }}</td>
@@ -236,8 +247,19 @@
           {% endif %}
 
           {% if cli_plan_assignments %}
+          <h3>Distribution Assignments</h3>
+          <div class="inline">
+            <label>CLI Filter
+              <select id="cli-plan-assignments-filter">
+                <option value="">All</option>
+                {% for row in cli_plan_summary %}
+                  <option value="{{ row.cli }}">{{ row.cli }}</option>
+                {% endfor %}
+              </select>
+            </label>
+          </div>
           <div class="table-wrap">
-            <table class="paged">
+            <table class="paged" id="cli-plan-assignments-table">
               <thead>
                 <tr>
                   <th>Name</th>
@@ -251,7 +273,7 @@
               </thead>
               <tbody>
                 {% for row in cli_plan_assignments %}
-                <tr>
+                <tr data-cli="{{ row.proposed_cli }}">
                   <td>{{ row.name }}</td>
                   <td>{{ row.role }}</td>
                   <td>{{ row.gradation }}</td>
@@ -470,6 +492,33 @@
           }
         });
       });
+
+      const applyCliFilter = (table, filterValue) => {
+        if (!table) return;
+        const rows = Array.from(table.tBodies?.[0]?.rows || []);
+        rows.forEach((row) => {
+          const rowCli = (row.dataset.cli || '').trim();
+          row.dataset.filterHidden =
+            filterValue && rowCli !== filterValue ? 'true' : 'false';
+        });
+        table.dispatchEvent(new CustomEvent('table-pager:refresh', { detail: { resetPage: true } }));
+      };
+
+      const summaryFilter = document.getElementById('cli-plan-summary-filter');
+      const summaryTable = document.getElementById('cli-plan-summary-table');
+      if (summaryFilter && summaryTable) {
+        summaryFilter.addEventListener('change', () => {
+          applyCliFilter(summaryTable, summaryFilter.value);
+        });
+      }
+
+      const assignmentsFilter = document.getElementById('cli-plan-assignments-filter');
+      const assignmentsTable = document.getElementById('cli-plan-assignments-table');
+      if (assignmentsFilter && assignmentsTable) {
+        assignmentsFilter.addEventListener('change', () => {
+          applyCliFilter(assignmentsTable, assignmentsFilter.value);
+        });
+      }
     })();
   </script>
   <script src="/static/sidebar-toggle.js"></script>
