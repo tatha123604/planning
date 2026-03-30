@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from sqlmodel import Field, SQLModel
 
 
@@ -133,3 +133,34 @@ class SubNonContinuousSignOffSnapshot(SQLModel, table=True):
     duty_type: str | None = None
     route_stn: str | None = None
     reason: str | None = None
+
+
+class CliDistributionTarget(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    cli_name: str
+    cli_id: str | None = None
+    active: bool = Field(default=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class CliDistributionPlan(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    cli_count: int
+    grade_a_total: int
+    grade_b_total: int
+    grade_c_total: int
+    targets_json: str
+
+
+class CliDistributionAssignment(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    plan_id: int = Field(index=True)
+    employee_id: int | None = Field(default=None, index=True)
+    name: str
+    role: str
+    gradation: str
+    current_cli: str | None = None
+    current_cli_id: str | None = None
+    proposed_cli: str
+    proposed_cli_id: str | None = None

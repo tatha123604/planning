@@ -145,6 +145,121 @@
         </details>
       </section>
 
+      <section class="card collapsible" id="cli-distribution-planner">
+        <details open>
+          <summary>CLI Distribution Planner</summary>
+          <p class="hint">Distribution stays the same until you calculate again (typically after new CLI joins or retires).</p>
+          {% if cli_plan_notice %}
+          <p class="hint success-text">{{ cli_plan_notice }}</p>
+          {% endif %}
+          {% if cli_plan_error %}
+          <p class="hint error-text">{{ cli_plan_error }}</p>
+          {% endif %}
+          <form class="inline" method="post" action="/cli/distribution/targets/add">
+            <label>CLI Name
+              <input name="cli_name" placeholder="CLI name" required />
+            </label>
+            <label>CLI ID
+              <input name="cli_id" placeholder="CLI ID (optional)" />
+            </label>
+            <button type="submit" data-confirm="Add this CLI to distribution targets?">Add CLI Target</button>
+          </form>
+
+          {% if cli_manual_targets %}
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Target CLI</th>
+                  <th>CLI ID</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for target in cli_manual_targets %}
+                <tr>
+                  <td>{{ target.cli_name }}</td>
+                  <td>{{ target.cli_id or '' }}</td>
+                  <td>
+                    <form method="post" action="/cli/distribution/targets/remove">
+                      <input type="hidden" name="target_id" value="{{ target.id }}" />
+                      <button type="submit" class="danger" data-confirm="Remove this CLI target?">Remove</button>
+                    </form>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% endif %}
+
+          <form class="inline" method="post" action="/cli/distribution/calculate">
+            <button type="submit" data-confirm="Calculate new CLI distribution plan?">Calculate Distribution</button>
+            {% if cli_plan_created_at %}<span class="hint">Last calculated: {{ cli_plan_created_at }}</span>{% endif %}
+          </form>
+
+          {% if cli_plan_summary %}
+          <div class="table-wrap">
+            <table class="paged">
+              <thead>
+                <tr>
+                  <th>CLI</th>
+                  <th>CLI ID</th>
+                  <th>Gradation A</th>
+                  <th>Gradation B</th>
+                  <th>Gradation C</th>
+                  <th>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in cli_plan_summary %}
+                <tr>
+                  <td>{{ row.cli }}</td>
+                  <td>{{ row.cli_id }}</td>
+                  <td>{{ row.A }}</td>
+                  <td>{{ row.B }}</td>
+                  <td>{{ row.C }}</td>
+                  <td>{{ row.total }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% endif %}
+
+          {% if cli_plan_assignments %}
+          <div class="table-wrap">
+            <table class="paged">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Designation</th>
+                  <th>Gradation</th>
+                  <th>Current CLI</th>
+                  <th>Current CLI ID</th>
+                  <th>Proposed CLI</th>
+                  <th>Proposed CLI ID</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in cli_plan_assignments %}
+                <tr>
+                  <td>{{ row.name }}</td>
+                  <td>{{ row.role }}</td>
+                  <td>{{ row.gradation }}</td>
+                  <td>{{ row.current_cli or '' }}</td>
+                  <td>{{ row.current_cli_id or '' }}</td>
+                  <td>{{ row.proposed_cli }}</td>
+                  <td>{{ row.proposed_cli_id or '' }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% endif %}
+        </details>
+      </section>
+
       {% if cli_distribution_breakdown %}
       <section class="card collapsible" id="cli-distribution-detail">
         <details open>

@@ -22,7 +22,7 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 import pandas as pd
 from sqlmodel import Session, select
-from sqlalchemy import func, case
+from sqlalchemy import func, case, text
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from .db import DB_PATH, engine, get_session, init_db
@@ -40,6 +40,9 @@ from .logic import (
     normalize_role,
 )
 from .models import (
+    CliDistributionAssignment,
+    CliDistributionPlan,
+    CliDistributionTarget,
     CliMatrixOverdueSnapshot,
     CliMatrixSummarySnapshot,
     Employee,
@@ -938,6 +941,218 @@ def build_cli_distribution(employees: list[Employee]) -> list[dict[str, int | st
     ]
 
 
+def _distribution_targets(session: Session, employees: list[Employee]) -> list[dict[str, str]]:
+    canonical_by_id, alias_map, id_by_name = _build_cli_name_maps((e.cli, e.cli_id) for e in employees)
+    targets: dict[str, dict[str, str]] = {}
+    for e in employees:
+        role = normalize_role(e.role)
+        if role not in CLI_DISTRIBUTION_ROLE_ORDER:
+            continue
+        cli_name, cli_id = _canonicalize_cli_name(
+            e.cli,
+            e.cli_id,
+            canonical_by_id=canonical_by_id,
+            alias_map=alias_map,
+            id_by_name=id_by_name,
+        )
+        key = _cli_name_key(cli_name) or (cli_id or "").lower()
+        if not key:
+            continue
+        targets.setdefault(
+            key,
+            {
+                "cli_name": cli_name or "",
+                "cli_id": cli_id or "",
+                "key": key,
+                "source": "existing",
+            },
+        )
+
+    manual_targets = session.exec(select(CliDistributionTarget).where(CliDistributionTarget.active == True)).all()
+    for target in manual_targets:
+        cli_name, cli_id = _canonicalize_cli_name(target.cli_name, target.cli_id)
+        key = _cli_name_key(cli_name) or (cli_id or "").lower()
+        if not key:
+            continue
+        targets.setdefault(
+            key,
+            {
+                "cli_name": cli_name or "",
+                "cli_id": cli_id or "",
+                "key": key,
+                "source": "manual",
+            },
+        )
+
+    return [targets[key] for key in sorted(targets)]
+
+
+def _build_cli_distribution_plan(
+    employees: list[Employee],
+    targets: list[dict[str, str]],
+) -> tuple[CliDistributionPlan, list[CliDistributionAssignment], list[dict[str, int | str]]]:
+    if not targets:
+        raise HTTPException(status_code=400, detail="Please add at least one CLI target before calculating.")
+
+    canonical_by_id, alias_map, id_by_name = _build_cli_name_maps((e.cli, e.cli_id) for e in employees)
+    target_keys = [t["key"] for t in targets]
+    key_order = sorted(target_keys)
+    target_lookup = {t["key"]: t for t in targets}
+
+    def employee_key(employee: Employee) -> str:
+        cli_name, cli_id = _canonicalize_cli_name(
+            employee.cli,
+            employee.cli_id,
+            canonical_by_id=canonical_by_id,
+            alias_map=alias_map,
+            id_by_name=id_by_name,
+        )
+        return _cli_name_key(cli_name) or (cli_id or "").lower() or "unassigned"
+
+    assignments: dict[int, str] = {}
+
+    def grade_key(employee: Employee) -> str:
+        grad = (employee.gradation or "").strip().upper()
+        return grad[0] if grad else ""
+
+    grade_totals = {"A": 0, "B": 0, "C": 0}
+    eligible = [
+        e
+        for e in employees
+        if normalize_role(e.role) in CLI_DISTRIBUTION_ROLE_ORDER and grade_key(e) in ("A", "B", "C")
+    ]
+
+    for grade in ("A", "B", "C"):
+        grade_emps = [e for e in eligible if grade_key(e) == grade]
+        grade_totals[grade] = len(grade_emps)
+        if not grade_emps:
+            continue
+
+        target_base = len(grade_emps) // len(key_order)
+        remainder = len(grade_emps) % len(key_order)
+        target_counts = {
+            key: target_base + (idx < remainder) for idx, key in enumerate(key_order)
+        }
+
+        current_groups: dict[str, list[Employee]] = {key: [] for key in key_order}
+        surplus_pool: list[Employee] = []
+
+        for emp in sorted(grade_emps, key=lambda e: (employee_key(e), e.name)):
+            current_key = employee_key(emp)
+            if current_key in current_groups:
+                current_groups[current_key].append(emp)
+            else:
+                surplus_pool.append(emp)
+
+        for key in key_order:
+            current_group = sorted(current_groups.get(key, []), key=lambda e: e.name)
+            keep_count = min(len(current_group), target_counts[key])
+            for emp in current_group[:keep_count]:
+                assignments[emp.id] = key
+            surplus_pool.extend(current_group[keep_count:])
+
+        deficits = {key: target_counts[key] for key in key_order}
+        for key in key_order:
+            deficits[key] -= sum(1 for emp_id, assigned_key in assignments.items() if assigned_key == key)
+
+        for key in key_order:
+            needed = deficits[key]
+            for _ in range(max(0, needed)):
+                if not surplus_pool:
+                    break
+                emp = surplus_pool.pop(0)
+                assignments[emp.id] = key
+
+        idx = 0
+        while surplus_pool:
+            emp = surplus_pool.pop(0)
+            assignments[emp.id] = key_order[idx % len(key_order)]
+            idx += 1
+
+    assignment_rows: list[CliDistributionAssignment] = []
+    summary_counts: dict[str, dict[str, int]] = {
+        key: {"A": 0, "B": 0, "C": 0, "total": 0} for key in key_order
+    }
+
+    for emp in sorted(eligible, key=lambda e: (employee_key(e), e.name)):
+        proposed_key = assignments.get(emp.id)
+        if not proposed_key:
+            continue
+        target = target_lookup[proposed_key]
+        cli_name, cli_id = _canonicalize_cli_name(
+            emp.cli,
+            emp.cli_id,
+            canonical_by_id=canonical_by_id,
+            alias_map=alias_map,
+            id_by_name=id_by_name,
+        )
+        grad = grade_key(emp)
+        summary_counts[proposed_key][grad] += 1
+        summary_counts[proposed_key]["total"] += 1
+        assignment_rows.append(
+            CliDistributionAssignment(
+                plan_id=0,
+                employee_id=emp.id,
+                name=emp.name,
+                role=normalize_role(emp.role),
+                gradation=grad,
+                current_cli=cli_name,
+                current_cli_id=cli_id,
+                proposed_cli=target.get("cli_name") or "",
+                proposed_cli_id=target.get("cli_id") or None,
+            )
+        )
+
+    summary_rows = [
+        {
+            "cli": target_lookup[key]["cli_name"],
+            "cli_id": target_lookup[key]["cli_id"],
+            "A": summary_counts[key]["A"],
+            "B": summary_counts[key]["B"],
+            "C": summary_counts[key]["C"],
+            "total": summary_counts[key]["total"],
+        }
+        for key in key_order
+    ]
+
+    plan = CliDistributionPlan(
+        cli_count=len(key_order),
+        grade_a_total=grade_totals["A"],
+        grade_b_total=grade_totals["B"],
+        grade_c_total=grade_totals["C"],
+        targets_json=json.dumps(
+            [
+                {"cli_name": target_lookup[key]["cli_name"], "cli_id": target_lookup[key]["cli_id"]}
+                for key in key_order
+            ]
+        ),
+    )
+    return plan, assignment_rows, summary_rows
+
+
+def _summarize_cli_plan(assignments: list[CliDistributionAssignment]) -> list[dict[str, int | str]]:
+    summary: dict[tuple[str, str], dict[str, int | str]] = {}
+    for row in assignments:
+        key = (row.proposed_cli, row.proposed_cli_id or "")
+        if key not in summary:
+            summary[key] = {
+                "cli": row.proposed_cli,
+                "cli_id": row.proposed_cli_id or "",
+                "A": 0,
+                "B": 0,
+                "C": 0,
+                "total": 0,
+            }
+        grad_key = (row.gradation or "").strip().upper()
+        if grad_key in ("A", "B", "C"):
+            summary[key][grad_key] += 1  # type: ignore[index]
+            summary[key]["total"] += 1  # type: ignore[index]
+    return [
+        summary[key]
+        for key in sorted(summary, key=lambda item: (item[0] or "", item[1] or ""))
+    ]
+
+
 def build_cli_distribution_role_breakdown(
     employees: list[Employee],
     selected_cli: str | None,
@@ -1125,6 +1340,8 @@ def _cli_page_context(
     grading_update_error: Optional[str] = None,
     grading_update_details: Optional[list[str]] = None,
     grading_warning_details: Optional[list[str]] = None,
+    cli_plan_notice: str = "",
+    cli_plan_error: str = "",
 ) -> dict[str, object]:
     employees_all = session.exec(select(Employee)).all()
     selected_distribution_cli = (distribution_cli or "").strip()
@@ -1177,6 +1394,25 @@ def _cli_page_context(
         cli_roster = [e for e in cli_roster if e.gradation and grad_lower in e.gradation.lower()]
     cli_roster = sorted(cli_roster, key=lambda e: (_employee_cli_key(e), e.name))
 
+    manual_targets = session.exec(select(CliDistributionTarget).order_by(CliDistributionTarget.created_at)).all()
+    latest_plan = session.exec(
+        select(CliDistributionPlan).order_by(CliDistributionPlan.created_at.desc())
+    ).first()
+    plan_assignments: list[CliDistributionAssignment] = []
+    plan_summary: list[dict[str, int | str]] = []
+    plan_created_at = ""
+    plan_targets: list[dict[str, str]] = []
+    if latest_plan:
+        plan_assignments = session.exec(
+            select(CliDistributionAssignment).where(CliDistributionAssignment.plan_id == latest_plan.id)
+        ).all()
+        plan_summary = _summarize_cli_plan(plan_assignments)
+        plan_created_at = latest_plan.created_at.strftime("%d-%m-%Y %I:%M %p")
+        try:
+            plan_targets = json.loads(latest_plan.targets_json or "[]")
+        except json.JSONDecodeError:
+            plan_targets = []
+
     return {
         "request": request,
         "active_page": "cli",
@@ -1194,6 +1430,13 @@ def _cli_page_context(
         "cli_distribution_detail_label": detail_cli_label,
         "cli_distribution_breakdown": cli_distribution_breakdown,
         "cli_distribution_totals": cli_distribution_totals or {},
+        "cli_plan_notice": cli_plan_notice,
+        "cli_plan_error": cli_plan_error,
+        "cli_plan_summary": plan_summary,
+        "cli_plan_assignments": plan_assignments,
+        "cli_plan_created_at": plan_created_at,
+        "cli_plan_targets": plan_targets,
+        "cli_manual_targets": manual_targets,
         "grading_source_name": grading_meta.get("filename", ""),
         "grading_report_date": grading_report_date.strftime("%d-%m-%Y") if grading_report_date else "",
         "grading_report_date_iso": grading_report_date_iso,
@@ -1226,7 +1469,80 @@ def cli_page(
             roster_role=roster_role,
             roster_gradation=roster_gradation,
             distribution_cli=distribution_cli,
+            cli_plan_notice=request.query_params.get("plan_notice", ""),
+            cli_plan_error=request.query_params.get("plan_error", ""),
         ),
+    )
+
+
+@app.post("/cli/distribution/targets/add")
+def add_cli_distribution_target(
+    cli_name: str = Form(...),
+    cli_id: Optional[str] = Form(None),
+    session: Session = Depends(get_session),
+):
+    name_text, id_text = _canonicalize_cli_name(cli_name, cli_id)
+    if not name_text:
+        raise HTTPException(status_code=400, detail="CLI name is required.")
+    key = _cli_name_key(name_text) or (id_text or "").lower()
+    existing = session.exec(select(CliDistributionTarget)).all()
+    for row in existing:
+        row_name, row_id = _canonicalize_cli_name(row.cli_name, row.cli_id)
+        if _cli_name_key(row_name) == key or (id_text and row_id == id_text):
+            row.active = True
+            row.cli_name = row_name
+            if id_text:
+                row.cli_id = id_text
+            session.add(row)
+            session.commit()
+            return RedirectResponse(
+                url="/cli?plan_notice=CLI target updated#cli-distribution-planner", status_code=303
+            )
+    session.add(CliDistributionTarget(cli_name=name_text, cli_id=id_text))
+    session.commit()
+    return RedirectResponse(
+        url="/cli?plan_notice=CLI target added#cli-distribution-planner", status_code=303
+    )
+
+
+@app.post("/cli/distribution/targets/remove")
+def remove_cli_distribution_target(
+    target_id: int = Form(...),
+    session: Session = Depends(get_session),
+):
+    target = session.get(CliDistributionTarget, target_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="CLI target not found.")
+    target.active = False
+    session.add(target)
+    session.commit()
+    return RedirectResponse(
+        url="/cli?plan_notice=CLI target removed#cli-distribution-planner", status_code=303
+    )
+
+
+@app.post("/cli/distribution/calculate")
+def calculate_cli_distribution(
+    session: Session = Depends(get_session),
+):
+    employees_all = session.exec(select(Employee)).all()
+    targets = _distribution_targets(session, employees_all)
+    if not targets:
+        return RedirectResponse(
+            url="/cli?plan_error=Please add at least one CLI target#cli-distribution-planner",
+            status_code=303,
+        )
+    plan, assignment_rows, summary_rows = _build_cli_distribution_plan(employees_all, targets)
+    session.exec(text("DELETE FROM clidistributionassignment;"))
+    session.exec(text("DELETE FROM clidistributionplan;"))
+    session.add(plan)
+    session.commit()
+    for row in assignment_rows:
+        row.plan_id = plan.id or 0
+        session.add(row)
+    session.commit()
+    return RedirectResponse(
+        url="/cli?plan_notice=Distribution calculated#cli-distribution-planner", status_code=303
     )
 
 
