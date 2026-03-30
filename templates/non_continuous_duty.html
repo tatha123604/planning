@@ -53,6 +53,8 @@
           <form id="ncd-form" method="post" action="{{ route_base }}/generate" enctype="multipart/form-data">
             <input type="hidden" name="template_token" value="{{ template_token or '' }}" />
             <input type="hidden" name="source_name" value="{{ source_name or '' }}" />
+            <input type="hidden" id="source-report-date" value="{{ source_report_date or '' }}" />
+            <input type="hidden" id="source-report-date-label" value="{{ source_report_date_label or '' }}" />
             <label>Source SIGN_ON / SIGN_OFF file
               <input id="ncd-source-file" type="file" name="source_file" accept=".xlsx,.xlsm" />
             </label>
@@ -108,6 +110,9 @@
             <div class="table-wrap">
               <table class="employee-table paged">
                 <thead>
+                  <tr class="table-report-date">
+                    <th colspan="13">Report date: {{ source_report_date_label or (report_date | dmy) or '—' }}</th>
+                  </tr>
                   <tr>
                     <th>SNO.</th>
                     <th>CREW ID</th>
@@ -170,6 +175,9 @@
             <div class="table-wrap">
               <table class="employee-table paged">
                 <thead>
+                  <tr class="table-report-date">
+                    <th colspan="13">Report date: {{ source_report_date_label or (report_date | dmy) or '—' }}</th>
+                  </tr>
                   <tr>
                     <th>SNO.</th>
                     <th>CREW ID</th>

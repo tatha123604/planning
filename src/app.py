@@ -1084,7 +1084,7 @@ def _cli_page_context(
     saved_at_raw = grading_meta.get("saved_at", "")
     if saved_at_raw:
         try:
-            grading_saved_at = datetime.fromisoformat(saved_at_raw).strftime("%d/%m/%Y %I:%M %p")
+            grading_saved_at = datetime.fromisoformat(saved_at_raw).strftime("%d-%m-%Y %I:%M %p")
         except ValueError:
             grading_saved_at = saved_at_raw
     cli_opts_map: dict[str, str] = {}
@@ -1562,7 +1562,7 @@ def _uploads_context(
         try:
             snapshot_saved_at = datetime.fromtimestamp(
                 EMPLOYEE_MASTER_SOURCE_SNAPSHOT_FILE.stat().st_mtime
-            ).strftime("%d/%m/%Y %I:%M %p")
+            ).strftime("%d-%m-%Y %I:%M %p")
         except Exception:
             snapshot_saved_at = ""
     cleanup_groups = _group_cleanup_items(cleanup_plan or [], cleanup_conflicts or [])
@@ -2802,6 +2802,8 @@ def _non_continuous_context(
     variant_key: str,
     error: Optional[str] = None,
     report_date: str = "",
+    source_report_date: str = "",
+    source_report_date_label: str = "",
     sign_on_rows: Optional[list[dict]] = None,
     sign_off_rows: Optional[list[dict]] = None,
     saved_notice: str = "",
@@ -2816,6 +2818,8 @@ def _non_continuous_context(
         "role_order": ROLE_ORDER,
         "error": error,
         "report_date": report_date,
+        "source_report_date": source_report_date,
+        "source_report_date_label": source_report_date_label,
         "sign_on_rows": sign_on_rows or [],
         "sign_off_rows": sign_off_rows or [],
         "saved_notice": saved_notice,
@@ -3192,6 +3196,8 @@ def non_continuous_duty_page(
             variant_key,
             error=error,
             report_date=selected_date.isoformat(),
+            source_report_date=selected_date.isoformat(),
+            source_report_date_label=selected_date.strftime("%d-%m-%Y"),
             sign_on_rows=sign_on_rows,
             sign_off_rows=sign_off_rows,
             saved_notice=saved_notice,
@@ -3223,6 +3229,8 @@ async def preview_non_continuous_duty(
                 variant_key,
                 error="Source workbook must be an .xlsx file.",
                 report_date=selected_date,
+                source_report_date=inferred_date.isoformat() if inferred_date else "",
+                source_report_date_label=inferred_date.strftime("%d-%m-%Y") if inferred_date else "",
             ),
         )
 
@@ -3254,6 +3262,8 @@ async def preview_non_continuous_duty(
                 variant_key,
                 error=f"NON CONTINUOUS DUTY preview failed: {exc}",
                 report_date=selected_date,
+                source_report_date=inferred_date.isoformat() if inferred_date else "",
+                source_report_date_label=inferred_date.strftime("%d-%m-%Y") if inferred_date else "",
                 template_token="saved" if ("cached_template_name" in locals() and cached_template_name) else "",
                 source_name=source_name,
                 cached_template_name=cached_template_name if "cached_template_name" in locals() else "",
@@ -3266,6 +3276,8 @@ async def preview_non_continuous_duty(
             request,
             variant_key,
             report_date=selected_date,
+            source_report_date=inferred_date.isoformat() if inferred_date else "",
+            source_report_date_label=inferred_date.strftime("%d-%m-%Y") if inferred_date else "",
             sign_on_rows=sign_on_rows,
             sign_off_rows=sign_off_rows,
             template_token=template_token or "",
@@ -3301,6 +3313,8 @@ async def generate_non_continuous_duty(
                 variant_key,
                 error="Source workbook must be an .xlsx file.",
                 report_date=selected_date,
+                source_report_date=inferred_date.isoformat() if inferred_date else "",
+                source_report_date_label=inferred_date.strftime("%d-%m-%Y") if inferred_date else "",
                 template_token=template_token or "",
                 source_name=display_source_name,
             ),
@@ -3313,6 +3327,8 @@ async def generate_non_continuous_duty(
                 variant_key,
                 error="Please click Generate first or choose a source workbook before downloading.",
                 report_date=selected_date,
+                source_report_date=inferred_date.isoformat() if inferred_date else "",
+                source_report_date_label=inferred_date.strftime("%d-%m-%Y") if inferred_date else "",
                 template_token=template_token or "",
             ),
         )
@@ -3355,6 +3371,8 @@ async def generate_non_continuous_duty(
                 variant_key,
                 error=f"NON CONTINUOUS DUTY generation failed: {exc}",
                 report_date=selected_date,
+                source_report_date=inferred_date.isoformat() if inferred_date else "",
+                source_report_date_label=inferred_date.strftime("%d-%m-%Y") if inferred_date else "",
                 template_token=template_token or "",
                 source_name=display_source_name,
                 cached_template_name=cached_template_name if 'cached_template_name' in locals() else "",
@@ -3386,6 +3404,8 @@ async def reset_non_continuous_duty_data(
             request,
             variant_key,
             report_date=selected_date.isoformat(),
+            source_report_date=selected_date.isoformat(),
+            source_report_date_label=selected_date.strftime("%d-%m-%Y"),
             saved_notice=f"Saved NON SUB data for {selected_date.strftime('%d-%m-%Y')} has been deleted.",
             template_token="saved" if cached_template_name else "",
             cached_template_name=cached_template_name,
@@ -3455,6 +3475,8 @@ def sub_non_continuous_duty_page(
             variant_key,
             error=error,
             report_date=selected_date.isoformat(),
+            source_report_date=selected_date.isoformat(),
+            source_report_date_label=selected_date.strftime("%d-%m-%Y"),
             sign_on_rows=sign_on_rows,
             sign_off_rows=sign_off_rows,
             saved_notice=saved_notice,
@@ -3486,6 +3508,8 @@ async def preview_sub_non_continuous_duty(
                 variant_key,
                 error="Source workbook must be an .xlsx file.",
                 report_date=selected_date,
+                source_report_date=inferred_date.isoformat() if inferred_date else "",
+                source_report_date_label=inferred_date.strftime("%d-%m-%Y") if inferred_date else "",
             ),
         )
 
@@ -3517,6 +3541,8 @@ async def preview_sub_non_continuous_duty(
                 variant_key,
                 error=f"SUB NON CONTINUOUS DUTY preview failed: {exc}",
                 report_date=selected_date,
+                source_report_date=inferred_date.isoformat() if inferred_date else "",
+                source_report_date_label=inferred_date.strftime("%d-%m-%Y") if inferred_date else "",
                 template_token="saved" if ("cached_template_name" in locals() and cached_template_name) else "",
                 source_name=source_name,
                 cached_template_name=cached_template_name if "cached_template_name" in locals() else "",
@@ -3529,6 +3555,8 @@ async def preview_sub_non_continuous_duty(
             request,
             variant_key,
             report_date=selected_date,
+            source_report_date=inferred_date.isoformat() if inferred_date else "",
+            source_report_date_label=inferred_date.strftime("%d-%m-%Y") if inferred_date else "",
             sign_on_rows=sign_on_rows,
             sign_off_rows=sign_off_rows,
             template_token=template_token or "",
@@ -3564,6 +3592,8 @@ async def generate_sub_non_continuous_duty(
                 variant_key,
                 error="Source workbook must be an .xlsx file.",
                 report_date=selected_date,
+                source_report_date=inferred_date.isoformat() if inferred_date else "",
+                source_report_date_label=inferred_date.strftime("%d-%m-%Y") if inferred_date else "",
                 template_token=template_token or "",
                 source_name=display_source_name,
             ),
@@ -3576,6 +3606,8 @@ async def generate_sub_non_continuous_duty(
                 variant_key,
                 error="Please click Generate first or choose a source workbook before downloading.",
                 report_date=selected_date,
+                source_report_date=inferred_date.isoformat() if inferred_date else "",
+                source_report_date_label=inferred_date.strftime("%d-%m-%Y") if inferred_date else "",
                 template_token=template_token or "",
             ),
         )
@@ -3618,6 +3650,8 @@ async def generate_sub_non_continuous_duty(
                 variant_key,
                 error=f"SUB NON CONTINUOUS DUTY generation failed: {exc}",
                 report_date=selected_date,
+                source_report_date=inferred_date.isoformat() if inferred_date else "",
+                source_report_date_label=inferred_date.strftime("%d-%m-%Y") if inferred_date else "",
                 template_token=template_token or "",
                 source_name=display_source_name,
                 cached_template_name=cached_template_name if 'cached_template_name' in locals() else "",
@@ -3649,6 +3683,8 @@ async def reset_sub_non_continuous_duty_data(
             request,
             variant_key,
             report_date=selected_date.isoformat(),
+            source_report_date=selected_date.isoformat(),
+            source_report_date_label=selected_date.strftime("%d-%m-%Y"),
             saved_notice=f"Saved SUB data for {selected_date.strftime('%d-%m-%Y')} has been deleted.",
             template_token="saved" if cached_template_name else "",
             cached_template_name=cached_template_name,
