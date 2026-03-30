@@ -64,6 +64,20 @@
         <p class="hint" id="google-sync-live" role="status" aria-live="polite"></p>
         <p class="hint warning-text" id="google-sync-warning" role="status" aria-live="polite"></p>
         <p class="hint" id="google-sync-backup" role="status" aria-live="polite"></p>
+        <div class="sync-report-card" id="google-sync-report" hidden>
+          <div class="sync-report-section">
+            <h4>Inserted</h4>
+            <ul class="sync-report-list" id="google-sync-added"></ul>
+          </div>
+          <div class="sync-report-section">
+            <h4>Updated</h4>
+            <ul class="sync-report-list" id="google-sync-updated"></ul>
+          </div>
+          <div class="sync-report-section">
+            <h4>Deleted</h4>
+            <ul class="sync-report-list" id="google-sync-deleted"></ul>
+          </div>
+        </div>
         <div id="google-sync-details-wrap" hidden>
           <div class="sync-list-header">
             <p class="hint success-text"><strong>Last sync changed records</strong></p>
@@ -478,13 +492,17 @@
       const syncLive = document.getElementById('google-sync-live');
       const syncWarning = document.getElementById('google-sync-warning');
       const syncBackup = document.getElementById('google-sync-backup');
+      const syncReport = document.getElementById('google-sync-report');
+      const syncAdded = document.getElementById('google-sync-added');
+      const syncUpdated = document.getElementById('google-sync-updated');
+      const syncDeleted = document.getElementById('google-sync-deleted');
       const syncDetailsWrap = document.getElementById('google-sync-details-wrap');
       const syncDetailsList = document.getElementById('google-sync-details-list');
       const syncDetailsToggle = document.getElementById('google-sync-details-toggle');
       const syncWarningWrap = document.getElementById('google-sync-warning-wrap');
       const syncWarningList = document.getElementById('google-sync-warning-list');
       const syncButton = document.querySelector('[data-sync-button]');
-      if (syncForm && syncLive && syncWarning && syncBackup && syncDetailsWrap && syncDetailsList && syncDetailsToggle && syncWarningWrap && syncWarningList && syncButton) {
+      if (syncForm && syncLive && syncWarning && syncBackup && syncReport && syncAdded && syncUpdated && syncDeleted && syncDetailsWrap && syncDetailsList && syncDetailsToggle && syncWarningWrap && syncWarningList && syncButton) {
         let syncDetailsExpanded = false;
         let currentSyncDetails = [];
         const renderSyncDetails = () => {
@@ -527,6 +545,10 @@
           syncLive.textContent = 'Sync started...';
           syncWarning.textContent = '';
           syncBackup.textContent = '';
+          syncReport.hidden = true;
+          syncAdded.innerHTML = '';
+          syncUpdated.innerHTML = '';
+          syncDeleted.innerHTML = '';
           currentSyncDetails = [];
           syncDetailsExpanded = false;
           renderSyncDetails();
@@ -545,6 +567,28 @@
             syncWarning.textContent = data.warning_message || '';
             syncWarning.className = data.warning_message ? 'hint warning-text' : 'hint warning-text';
             syncBackup.textContent = data.backup_notice || '';
+            const addedItems = Array.isArray(data.added_details) ? data.added_details : [];
+            const updatedItems = Array.isArray(data.updated_details) ? data.updated_details : [];
+            const deletedItems = Array.isArray(data.deleted_details) ? data.deleted_details : [];
+            const renderReportList = (listEl, items) => {
+              listEl.innerHTML = '';
+              if (!items.length) {
+                const li = document.createElement('li');
+                li.textContent = 'No changes';
+                listEl.appendChild(li);
+                return;
+              }
+              items.forEach((item) => {
+                const li = document.createElement('li');
+                li.textContent = item;
+                listEl.appendChild(li);
+              });
+            };
+            renderReportList(syncAdded, addedItems);
+            renderReportList(syncUpdated, updatedItems);
+            renderReportList(syncDeleted, deletedItems);
+            syncReport.hidden = !(addedItems.length || updatedItems.length || deletedItems.length);
+
             currentSyncDetails = Array.isArray(data.sync_details) ? data.sync_details : [];
             syncDetailsExpanded = false;
             renderSyncDetails();
@@ -563,6 +607,10 @@
             syncLive.className = 'error-text';
             syncWarning.textContent = '';
             syncBackup.textContent = '';
+            syncReport.hidden = true;
+            syncAdded.innerHTML = '';
+            syncUpdated.innerHTML = '';
+            syncDeleted.innerHTML = '';
             currentSyncDetails = [];
             syncDetailsExpanded = false;
             renderSyncDetails();

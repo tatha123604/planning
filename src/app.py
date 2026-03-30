@@ -1447,6 +1447,9 @@ def sync_employees_from_google_sheet(
                 preview += f"; and {len(warnings) - 3} more"
             warning_text = f"Auto-corrected {len(warnings)} date value(s): {preview}"
         backup_notice = f"Backup saved: {backup_label}" if backup_label else "Backup failed to save."
+        added_details = [item for item in sync_details if item.startswith("Added ")]
+        updated_details = [item for item in sync_details if item.startswith("Updated ")]
+        deleted_details: list[str] = []
         if wants_json:
             return JSONResponse(
                 {
@@ -1455,6 +1458,9 @@ def sync_employees_from_google_sheet(
                     "warning_message": warning_text,
                     "warning_details": warnings,
                     "sync_details": sync_details,
+                    "added_details": added_details,
+                    "updated_details": updated_details,
+                    "deleted_details": deleted_details,
                     "backup_notice": backup_notice,
                 }
             )
