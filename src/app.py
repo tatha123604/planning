@@ -2454,9 +2454,10 @@ def _import_employee_rows(
             working_at_target = working_at if (has_col("working_at") or working_at_override is not None) else existing.working_at
             new_gradation = str(get("gradation")).strip() if has_col("gradation") and get("gradation") else (None if has_col("gradation") else existing.gradation)
             raw_cli = str(get("cli")).strip() if has_col("cli") and get("cli") else (None if has_col("cli") else existing.cli)
+            existing_cli_clean, existing_cli_id_clean = _canonicalize_cli_name(existing.cli, existing.cli_id)
             new_cli, cli_id_target = _canonicalize_cli_name(raw_cli, raw_cli_id)
-            if _cli_names_equivalent(existing.cli, new_cli) and existing.cli:
-                new_cli = existing.cli
+            if _cli_names_equivalent(existing_cli_clean, new_cli) and existing_cli_clean:
+                new_cli = existing_cli_clean
             pme_due_target = pme_due if has_col("pme_due") else existing.pme_due
             technical_due_target = technical_due if has_col("technical_due") else existing.technical_due
             transportation_due_target = transportation_due if has_col("transportation_due") else existing.transportation_due
@@ -2471,14 +2472,14 @@ def _import_employee_rows(
                 ("PF No", existing.pf_no, pf_no_target),
                 ("HRMS ID", existing.hrms, hrms_target),
                 ("CREW ID", existing.crew_id, crew_id_target),
-                ("CLI ID", existing.cli_id, cli_id_target),
+                ("CLI ID", existing_cli_id_clean, cli_id_target),
                 ("DOB", existing.dob, dob_target),
                 ("DOA", existing.doa, doa_target),
                 ("DO Report", existing.do_report, do_report_target),
                 ("Status", existing.status, status_target),
                 ("Working At", existing.working_at, working_at_target),
                 ("Gradation", existing.gradation, new_gradation),
-                ("CLI", existing.cli, new_cli),
+                ("CLI", existing_cli_clean, new_cli),
                 ("PME Due", existing.pme_due, pme_due_target),
                 ("Technical Due", existing.technical_due, technical_due_target),
                 ("Transportation Due", existing.transportation_due, transportation_due_target),
