@@ -148,6 +148,10 @@
               <div class="summary-chip" id="employees-total-chip">Total: {{ total_count }}</div>
               <div class="summary-chip">Page {{ page }} of {{ total_pages }}</div>
           </form>
+          <div class="column-toggle" id="employees-column-toggle">
+            <button type="button" class="ghost small" id="employees-column-button">Columns</button>
+            <div class="column-toggle-panel" id="employees-column-panel" hidden></div>
+          </div>
           <div class="table-wrap">
             <table class="employee-table paged" id="employees-table">
               <thead>
@@ -231,6 +235,8 @@
       const employeesTable = document.getElementById('employees-table');
       const employeesTotalChip = document.getElementById('employees-total-chip');
       const employeesEmptyState = document.getElementById('employees-empty-state');
+      const columnButton = document.getElementById('employees-column-button');
+      const columnPanel = document.getElementById('employees-column-panel');
       const sync = () => {
         const sortVal = sortSelect ? sortSelect.value : '';
         const cliActive = sortVal === 'cli';
@@ -291,8 +297,71 @@
         employeesSearchInput.addEventListener('keydown', (event) => {
           if (event.key === 'Enter') {
             event.preventDefault();
-            applyLiveSearch();
+      applyLiveSearch();
+    }
+
+      if (employeesTable && columnButton && columnPanel) {
+        const storageKey = 'employeesColumnVisibility';
+        const stored = (() => {
+          try {
+            return JSON.parse(localStorage.getItem(storageKey) || '{}');
+          } catch (err) {
+            return {};
           }
+        })();
+
+        const headers = Array.from(employeesTable.querySelectorAll('thead th'));
+        const rows = Array.from(employeesTable.querySelectorAll('tbody tr'));
+        const buildRow = (idx, label) => {
+          const wrapper = document.createElement('label');
+          wrapper.className = 'column-toggle-item';
+          const input = document.createElement('input');
+          input.type = 'checkbox';
+          input.checked = stored[idx] !== false;
+          input.addEventListener('change', () => {
+            stored[idx] = input.checked;
+            try {
+              localStorage.setItem(storageKey, JSON.stringify(stored));
+            } catch (err) {}
+            toggleColumn(idx, input.checked);
+          });
+          const text = document.createElement('span');
+          text.textContent = label;
+          wrapper.append(input, text);
+          return wrapper;
+        };
+
+        const toggleColumn = (idx, visible) => {
+          const display = visible ? '' : 'none';
+          if (headers[idx]) headers[idx].style.display = display;
+          rows.forEach((row) => {
+            const cell = row.cells[idx];
+            if (cell) cell.style.display = display;
+          });
+        };
+
+        columnPanel.innerHTML = '';
+        headers.forEach((header, idx) => {
+          const label = (header.textContent || '').trim() || `Column ${idx + 1}`;
+          const item = buildRow(idx, label);
+          columnPanel.appendChild(item);
+        });
+
+        headers.forEach((_, idx) => {
+          if (stored[idx] === false) {
+            toggleColumn(idx, false);
+          }
+        });
+
+        columnButton.addEventListener('click', () => {
+          columnPanel.hidden = !columnPanel.hidden;
+        });
+        document.addEventListener('click', (event) => {
+          if (!columnPanel.hidden && !columnPanel.contains(event.target) && event.target !== columnButton) {
+            columnPanel.hidden = true;
+          }
+        });
+      }
         });
         employeesSearchInput.addEventListener('compositionstart', () => {
           composing = true;

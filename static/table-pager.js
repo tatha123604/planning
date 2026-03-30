@@ -61,7 +61,7 @@
     const prev = document.createElement("button");
     prev.type = "button";
     prev.textContent = "Prev";
-    prev.className = "ghost small table-pager-button";
+    prev.className = "ghost small table-pager-button table-pager-button-prev";
 
     const next = document.createElement("button");
     next.type = "button";
