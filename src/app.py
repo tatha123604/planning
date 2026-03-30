@@ -1530,10 +1530,21 @@ def remove_cli_distribution_target(
 
 @app.post("/cli/distribution/calculate")
 def calculate_cli_distribution(
+    exclude_cli: Optional[str] = Form(None),
     session: Session = Depends(get_session),
 ):
     employees_all = session.exec(select(Employee)).all()
     targets = _distribution_targets(session, employees_all)
+    excluded_keys: set[str] = set()
+    if exclude_cli:
+        tokens = [t.strip() for t in exclude_cli.split(",") if t.strip()]
+        for token in tokens:
+            name_text, id_text = _canonicalize_cli_name(token, None)
+            key = _cli_name_key(name_text) or (id_text or "").lower()
+            if key:
+                excluded_keys.add(key)
+    if excluded_keys:
+        targets = [t for t in targets if t["key"] not in excluded_keys]
     if not targets:
         return RedirectResponse(
             url="/cli?plan_error=Please add at least one CLI target#cli-distribution-planner",
@@ -1548,8 +1559,11 @@ def calculate_cli_distribution(
         row.plan_id = plan.id or 0
         session.add(row)
     session.commit()
+    notice = "Distribution calculated"
+    if excluded_keys:
+        notice += f" (excluded {len(excluded_keys)} CLI)"
     return RedirectResponse(
-        url="/cli?plan_notice=Distribution calculated#cli-distribution-planner", status_code=303
+        url=f"/cli?plan_notice={quote(notice)}#cli-distribution-planner", status_code=303
     )
 
 
