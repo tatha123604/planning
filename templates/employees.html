@@ -55,8 +55,15 @@
         {% if sync_warning %}
         <p class="hint warning-text" role="status">{{ sync_warning }}</p>
         {% endif %}
+        {% if sync_backup %}
+        <p class="hint" role="status">{{ sync_backup }}</p>
+        {% endif %}
+        {% if sync_backup_label %}
+        <p class="hint">Latest backup: <strong>{{ sync_backup_label }}</strong></p>
+        {% endif %}
         <p class="hint" id="google-sync-live" role="status" aria-live="polite"></p>
         <p class="hint warning-text" id="google-sync-warning" role="status" aria-live="polite"></p>
+        <p class="hint" id="google-sync-backup" role="status" aria-live="polite"></p>
         <div id="google-sync-details-wrap" hidden>
           <div class="sync-list-header">
             <p class="hint success-text"><strong>Last sync changed records</strong></p>
@@ -77,6 +84,14 @@
           </label>
           <div class="actions">
             <button type="submit" data-sync-button data-password-gated-button disabled>Sync from Google Sheet</button>
+          </div>
+        </form>
+        <form method="post" action="/employees/restore-backup" class="inline sensitive-inline-form" data-password-gated-form data-password-gated-code="11111">
+          <label class="site-password-label compact-site-password">Action Code
+            <input class="site-password-input compact-site-password-input" type="password" name="action_password" autocomplete="current-password" required data-password-gated-input />
+          </label>
+          <div class="actions">
+            <button type="submit" class="ghost" data-password-gated-button disabled data-confirm-label="restore the latest backup">Restore last backup</button>
           </div>
         </form>
         {% else %}
@@ -409,13 +424,14 @@
       const syncForm = document.querySelector('[data-google-sync-form]');
       const syncLive = document.getElementById('google-sync-live');
       const syncWarning = document.getElementById('google-sync-warning');
+      const syncBackup = document.getElementById('google-sync-backup');
       const syncDetailsWrap = document.getElementById('google-sync-details-wrap');
       const syncDetailsList = document.getElementById('google-sync-details-list');
       const syncDetailsToggle = document.getElementById('google-sync-details-toggle');
       const syncWarningWrap = document.getElementById('google-sync-warning-wrap');
       const syncWarningList = document.getElementById('google-sync-warning-list');
       const syncButton = document.querySelector('[data-sync-button]');
-      if (syncForm && syncLive && syncWarning && syncDetailsWrap && syncDetailsList && syncDetailsToggle && syncWarningWrap && syncWarningList && syncButton) {
+      if (syncForm && syncLive && syncWarning && syncBackup && syncDetailsWrap && syncDetailsList && syncDetailsToggle && syncWarningWrap && syncWarningList && syncButton) {
         let syncDetailsExpanded = false;
         let currentSyncDetails = [];
         const renderSyncDetails = () => {
@@ -457,6 +473,7 @@
           syncLive.className = 'hint';
           syncLive.textContent = 'Sync started...';
           syncWarning.textContent = '';
+          syncBackup.textContent = '';
           currentSyncDetails = [];
           syncDetailsExpanded = false;
           renderSyncDetails();
@@ -474,6 +491,7 @@
             syncLive.className = response.ok ? 'hint success-text' : 'error-text';
             syncWarning.textContent = data.warning_message || '';
             syncWarning.className = data.warning_message ? 'hint warning-text' : 'hint warning-text';
+            syncBackup.textContent = data.backup_notice || '';
             currentSyncDetails = Array.isArray(data.sync_details) ? data.sync_details : [];
             syncDetailsExpanded = false;
             renderSyncDetails();
@@ -491,6 +509,7 @@
             syncLive.textContent = 'Sync failed. Please try again.';
             syncLive.className = 'error-text';
             syncWarning.textContent = '';
+            syncBackup.textContent = '';
             currentSyncDetails = [];
             syncDetailsExpanded = false;
             renderSyncDetails();

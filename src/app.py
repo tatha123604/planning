@@ -9,6 +9,7 @@ import os
 from io import BytesIO, StringIO
 from pathlib import Path
 import re
+import shutil
 from typing import Optional
 from urllib.parse import quote
 
@@ -24,7 +25,7 @@ from sqlmodel import Session, select
 from sqlalchemy import func, case
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from .db import DB_PATH, get_session, init_db
+from .db import DB_PATH, engine, get_session, init_db
 from .logic import (
     ROLE_ORDER,
     apply_promotions,
@@ -72,6 +73,7 @@ EMPLOYEE_MASTER_KEEP_BOTH_FILE = DB_PATH.parent / "employee_master_keep_both.jso
 EMPLOYEE_MASTER_SOURCE_SNAPSHOT_FILE = DB_PATH.parent / "employee_master_source_snapshot.json"
 EMPLOYEE_MASTER_EXTRA_REVIEW_KEEP_FILE = DB_PATH.parent / "employee_master_extra_review_keep.json"
 LI_GRADING_METADATA_FILE = DB_PATH.parent / "li_grading_metadata.json"
+EMPLOYEE_SYNC_BACKUP_DIR = DB_PATH.parent / "employee_sync_backups"
 GOOGLE_SHEETS_READONLY_SCOPE = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 NON_CONTINUOUS_VARIANTS = {
     "non_sub": {
@@ -124,6 +126,30 @@ CLI_NAME_MANUAL_ALIASES = {
     "TAMOJITNANDY": "TAMOJIT NANDI",
     "TAPASKRDE": "TAPAS KUMAR DE I",
 }
+
+
+def _ensure_employee_sync_backup_dir() -> Path:
+    EMPLOYEE_SYNC_BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    return EMPLOYEE_SYNC_BACKUP_DIR
+
+
+def _create_employee_sync_backup(tag: str = "pre_sync") -> str:
+    backup_dir = _ensure_employee_sync_backup_dir()
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"employee_sync_{tag}_{timestamp}.db"
+    target = backup_dir / filename
+    shutil.copy2(DB_PATH, target)
+    return filename
+
+
+def _latest_employee_sync_backup() -> tuple[Optional[Path], str]:
+    backup_dir = _ensure_employee_sync_backup_dir()
+    backups = sorted(backup_dir.glob("employee_sync_*.db"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if not backups:
+        return None, ""
+    latest = backups[0]
+    label = latest.name.replace("employee_sync_", "").replace(".db", "").replace("_", " ")
+    return latest, label
 
 
 def _split_cli_name_and_inline_id(value: object | None) -> tuple[str, str]:
@@ -1341,6 +1367,8 @@ def employees_page(
             "sync_notice": sync_notice or "",
             "sync_warning": sync_warning or "",
             "sync_error": sync_error or "",
+            "sync_backup": request.query_params.get("sync_backup", ""),
+            "sync_backup_label": _latest_employee_sync_backup()[1],
             "google_sync_ready": _google_sheet_sync_ready(),
             "google_sync_range": ", ".join(GOOGLE_EMPLOYEE_STATION_TABS),
         },
@@ -1356,6 +1384,10 @@ def sync_employees_from_google_sheet(
     wants_json = request.headers.get("x-requested-with", "").lower() == "fetch"
     try:
         _validate_sensitive_action_password(action_password)
+        try:
+            backup_label = _create_employee_sync_backup()
+        except Exception as exc:
+            backup_label = ""
         sources, source_label = _fetch_google_employee_rows()
         added = 0
         updated = 0
@@ -1414,6 +1446,7 @@ def sync_employees_from_google_sheet(
             if len(warnings) > 3:
                 preview += f"; and {len(warnings) - 3} more"
             warning_text = f"Auto-corrected {len(warnings)} date value(s): {preview}"
+        backup_notice = f"Backup saved: {backup_label}" if backup_label else "Backup failed to save."
         if wants_json:
             return JSONResponse(
                 {
@@ -1422,12 +1455,16 @@ def sync_employees_from_google_sheet(
                     "warning_message": warning_text,
                     "warning_details": warnings,
                     "sync_details": sync_details,
+                    "backup_notice": backup_notice,
                 }
             )
         message = quote(message_text)
-        redirect_url = f"/employees?sync_notice={message}#google-sync-card"
+        redirect_url = f"/employees?sync_notice={message}&sync_backup={quote(backup_notice)}#google-sync-card"
         if warning_text:
-            redirect_url = f"/employees?sync_notice={message}&sync_warning={quote(warning_text)}#google-sync-card"
+            redirect_url = (
+                f"/employees?sync_notice={message}&sync_warning={quote(warning_text)}"
+                f"&sync_backup={quote(backup_notice)}#google-sync-card"
+            )
         return RedirectResponse(url=redirect_url, status_code=303)
     except HTTPException as exc:
         detail = exc.detail if isinstance(exc.detail, str) else "Google Sheet sync failed."
@@ -1438,6 +1475,21 @@ def sync_employees_from_google_sheet(
         if wants_json:
             return JSONResponse({"ok": False, "message": str(exc)}, status_code=500)
         return RedirectResponse(url=f"/employees?sync_error={quote(str(exc))}#google-sync-card", status_code=303)
+
+
+@app.post("/employees/restore-backup")
+def restore_employee_backup(
+    request: Request,
+    action_password: str = Form(...),
+):
+    _validate_sensitive_action_password(action_password)
+    backup_path, backup_label = _latest_employee_sync_backup()
+    if not backup_path:
+        raise HTTPException(status_code=400, detail="No backup available yet.")
+    engine.dispose()
+    shutil.copy2(backup_path, DB_PATH)
+    notice = quote(f"Backup restored: {backup_label}")
+    return RedirectResponse(url=f"/employees?sync_notice={notice}#google-sync-card", status_code=303)
 
 
 @app.get("/employees/{emp_id}")
