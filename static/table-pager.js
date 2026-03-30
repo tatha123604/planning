@@ -80,6 +80,19 @@
     if (!table.tBodies.length) return;
     const rows = Array.from(table.tBodies[0].rows || []);
     if (!rows.length) return;
+    if (table.dataset.pager === "server") {
+      rows.forEach((row, idx) => {
+        row.addEventListener("click", () => {
+          rows.forEach((r) =>
+            r.classList.remove("table-paged-active", "table-paged-active-odd", "table-paged-active-even")
+          );
+          row.classList.add("table-paged-active");
+          row.classList.add(idx % 2 === 0 ? "table-paged-active-odd" : "table-paged-active-even");
+        });
+      });
+      table.dataset.pagerReady = "true";
+      return;
+    }
     const scrollContainer = table.closest(".table-wrap");
     const pagerAnchor = scrollContainer || table;
     const pagerHost = pagerAnchor.parentElement;
