@@ -48,7 +48,7 @@
         <div class="card">
           <h2>Generate workbook</h2>
           {% if error %}
-          <p class="error-text">{{ error }}</p>
+          <p class="error-text" id="cli-matrix-error">{{ error }}</p>
           {% endif %}
           <form id="cli-matrix-form" method="post" action="/cli-matrix/generate" enctype="multipart/form-data">
             <input type="hidden" name="template_ready" value="{{ '1' if cached_template_name else '' }}" />
@@ -78,10 +78,11 @@
               Sheet 2 refreshes all overdue values by CLI and designation.
             </p>
             <div class="actions">
-              <button type="submit" class="ghost" formaction="/cli-matrix/preview" formmethod="post">Preview tables</button>
+              <button type="submit" class="ghost" id="preview-cli-matrix" formaction="/cli-matrix/preview" formmethod="post">Preview tables</button>
               <button type="submit" id="generate-cli-matrix">Generate and download</button>
               <button type="button" class="ghost" id="reset-cli-matrix">Reset files</button>
             </div>
+            <p class="hint" id="cli-matrix-preview-status" role="status" aria-live="polite"></p>
           </form>
         </div>
 
@@ -107,6 +108,7 @@
           <p class="hint">Each preview or generated CLI Matrix snapshot is stored on the server for about 1 month, so you can reopen old daily values from here.</p>
         </div>
 
+        <div id="cli-matrix-results">
         {% if summary_rows %}
           <section class="card collapsible">
             <details open>
@@ -197,6 +199,7 @@
           </details>
         </section>
         {% endif %}
+        </div>
       </section>
     </main>
   </div>
@@ -225,6 +228,10 @@
       const resetSavedForm = document.querySelector('.cli-matrix-reset-form');
       const templateReadyInput = form ? form.querySelector('input[name="template_ready"]') : null;
       const templateNameDisplay = document.querySelector('#template-name-display');
+      const previewStatus = document.querySelector('#cli-matrix-preview-status');
+      const previewButton = document.querySelector('#preview-cli-matrix');
+      const resultsWrap = document.querySelector('#cli-matrix-results');
+      const errorBox = document.querySelector('#cli-matrix-error');
 
       const inferDateFromName = (name) => {
         if (!name) return '';
@@ -280,6 +287,63 @@
         form.addEventListener('submit', (event) => {
           const hasTemplateFile = !!(templateInput && templateInput.files && templateInput.files.length);
           const hasSavedTemplate = !!(templateReadyInput && templateReadyInput.value);
+          if (event.submitter && event.submitter.id === 'preview-cli-matrix') {
+            event.preventDefault();
+            if (!previewButton) return;
+            previewButton.disabled = true;
+            if (previewStatus) previewStatus.textContent = 'Preparing preview...';
+            if (errorBox) errorBox.textContent = '';
+            const action = previewButton.formAction || '/cli-matrix/preview';
+            const payload = new FormData(form);
+            fetch(action, { method: 'POST', body: payload })
+              .then(async (response) => {
+                const text = await response.text();
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(text, 'text/html');
+                const nextResults = doc.querySelector('#cli-matrix-results');
+                if (nextResults && resultsWrap) {
+                  resultsWrap.innerHTML = nextResults.innerHTML;
+                  if (window.__tablePagerInject) {
+                    resultsWrap.querySelectorAll('table.paged').forEach((table) => window.__tablePagerInject(table));
+                  }
+                  if (window.__tableExportInject) {
+                    resultsWrap.querySelectorAll('table').forEach((table, index) =>
+                      window.__tableExportInject(table, index)
+                    );
+                  }
+                }
+                const nextError = doc.querySelector('#cli-matrix-error');
+                if (nextError && errorBox) {
+                  errorBox.textContent = nextError.textContent || '';
+                }
+                const nextReport = doc.querySelector('#report-date');
+                if (nextReport && reportDateInput) {
+                  reportDateInput.value = nextReport.value || reportDateInput.value;
+                }
+                const nextSourceDate = doc.querySelector('#source-report-date');
+                const currentSourceDate = document.querySelector('#source-report-date');
+                if (nextSourceDate && currentSourceDate) {
+                  currentSourceDate.value = nextSourceDate.value || '';
+                }
+                const nextSourceLabel = doc.querySelector('#source-report-date-label');
+                const currentSourceLabel = document.querySelector('#source-report-date-label');
+                if (nextSourceLabel && currentSourceLabel) {
+                  currentSourceLabel.value = nextSourceLabel.value || '';
+                }
+                if (previewStatus) previewStatus.textContent = response.ok ? 'Preview updated.' : 'Preview failed.';
+                window.setTimeout(() => {
+                  if (previewStatus) previewStatus.textContent = '';
+                }, 2200);
+              })
+              .catch((err) => {
+                console.error(err);
+                if (previewStatus) previewStatus.textContent = 'Preview failed.';
+              })
+              .finally(() => {
+                previewButton.disabled = false;
+              });
+            return;
+          }
           if (event.submitter && event.submitter.id === 'generate-cli-matrix' && !hasTemplateFile && !hasSavedTemplate) {
             if (templateInput) {
               templateInput.setCustomValidity('Please upload the template workbook once before downloading.');

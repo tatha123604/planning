@@ -76,6 +76,7 @@
   }
 
   function injectControls(table) {
+    if (table.dataset.pagerReady === "true") return;
     if (!table.tBodies.length) return;
     const rows = Array.from(table.tBodies[0].rows || []);
     if (!rows.length) return;
@@ -205,8 +206,11 @@
       }
       render();
     });
+    table.dataset.pagerReady = "true";
     render();
   }
+
+  window.__tablePagerInject = injectControls;
 
   window.addEventListener("DOMContentLoaded", () => {
     document.querySelectorAll("table.paged").forEach(injectControls);

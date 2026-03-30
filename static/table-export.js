@@ -237,6 +237,8 @@
     table.dataset.exportReady = "true";
   };
 
+  window.__tableExportInject = injectToolbar;
+
   window.addEventListener("DOMContentLoaded", () => {
     document.querySelectorAll("table").forEach((table, tableIndex) => injectToolbar(table, tableIndex));
   });
