@@ -368,6 +368,35 @@ h2::before {
 .table-wrap::-webkit-scrollbar-thumb:hover {
   background: linear-gradient(135deg, rgba(155, 231, 255, 0.85), rgba(90, 215, 255, 0.45));
 }
+.table-scrollbar-top {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  height: 12px;
+  border-radius: 999px;
+  background: rgba(9, 12, 22, 0.6);
+  margin-bottom: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(123, 215, 255, 0.6) rgba(9, 12, 22, 0.6);
+}
+.table-scrollbar-top::-webkit-scrollbar {
+  height: 10px;
+}
+.table-scrollbar-top::-webkit-scrollbar-track {
+  background: rgba(9, 12, 22, 0.6);
+  border-radius: 999px;
+}
+.table-scrollbar-top::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, rgba(123, 215, 255, 0.7), rgba(70, 205, 255, 0.35));
+  border-radius: 999px;
+  border: 2px solid rgba(9, 12, 22, 0.6);
+}
+.table-scrollbar-top::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, rgba(155, 231, 255, 0.85), rgba(90, 215, 255, 0.45));
+}
+.table-scrollbar-spacer {
+  height: 1px;
+}
 table { width: 100%; border-collapse: collapse; color: #e5e7f0; table-layout: auto; }
 th, td { padding: 10px 10px; border-bottom: 1px solid rgba(255,255,255,0.08); text-align: left; }
 th {

@@ -225,7 +225,45 @@
 
   window.__tablePagerInject = injectControls;
 
+  const injectTopScrollbar = (wrap) => {
+    if (!wrap || wrap.dataset.topScrollReady === "true") return;
+    const table = wrap.querySelector("table");
+    if (!table) return;
+
+    const topBar = document.createElement("div");
+    topBar.className = "table-scrollbar-top";
+    const spacer = document.createElement("div");
+    spacer.className = "table-scrollbar-spacer";
+    topBar.appendChild(spacer);
+
+    const syncSizes = () => {
+      spacer.style.width = `${table.scrollWidth}px`;
+    };
+
+    const syncing = { top: false, body: false };
+    topBar.addEventListener("scroll", () => {
+      if (syncing.top) return;
+      syncing.body = true;
+      wrap.scrollLeft = topBar.scrollLeft;
+      syncing.body = false;
+    });
+    wrap.addEventListener("scroll", () => {
+      if (syncing.body) return;
+      syncing.top = true;
+      topBar.scrollLeft = wrap.scrollLeft;
+      syncing.top = false;
+    });
+
+    wrap.parentElement?.insertBefore(topBar, wrap);
+    window.addEventListener("resize", syncSizes);
+    syncSizes();
+    wrap.dataset.topScrollReady = "true";
+  };
+
+  window.__tableTopScrollbarInject = injectTopScrollbar;
+
   window.addEventListener("DOMContentLoaded", () => {
     document.querySelectorAll("table.paged").forEach(injectControls);
+    document.querySelectorAll(".table-wrap").forEach(injectTopScrollbar);
   });
 })();
