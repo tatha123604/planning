@@ -845,7 +845,7 @@ ul { padding-left: 18px; margin: 6px 0; }
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
 }
 .employee-table .working-at-col { min-width: 120px; max-width: 160px; }
-.employee-table .actions-col { width: 1%; padding-left: 6px; padding-right: 6px; }
+.employee-table .actions-col { width: 140px; padding-left: 10px; padding-right: 10px; }
 .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
 .sensitive-inline-form {
   align-items: flex-end;
@@ -961,7 +961,7 @@ ul { padding-left: 18px; margin: 6px 0; }
   transform: translateY(-1px);
 }
 .danger-inline { margin-top: 10px; }
-.actions-cell { white-space: nowrap; min-width: 116px; }
+.actions-cell { white-space: nowrap; min-width: 140px; }
 .ghost.small, .danger.small { font-size: 12px; }
 .ghost.small {
   padding: 7px 13px;
