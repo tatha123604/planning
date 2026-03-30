@@ -128,6 +128,36 @@ CLI_NAME_MANUAL_ALIASES = {
 }
 
 
+def _normalize_cli_tokens(value: str) -> list[str]:
+    cleaned = re.sub(r"[^A-Za-z]+", " ", value or "").strip()
+    return [token for token in cleaned.upper().split() if token]
+
+
+def _cli_names_equivalent(a: Optional[str], b: Optional[str]) -> bool:
+    if not a or not b:
+        return False
+    if a.strip().casefold() == b.strip().casefold():
+        return True
+    tokens_a = _normalize_cli_tokens(a)
+    tokens_b = _normalize_cli_tokens(b)
+    if not tokens_a or not tokens_b:
+        return False
+    # Compare by last name and initials (e.g., BRAJ MOHAN KALUNDIA vs B M KALUNDIA)
+    if tokens_a[-1] != tokens_b[-1]:
+        return False
+    shorter, longer = (tokens_a, tokens_b) if len(tokens_a) <= len(tokens_b) else (tokens_b, tokens_a)
+    for idx, token in enumerate(shorter[:-1]):
+        if idx >= len(longer) - 1:
+            return False
+        target = longer[idx]
+        if token == target:
+            continue
+        if len(token) == 1 and target.startswith(token):
+            continue
+        return False
+    return True
+
+
 def _ensure_employee_sync_backup_dir() -> Path:
     EMPLOYEE_SYNC_BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     return EMPLOYEE_SYNC_BACKUP_DIR
@@ -2422,6 +2452,8 @@ def _import_employee_rows(
             new_gradation = str(get("gradation")).strip() if has_col("gradation") and get("gradation") else (None if has_col("gradation") else existing.gradation)
             raw_cli = str(get("cli")).strip() if has_col("cli") and get("cli") else (None if has_col("cli") else existing.cli)
             new_cli, cli_id_target = _canonicalize_cli_name(raw_cli, raw_cli_id)
+            if _cli_names_equivalent(existing.cli, new_cli) and existing.cli:
+                new_cli = existing.cli
             pme_due_target = pme_due if has_col("pme_due") else existing.pme_due
             technical_due_target = technical_due if has_col("technical_due") else existing.technical_due
             transportation_due_target = transportation_due if has_col("transportation_due") else existing.transportation_due
@@ -6030,9 +6062,12 @@ async def upload_li_grading(
             new_due = record.get("grading_due")
             old_grade = _clean_import_text(target.gradation)
             old_due = target.grading_due
-            old_cli, old_cli_id = _canonicalize_cli_name(target.cli, target.cli_id, canonical_by_id=canonical_by_id, alias_map=alias_map, id_by_name=id_by_name)
+            old_cli, old_cli_id = _canonicalize_cli_name(
+                target.cli, target.cli_id, canonical_by_id=canonical_by_id, alias_map=alias_map, id_by_name=id_by_name
+            )
+            cli_equivalent = _cli_names_equivalent(old_cli, cli_name)
 
-            if old_grade == new_grade and old_due == new_due and old_cli == cli_name and old_cli_id == cli_id:
+            if old_grade == new_grade and old_due == new_due and cli_equivalent and old_cli_id == cli_id:
                 unchanged += 1
                 if target.id is not None:
                     touched_ids.add(target.id)
@@ -6043,14 +6078,19 @@ async def upload_li_grading(
                 changes.append(f"Gradation: {_format_sync_value(old_grade)} -> {_format_sync_value(new_grade)}")
             if old_due != new_due:
                 changes.append(f"Grading Due: {_format_sync_value(old_due)} -> {_format_sync_value(new_due)}")
-            if old_cli != cli_name:
+            if not cli_equivalent:
                 changes.append(f"CLI: {_format_sync_value(old_cli)} -> {_format_sync_value(cli_name)}")
             if old_cli_id != cli_id:
                 changes.append(f"CLI ID: {_format_sync_value(old_cli_id)} -> {_format_sync_value(cli_id)}")
 
             target.gradation = new_grade
             target.grading_due = new_due
-            target.cli, target.cli_id = _canonicalize_cli_name(cli_name, cli_id, canonical_by_id=canonical_by_id, alias_map=alias_map, id_by_name=id_by_name)
+            normalized_cli, normalized_cli_id = _canonicalize_cli_name(
+                cli_name, cli_id, canonical_by_id=canonical_by_id, alias_map=alias_map, id_by_name=id_by_name
+            )
+            if _cli_names_equivalent(old_cli, normalized_cli) and old_cli:
+                normalized_cli = old_cli
+            target.cli, target.cli_id = normalized_cli, normalized_cli_id
             updated += 1
             if target.id is not None:
                 touched_ids.add(target.id)
