@@ -448,12 +448,6 @@
             allRows.forEach((row) => markCell(row.cells[idx]));
           };
         const headers = employeesTable.querySelectorAll('thead th');
-          const clearRowSelection = () => {
-            employeesTable.querySelectorAll('tbody tr').forEach((row) => {
-              row.classList.remove('table-paged-active', 'table-paged-active-odd', 'table-paged-active-even');
-            });
-          };
-
           headers.forEach((th, idx) => {
             th.style.cursor = 'pointer';
             th.addEventListener('click', () => {
@@ -463,8 +457,20 @@
               } else {
                 applyFrozen(idx);
               }
-              clearRowSelection();
             });
+          });
+
+          const clearRowSelection = () => {
+            employeesTable.querySelectorAll('tbody tr').forEach((row) => {
+              row.classList.remove('table-paged-active', 'table-paged-active-odd', 'table-paged-active-even');
+            });
+          };
+
+          document.addEventListener('click', (event) => {
+            if (employeesTable.contains(event.target)) {
+              return;
+            }
+            clearRowSelection();
           });
         }
 
