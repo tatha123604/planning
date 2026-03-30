@@ -205,6 +205,9 @@
             <label>Exclude CLI (comma separated)
               <input name="exclude_cli" placeholder="e.g. A T KHAN, RAJEEV KUMAR SABHERWAL" />
             </label>
+            <label>Retiring CLI (comma separated)
+              <input name="retiring_cli" placeholder="e.g. BRAJ MOHAN KALUNDIA" />
+            </label>
             <button type="submit" data-confirm="Calculate new CLI distribution plan?">Calculate Distribution</button>
             {% if cli_plan_created_at %}<span class="hint">Last calculated: {{ cli_plan_created_at }}</span>{% endif %}
           </form>

@@ -1013,16 +1013,14 @@ def _build_cli_distribution_plan(
 
     def grade_key(employee: Employee) -> str:
         grad = (employee.gradation or "").strip().upper()
-        return grad[0] if grad else ""
+        if not grad:
+            return "OTHER"
+        return grad[0] if grad[0] in ("A", "B", "C") else "OTHER"
 
-    grade_totals = {"A": 0, "B": 0, "C": 0}
-    eligible = [
-        e
-        for e in employees
-        if normalize_role(e.role) in CLI_DISTRIBUTION_ROLE_ORDER and grade_key(e) in ("A", "B", "C")
-    ]
+    grade_totals = {"A": 0, "B": 0, "C": 0, "OTHER": 0}
+    eligible = [e for e in employees if normalize_role(e.role) in CLI_DISTRIBUTION_ROLE_ORDER]
 
-    for grade in ("A", "B", "C"):
+    for grade in ("A", "B", "C", "OTHER"):
         grade_emps = [e for e in eligible if grade_key(e) == grade]
         grade_totals[grade] = len(grade_emps)
         if not grade_emps:
@@ -1087,7 +1085,8 @@ def _build_cli_distribution_plan(
             id_by_name=id_by_name,
         )
         grad = grade_key(emp)
-        summary_counts[proposed_key][grad] += 1
+        if grad in ("A", "B", "C"):
+            summary_counts[proposed_key][grad] += 1
         summary_counts[proposed_key]["total"] += 1
         assignment_rows.append(
             CliDistributionAssignment(
@@ -1531,13 +1530,16 @@ def remove_cli_distribution_target(
 @app.post("/cli/distribution/calculate")
 def calculate_cli_distribution(
     exclude_cli: Optional[str] = Form(None),
+    retiring_cli: Optional[str] = Form(None),
     session: Session = Depends(get_session),
 ):
     employees_all = session.exec(select(Employee)).all()
     targets = _distribution_targets(session, employees_all)
     excluded_keys: set[str] = set()
-    if exclude_cli:
-        tokens = [t.strip() for t in exclude_cli.split(",") if t.strip()]
+    for raw_list in [exclude_cli, retiring_cli]:
+        if not raw_list:
+            continue
+        tokens = [t.strip() for t in raw_list.split(",") if t.strip()]
         for token in tokens:
             name_text, id_text = _canonicalize_cli_name(token, None)
             key = _cli_name_key(name_text) or (id_text or "").lower()
