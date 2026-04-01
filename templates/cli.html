@@ -357,6 +357,18 @@
         });
       });
 
+      document.querySelectorAll('#cli-roster select').forEach((select) => {
+        const syncSelectState = () => {
+          const hasValue = Boolean((select.value || '').trim());
+          select.classList.toggle('select-has-value', hasValue);
+          select.style.color = hasValue ? '#ffe666' : '';
+          select.style.webkitTextFillColor = hasValue ? '#ffe666' : '';
+          select.style.fontWeight = hasValue ? '700' : '';
+        };
+        select.addEventListener('change', syncSelectState);
+        syncSelectState();
+      });
+
     })();
   </script>
   <script src="/static/sidebar-toggle.js"></script>

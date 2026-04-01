@@ -925,6 +925,14 @@ ul { padding-left: 18px; margin: 6px 0; }
   background: linear-gradient(135deg, rgba(255, 230, 102, 0.72), rgba(255, 194, 46, 0.64));
   color: #2e1c00;
 }
+.select-has-value {
+  color: #ffe666 !important;
+  -webkit-text-fill-color: #ffe666;
+  font-weight: 700;
+  background: linear-gradient(180deg, rgba(26, 38, 56, 0.98), rgba(16, 30, 48, 0.94));
+  border-color: rgba(255, 214, 92, 0.52);
+  box-shadow: 0 0 0 2px rgba(255, 214, 92, 0.12), inset 0 1px 0 rgba(255,255,255,0.06);
+}
 .cleanup-group-search,
 .cleanup-group-name-list {
   width: 100%;
