@@ -5838,7 +5838,7 @@ def _cleanup_employee_master_duplicates_for_record(
         if (
             target_role
             and normalize_role(employee.role) == target_role
-            and same_working_at
+            and (same_working_at or blank_vs_value_working_at)
             and _dsl_name_identity_match(
                 name,
                 employee.name,
