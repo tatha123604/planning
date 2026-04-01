@@ -1006,6 +1006,8 @@ def _build_cli_distribution_plan(
     targets: list[dict[str, str]],
     *,
     excluded_employee_ids: set[int] | None = None,
+    selected_exclude_cli: list[str] | None = None,
+    selected_retiring_cli: list[str] | None = None,
 ) -> tuple[CliDistributionPlan, list[CliDistributionAssignment], list[dict[str, int | str]]]:
     if not targets:
         raise HTTPException(status_code=400, detail="Please add at least one CLI target before calculating.")
@@ -1212,10 +1214,15 @@ def _build_cli_distribution_plan(
         grade_b_total=grade_totals["B"],
         grade_c_total=grade_totals["C"],
         targets_json=json.dumps(
-            [
-                {"cli_name": target_lookup[key]["cli_name"], "cli_id": target_lookup[key]["cli_id"]}
-                for key in key_order
-            ]
+            {
+                "targets": [
+                    {"cli_name": target_lookup[key]["cli_name"], "cli_id": target_lookup[key]["cli_id"]}
+                    for key in key_order
+                ],
+                "selected_exclude_cli": selected_exclude_cli or [],
+                "selected_retiring_cli": selected_retiring_cli or [],
+                "selected_exclude_staff_ids": sorted(excluded_ids),
+            }
         ),
     )
     return plan, assignment_rows, summary_rows
@@ -1506,6 +1513,9 @@ def _cli_page_context(
     planner_staff_opts: list[dict[str, str | int]] = []
     plan_created_at = ""
     plan_targets: list[dict[str, str]] = []
+    selected_exclude_cli: list[str] = []
+    selected_retiring_cli: list[str] = []
+    selected_exclude_staff_ids: list[int] = []
     for employee in sorted(
         [e for e in employees_all if normalize_role(e.role) in CLI_DISTRIBUTION_ROLE_ORDER],
         key=lambda e: (e.name.lower(), normalize_role(e.role), (e.cli or "").lower()),
@@ -1541,7 +1551,25 @@ def _cli_page_context(
         )
         plan_created_at = latest_plan.created_at.strftime("%d-%m-%Y %I:%M %p")
         try:
-            plan_targets = json.loads(latest_plan.targets_json or "[]")
+            raw_targets = json.loads(latest_plan.targets_json or "[]")
+            if isinstance(raw_targets, dict):
+                raw_plan_targets = raw_targets.get("targets", [])
+                plan_targets = raw_plan_targets if isinstance(raw_plan_targets, list) else []
+                raw_exclude_cli = raw_targets.get("selected_exclude_cli", [])
+                raw_retiring_cli = raw_targets.get("selected_retiring_cli", [])
+                raw_exclude_staff_ids = raw_targets.get("selected_exclude_staff_ids", [])
+                if isinstance(raw_exclude_cli, list):
+                    selected_exclude_cli = [str(value).strip() for value in raw_exclude_cli if str(value).strip()]
+                if isinstance(raw_retiring_cli, list):
+                    selected_retiring_cli = [str(value).strip() for value in raw_retiring_cli if str(value).strip()]
+                if isinstance(raw_exclude_staff_ids, list):
+                    selected_exclude_staff_ids = [
+                        int(value)
+                        for value in raw_exclude_staff_ids
+                        if str(value).strip().isdigit()
+                    ]
+            else:
+                plan_targets = raw_targets if isinstance(raw_targets, list) else []
         except json.JSONDecodeError:
             plan_targets = []
 
@@ -1570,6 +1598,9 @@ def _cli_page_context(
         "cli_plan_current_cli_opts": plan_current_cli_opts,
         "cli_plan_proposed_cli_opts": plan_proposed_cli_opts,
         "cli_plan_staff_opts": planner_staff_opts,
+        "cli_plan_selected_exclude_cli": selected_exclude_cli,
+        "cli_plan_selected_retiring_cli": selected_retiring_cli,
+        "cli_plan_selected_exclude_staff_ids": selected_exclude_staff_ids,
         "cli_plan_created_at": plan_created_at,
         "cli_plan_targets": plan_targets,
         "cli_manual_targets": manual_targets,
@@ -1685,13 +1716,19 @@ def calculate_cli_distribution(
     employees_all = session.exec(select(Employee)).all()
     targets = _distribution_targets(session, employees_all)
     excluded_keys: set[str] = set()
-    for raw_list in [exclude_cli, retiring_cli]:
+    selected_exclude_cli_values: list[str] = []
+    selected_retiring_cli_values: list[str] = []
+    for raw_list, sink in [
+        (exclude_cli, selected_exclude_cli_values),
+        (retiring_cli, selected_retiring_cli_values),
+    ]:
         if not raw_list:
             continue
         if isinstance(raw_list, str):
             tokens = [t.strip() for t in raw_list.split(",") if t.strip()]
         else:
             tokens = [str(t).strip() for t in raw_list if str(t).strip()]
+        sink.extend(tokens)
         for token in tokens:
             name_text, id_text = _canonicalize_cli_name(token, None)
             key = _cli_name_key(name_text) or (id_text or "").lower()
@@ -1709,6 +1746,8 @@ def calculate_cli_distribution(
         employees_all,
         targets,
         excluded_employee_ids=excluded_staff_set,
+        selected_exclude_cli=selected_exclude_cli_values,
+        selected_retiring_cli=selected_retiring_cli_values,
     )
     session.exec(text("DELETE FROM clidistributionassignment;"))
     session.exec(text("DELETE FROM clidistributionplan;"))

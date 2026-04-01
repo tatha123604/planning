@@ -95,7 +95,7 @@
           <label>Exclude CLI
             <select name="exclude_cli" multiple size="5">
               {% for opt in cli_opts %}
-                <option value="{{ opt }}">{{ opt }}</option>
+                <option value="{{ opt }}" {% if opt in cli_plan_selected_exclude_cli %}selected{% endif %}>{{ opt }}</option>
               {% endfor %}
             </select>
             <span class="hint">Use Ctrl/Shift to select multiple.</span>
@@ -105,7 +105,7 @@
           <label>Retiring CLI
             <select name="retiring_cli" multiple size="5">
               {% for opt in cli_opts %}
-                <option value="{{ opt }}">{{ opt }}</option>
+                <option value="{{ opt }}" {% if opt in cli_plan_selected_retiring_cli %}selected{% endif %}>{{ opt }}</option>
               {% endfor %}
             </select>
             <span class="hint">Use Ctrl/Shift to select multiple.</span>
@@ -115,7 +115,7 @@
           <label>Exclude Staff Name
             <select name="exclude_staff_ids" multiple size="6">
               {% for staff in cli_plan_staff_opts %}
-                <option value="{{ staff.id }}">{{ staff.name }} | {{ staff.role }}{% if staff.cli %} | {{ staff.cli }}{% endif %}</option>
+                <option value="{{ staff.id }}" {% if staff.id in cli_plan_selected_exclude_staff_ids %}selected{% endif %}>{{ staff.name }} | {{ staff.role }}{% if staff.cli %} | {{ staff.cli }}{% endif %}</option>
               {% endfor %}
             </select>
             <span class="hint">Use Ctrl/Shift to select multiple.</span>
