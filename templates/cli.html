@@ -202,11 +202,19 @@
           {% endif %}
 
           <form class="inline" method="post" action="/cli/distribution/calculate">
-            <label>Exclude CLI (comma separated)
-              <input name="exclude_cli" placeholder="e.g. A T KHAN, RAJEEV KUMAR SABHERWAL" />
+            <label>Exclude CLI
+              <select name="exclude_cli" multiple size="5">
+                {% for opt in cli_opts %}
+                  <option value="{{ opt }}">{{ opt }}</option>
+                {% endfor %}
+              </select>
             </label>
-            <label>Retiring CLI (comma separated)
-              <input name="retiring_cli" placeholder="e.g. BRAJ MOHAN KALUNDIA" />
+            <label>Retiring CLI
+              <select name="retiring_cli" multiple size="5">
+                {% for opt in cli_opts %}
+                  <option value="{{ opt }}">{{ opt }}</option>
+                {% endfor %}
+              </select>
             </label>
             <button type="submit" data-confirm="Calculate new CLI distribution plan?">Calculate Distribution</button>
             {% if cli_plan_created_at %}<span class="hint">Last calculated: {{ cli_plan_created_at }}</span>{% endif %}

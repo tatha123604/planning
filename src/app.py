@@ -1529,8 +1529,8 @@ def remove_cli_distribution_target(
 
 @app.post("/cli/distribution/calculate")
 def calculate_cli_distribution(
-    exclude_cli: Optional[str] = Form(None),
-    retiring_cli: Optional[str] = Form(None),
+    exclude_cli: Optional[list[str]] = Form(None),
+    retiring_cli: Optional[list[str]] = Form(None),
     session: Session = Depends(get_session),
 ):
     employees_all = session.exec(select(Employee)).all()
@@ -1539,7 +1539,10 @@ def calculate_cli_distribution(
     for raw_list in [exclude_cli, retiring_cli]:
         if not raw_list:
             continue
-        tokens = [t.strip() for t in raw_list.split(",") if t.strip()]
+        if isinstance(raw_list, str):
+            tokens = [t.strip() for t in raw_list.split(",") if t.strip()]
+        else:
+            tokens = [str(t).strip() for t in raw_list if str(t).strip()]
         for token in tokens:
             name_text, id_text = _canonicalize_cli_name(token, None)
             key = _cli_name_key(name_text) or (id_text or "").lower()
