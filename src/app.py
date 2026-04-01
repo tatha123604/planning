@@ -5254,6 +5254,66 @@ def _build_duplicate_cleanup_plan(session: Session) -> tuple[list[dict[str, obje
                 else:
                     register_plan("Same Name + Designation + EMP NO last 5 match", group_rows)
 
+    dsl_groups: dict[tuple[str, str], list[Employee]] = {}
+    for employee in employees:
+        if employee.id is not None and employee.id in used_ids:
+            continue
+        role_key = normalize_role(employee.role) if employee.role else None
+        base_name = _strip_dsl_name_marker(employee.name)
+        if not base_name or not role_key:
+            continue
+        if not _has_dsl_name_marker(employee.name):
+            maybe_variants = [
+                other
+                for other in employees
+                if other is not employee
+                and (other.id is None or other.id not in used_ids)
+                and normalize_role(other.role) == role_key
+                and _has_dsl_name_marker(other.name)
+                and _strip_dsl_name_marker(other.name) == base_name
+            ]
+            if not maybe_variants:
+                continue
+        dsl_groups.setdefault((base_name, role_key), []).append(employee)
+
+    for rows in dsl_groups.values():
+        if len(rows) < 2:
+            continue
+
+        identity_groups: dict[str, list[Employee]] = {}
+        for employee in rows:
+            dob_key = employee.dob.isoformat() if employee.dob else ""
+            last5_key = _emp_no_last5(employee.pf_no) or ""
+            identity_key = ""
+            if last5_key:
+                identity_key = f"LAST5:{last5_key}"
+            elif dob_key:
+                identity_key = f"DOB:{dob_key}"
+            if not identity_key:
+                continue
+            identity_groups.setdefault(identity_key, []).append(employee)
+
+        for group_rows in identity_groups.values():
+            if len(group_rows) < 2:
+                continue
+            if not any(_has_dsl_name_marker(employee.name) for employee in group_rows):
+                continue
+
+            working_groups: dict[str, list[Employee]] = {}
+            for employee in group_rows:
+                working_groups.setdefault(_working_at_key(employee.working_at), []).append(employee)
+
+            blank_group = working_groups.get("", [])
+            filled_groups = [group for key, group in working_groups.items() if key]
+            if len(filled_groups) > 1:
+                register_conflict("Same Name (DSL variant) + EMP/DOB match but Working At differs", group_rows)
+                continue
+            if has_dob_mismatch(group_rows):
+                register_conflict("Same Name (DSL variant) + EMP NO last 5 match but DOB differs", group_rows)
+                continue
+            if filled_groups or blank_group:
+                register_plan("Same Name (DSL variant) + EMP/DOB match", group_rows)
+
     conflicts = [
         item
         for item in conflicts
