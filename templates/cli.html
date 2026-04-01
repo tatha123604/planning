@@ -209,6 +209,7 @@
                 {% endfor %}
               </select>
               <span class="hint">Use Ctrl/Shift to select multiple.</span>
+              <div class="hint" id="exclude-cli-selected">Selected: none</div>
             </label>
             <label>Retiring CLI
               <select name="retiring_cli" multiple size="5">
@@ -217,6 +218,7 @@
                 {% endfor %}
               </select>
               <span class="hint">Use Ctrl/Shift to select multiple.</span>
+              <div class="hint" id="retiring-cli-selected">Selected: none</div>
             </label>
             <button type="submit" data-confirm="Calculate new CLI distribution plan?">Calculate Distribution</button>
             {% if cli_plan_created_at %}<span class="hint">Last calculated: {{ cli_plan_created_at }}</span>{% endif %}
@@ -585,6 +587,26 @@
       }
       if (assignmentsTable) {
         applyAssignmentFilters();
+      }
+
+      const updateSelectedLabel = (selectEl, labelEl) => {
+        if (!selectEl || !labelEl) return;
+        const selected = Array.from(selectEl.selectedOptions || []).map((opt) => opt.textContent?.trim()).filter(Boolean);
+        labelEl.textContent = selected.length ? `Selected: ${selected.join(', ')}` : 'Selected: none';
+      };
+
+      const excludeSelect = document.querySelector('select[name="exclude_cli"]');
+      const excludeLabel = document.getElementById('exclude-cli-selected');
+      if (excludeSelect && excludeLabel) {
+        updateSelectedLabel(excludeSelect, excludeLabel);
+        excludeSelect.addEventListener('change', () => updateSelectedLabel(excludeSelect, excludeLabel));
+      }
+
+      const retiringSelect = document.querySelector('select[name="retiring_cli"]');
+      const retiringLabel = document.getElementById('retiring-cli-selected');
+      if (retiringSelect && retiringLabel) {
+        updateSelectedLabel(retiringSelect, retiringLabel);
+        retiringSelect.addEventListener('change', () => updateSelectedLabel(retiringSelect, retiringLabel));
       }
     })();
   </script>
