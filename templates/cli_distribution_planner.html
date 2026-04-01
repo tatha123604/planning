@@ -157,13 +157,11 @@
         {% if cli_plan_assignments %}
         <h3 class="highlight-yellow">CLI Distribution Summary in Detailed</h3>
         <div class="inline">
-          <label>CLI Filter
-            <select id="cli-plan-assignments-filter">
-              <option value="">All</option>
-              {% for row in cli_plan_summary %}
-                <option value="{{ row.cli }}">{{ row.cli }}</option>
-              {% endfor %}
-            </select>
+          <label>Current CLI
+            <input id="cli-plan-assignments-current-filter" placeholder="Type current CLI" />
+          </label>
+          <label>Proposed CLI
+            <input id="cli-plan-assignments-proposed-filter" placeholder="Type proposed CLI" />
           </label>
           <label>Designation
             <select id="cli-plan-assignments-role-filter">
@@ -192,7 +190,7 @@
             </thead>
             <tbody>
               {% for row in cli_plan_assignments %}
-              <tr data-cli="{{ row.proposed_cli }}">
+              <tr data-cli="{{ row.proposed_cli }}" data-current-cli="{{ row.current_cli or '' }}">
                 <td>{{ row.name }}</td>
                 <td>{{ row.role }}</td>
                 <td>{{ row.gradation }}</td>
@@ -255,7 +253,8 @@
         });
       }
 
-      const assignmentsFilter = document.getElementById('cli-plan-assignments-filter');
+      const assignmentsCurrentFilter = document.getElementById('cli-plan-assignments-current-filter');
+      const assignmentsProposedFilter = document.getElementById('cli-plan-assignments-proposed-filter');
       const assignmentsTable = document.getElementById('cli-plan-assignments-table');
       const assignmentsRoleFilter = document.getElementById('cli-plan-assignments-role-filter');
       const assignmentsNameFilter = document.getElementById('cli-plan-assignments-name-filter');
@@ -263,7 +262,8 @@
 
       const applyAssignmentFilters = () => {
         if (!assignmentsTable) return;
-        const cliValue = assignmentsFilter?.value || '';
+        const currentValue = (assignmentsCurrentFilter?.value || '').trim().toLowerCase();
+        const proposedValue = (assignmentsProposedFilter?.value || '').trim().toLowerCase();
         const roleValue = assignmentsRoleFilter?.value || '';
         const nameValue = (assignmentsNameFilter?.value || '').trim().toLowerCase();
         const rows = Array.from(assignmentsTable.tBodies?.[0]?.rows || []);
@@ -273,10 +273,14 @@
             row.dataset.filterHidden = 'false';
             return;
           }
-          const rowCli = (row.dataset.cli || '').trim();
+          const rowCli = (row.dataset.cli || '').trim().toLowerCase();
+          const rowCurrentCli = (row.dataset.currentCli || '').trim().toLowerCase();
           const roleCell = row.cells?.[1]?.textContent?.trim() || '';
           const nameCell = row.cells?.[0]?.textContent?.trim().toLowerCase() || '';
-          const hide = (cliValue && rowCli !== cliValue) || (roleValue && roleCell !== roleValue);
+          const hide =
+            (currentValue && !rowCurrentCli.includes(currentValue)) ||
+            (proposedValue && !rowCli.includes(proposedValue)) ||
+            (roleValue && roleCell !== roleValue);
           const finalHide = hide || (nameValue && !nameCell.includes(nameValue));
           row.dataset.filterHidden = finalHide ? 'true' : 'false';
           if (!finalHide) visibleCount += 1;
@@ -287,8 +291,13 @@
         assignmentsTable.dispatchEvent(new CustomEvent('table-pager:refresh', { detail: { resetPage: true } }));
       };
 
-      if (assignmentsFilter && assignmentsTable) {
-        assignmentsFilter.addEventListener('change', () => {
+      if (assignmentsCurrentFilter && assignmentsTable) {
+        assignmentsCurrentFilter.addEventListener('input', () => {
+          applyAssignmentFilters();
+        });
+      }
+      if (assignmentsProposedFilter && assignmentsTable) {
+        assignmentsProposedFilter.addEventListener('input', () => {
           applyAssignmentFilters();
         });
       }
