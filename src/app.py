@@ -4695,6 +4695,17 @@ def _employee_cleanup_sort_key(employee: Employee) -> tuple[int, int, int]:
     return (-has_crew_id, -_employee_completeness(employee), employee.id or 0)
 
 
+def _choose_merge_dob(employees: list[Employee]) -> date | None:
+    candidates = [employee for employee in employees if employee and employee.dob]
+    if not candidates:
+        return None
+
+    def sort_key(employee: Employee) -> tuple[int, date, int]:
+        return (-_employee_completeness(employee), employee.dob or date.min, employee.id or 0)
+
+    return sorted(candidates, key=sort_key)[0].dob
+
+
 def _dedupe_uploaded_employee_rows(session: Session, sync_details: list[str]) -> int:
     groups: dict[tuple[str, str, str], list[Employee]] = {}
     for employee in session.exec(select(Employee)).all():
@@ -5082,20 +5093,28 @@ def _apply_duplicate_cleanup_plan(
             continue
 
         merged_count = 0
+        dob_note = ""
+        duplicates_for_dob: list[Employee] = []
         for duplicate_id in remove_ids:
             duplicate = session.get(Employee, duplicate_id) if duplicate_id is not None else None
             if duplicate is None:
                 continue
+            duplicates_for_dob.append(duplicate)
             for field_name in merge_fields:
                 if not _employee_has_value(getattr(keeper, field_name)) and _employee_has_value(getattr(duplicate, field_name)):
                     setattr(keeper, field_name, getattr(duplicate, field_name))
             session.delete(duplicate)
             removed += 1
             merged_count += 1
+        if "DOB differs" in str(item.get("reason", "")):
+            chosen_dob = _choose_merge_dob([keeper] + duplicates_for_dob)
+            if chosen_dob:
+                keeper.dob = chosen_dob
+                dob_note = f" DOB kept as {chosen_dob.strftime('%d-%m-%Y')}."
 
         if merged_count:
             details.append(
-                f"{item['reason']}: kept {keeper.name} ({_format_sync_value(keeper.pf_no)}), removed {merged_count} duplicate row(s)."
+                f"{item['reason']}: kept {keeper.name} ({_format_sync_value(keeper.pf_no)}), removed {merged_count} duplicate row(s).{dob_note}"
             )
 
     session.commit()
@@ -5137,16 +5156,24 @@ def _merge_conflict_rows(
         "transportation_due",
     )
 
+    duplicates_for_dob: list[Employee] = []
     for duplicate in ordered[1:]:
         for field_name in merge_fields:
             if not _employee_has_value(getattr(keeper, field_name)) and _employee_has_value(getattr(duplicate, field_name)):
                 setattr(keeper, field_name, getattr(duplicate, field_name))
+        duplicates_for_dob.append(duplicate)
         session.delete(duplicate)
         removed += 1
+    dob_note = ""
+    if "DOB differs" in reason:
+        chosen_dob = _choose_merge_dob([keeper] + duplicates_for_dob)
+        if chosen_dob:
+            keeper.dob = chosen_dob
+            dob_note = f" DOB kept as {chosen_dob.strftime('%d-%m-%Y')}."
 
     if removed:
         details.append(
-            f"Manual merge applied for {reason}: kept {keeper.name} ({_format_sync_value(keeper.pf_no)}), removed {removed} duplicate row(s)."
+            f"Manual merge applied for {reason}: kept {keeper.name} ({_format_sync_value(keeper.pf_no)}), removed {removed} duplicate row(s).{dob_note}"
         )
     session.commit()
     return removed
@@ -5185,6 +5212,7 @@ def _merge_employee_rows(
     )
     removed = 0
 
+    duplicates_for_dob: list[Employee] = []
     for duplicate_id in remove_ids:
         duplicate = session.get(Employee, duplicate_id)
         if duplicate is None or duplicate is keeper:
@@ -5192,12 +5220,19 @@ def _merge_employee_rows(
         for field_name in merge_fields:
             if not _employee_has_value(getattr(keeper, field_name)) and _employee_has_value(getattr(duplicate, field_name)):
                 setattr(keeper, field_name, getattr(duplicate, field_name))
+        duplicates_for_dob.append(duplicate)
         session.delete(duplicate)
         removed += 1
+    dob_note = ""
+    if "DOB differs" in reason:
+        chosen_dob = _choose_merge_dob([keeper] + duplicates_for_dob)
+        if chosen_dob:
+            keeper.dob = chosen_dob
+            dob_note = f" DOB kept as {chosen_dob.strftime('%d-%m-%Y')}."
 
     if removed:
         details.append(
-            f"{reason}: kept {keeper.name} ({_format_sync_value(keeper.pf_no)}), removed {removed} extra row(s)."
+            f"{reason}: kept {keeper.name} ({_format_sync_value(keeper.pf_no)}), removed {removed} extra row(s).{dob_note}"
         )
     session.commit()
     return removed
