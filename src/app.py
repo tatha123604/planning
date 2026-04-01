@@ -1033,9 +1033,13 @@ def _build_cli_distribution_plan(
 
     grade_totals = {"A": 0, "B": 0, "C": 0, "OTHER": 0}
     eligible = [e for e in employees if normalize_role(e.role) in CLI_DISTRIBUTION_ROLE_ORDER]
+    gradation_roles = {"Motorman", "LPG", "LPM", "LPP"}
+    non_gradation_roles = {"ALP", "SALP", "LPS/SHT", "SSHT"}
+    gradation_employees = [e for e in eligible if normalize_role(e.role) in gradation_roles]
+    non_gradation_employees = [e for e in eligible if normalize_role(e.role) in non_gradation_roles]
 
     for grade in ("A", "B", "C", "OTHER"):
-        grade_emps = [e for e in eligible if grade_key(e) == grade]
+        grade_emps = [e for e in gradation_employees if grade_key(e) == grade]
         grade_totals[grade] = len(grade_emps)
         if not grade_emps:
             continue
@@ -1080,6 +1084,67 @@ def _build_cli_distribution_plan(
             emp = surplus_pool.pop(0)
             assignments[emp.id] = key_order[idx % len(key_order)]
             idx += 1
+
+    total_staff_target_base = len(eligible) // len(key_order)
+    total_staff_target_remainder = len(eligible) % len(key_order)
+    total_staff_targets = {
+        key: total_staff_target_base + (idx < total_staff_target_remainder)
+        for idx, key in enumerate(key_order)
+    }
+    current_total_counts = {
+        key: sum(1 for assigned_key in assignments.values() if assigned_key == key)
+        for key in key_order
+    }
+
+    def assignment_score(
+        target_key: str,
+        *,
+        preferred_key: str | None,
+        role_counts: dict[str, int],
+        role_target_count: int,
+    ) -> tuple[int, int, int, int, str]:
+        total_gap = current_total_counts[target_key] - total_staff_targets[target_key]
+        role_gap = role_counts[target_key] - role_target_count
+        preferred_penalty = 0 if preferred_key == target_key else 1
+        return (
+            total_gap,
+            role_gap,
+            preferred_penalty,
+            current_total_counts[target_key],
+            target_key,
+        )
+
+    for role in ("ALP", "SALP", "LPS/SHT", "SSHT"):
+        role_emps = [e for e in non_gradation_employees if normalize_role(e.role) == role]
+        if not role_emps:
+            continue
+
+        role_target_base = len(role_emps) // len(key_order)
+        role_target_remainder = len(role_emps) % len(key_order)
+        role_target_counts = {
+            key: role_target_base + (idx < role_target_remainder)
+            for idx, key in enumerate(key_order)
+        }
+        role_assigned_counts = {key: 0 for key in key_order}
+
+        for emp in sorted(role_emps, key=lambda e: (employee_key(e), e.name)):
+            preferred_key = employee_key(emp)
+            candidate_keys = [key for key in key_order if role_assigned_counts[key] < role_target_counts[key]]
+            if not candidate_keys:
+                candidate_keys = key_order[:]
+
+            best_key = min(
+                candidate_keys,
+                key=lambda key: assignment_score(
+                    key,
+                    preferred_key=preferred_key if preferred_key in key_order else None,
+                    role_counts=role_assigned_counts,
+                    role_target_count=role_target_counts[key],
+                ),
+            )
+            assignments[emp.id] = best_key
+            role_assigned_counts[best_key] += 1
+            current_total_counts[best_key] += 1
 
     assignment_rows: list[CliDistributionAssignment] = []
     summary_counts: dict[str, dict[str, int]] = {
