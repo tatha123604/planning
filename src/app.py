@@ -1586,7 +1586,7 @@ def calculate_cli_distribution(
         targets = [t for t in targets if t["key"] not in excluded_keys]
     if not targets:
         return RedirectResponse(
-            url="/cli?plan_error=Please add at least one CLI target#cli-distribution-planner",
+            url="/cli-distribution-planner?plan_error=Please add at least one CLI target#cli-distribution-planner",
             status_code=303,
         )
     plan, assignment_rows, summary_rows = _build_cli_distribution_plan(employees_all, targets)
@@ -1602,7 +1602,7 @@ def calculate_cli_distribution(
     if excluded_keys:
         notice += f" (excluded {len(excluded_keys)} CLI)"
     return RedirectResponse(
-        url=f"/cli?plan_notice={quote(notice)}#cli-distribution-planner", status_code=303
+        url=f"/cli-distribution-planner?plan_notice={quote(notice)}#cli-distribution-planner", status_code=303
     )
 
 
