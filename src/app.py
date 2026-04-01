@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import Counter
 import csv
 from datetime import date, datetime, timedelta
+from difflib import SequenceMatcher
 import json
 import math
 import os
@@ -4834,6 +4835,38 @@ def _dsl_name_identity_match(
     return False
 
 
+def _cli_value_key(value: object | None) -> str:
+    return (_clean_import_text(value) or "").upper()
+
+
+def _close_spelling_name_match(first_name: object | None, second_name: object | None) -> bool:
+    first_norm = _normalize_import_name(first_name)
+    second_norm = _normalize_import_name(second_name)
+    if not first_norm or not second_norm or first_norm == second_norm:
+        return False
+
+    first_tokens = first_norm.split()
+    second_tokens = second_norm.split()
+    if len(first_tokens) != len(second_tokens):
+        return False
+    if not first_tokens or first_tokens[-1] != second_tokens[-1]:
+        return False
+
+    overall_ratio = SequenceMatcher(None, first_norm, second_norm).ratio()
+    if overall_ratio < 0.93:
+        return False
+
+    mismatched_tokens = 0
+    for left, right in zip(first_tokens, second_tokens):
+        if left == right:
+            continue
+        if SequenceMatcher(None, left, right).ratio() < 0.8:
+            return False
+        mismatched_tokens += 1
+
+    return mismatched_tokens <= 1
+
+
 def _emp_no_last5(value: object | None) -> str | None:
     text = _clean_import_text(value)
     if text is None:
@@ -5292,6 +5325,45 @@ def _build_duplicate_cleanup_plan(session: Session) -> tuple[list[dict[str, obje
                     register_conflict("Same Name + Designation + EMP NO last 5 match but DOB differs", group_rows)
                 else:
                     register_plan("Same Name + Designation + EMP NO last 5 match", group_rows)
+
+    close_name_groups: list[list[Employee]] = []
+    remaining_close_name_candidates = [
+        employee
+        for employee in employees
+        if employee.id is None or employee.id not in used_ids
+    ]
+    while remaining_close_name_candidates:
+        seed = remaining_close_name_candidates.pop(0)
+        seed_role = normalize_role(seed.role) if seed.role else None
+        seed_dob = seed.dob
+        seed_cli = _cli_value_key(seed.cli)
+        if not seed_role or not seed_dob or not seed_cli:
+            continue
+
+        group_rows = [seed]
+        still_remaining: list[Employee] = []
+        for candidate in remaining_close_name_candidates:
+            candidate_role = normalize_role(candidate.role) if candidate.role else None
+            candidate_cli = _cli_value_key(candidate.cli)
+            if (
+                candidate_role == seed_role
+                and candidate.dob == seed_dob
+                and candidate_cli == seed_cli
+                and _close_spelling_name_match(seed.name, candidate.name)
+                and (
+                    _working_at_key(seed.working_at) == _working_at_key(candidate.working_at)
+                    or _one_working_at_blank(seed.working_at, candidate.working_at)
+                )
+            ):
+                group_rows.append(candidate)
+            else:
+                still_remaining.append(candidate)
+        remaining_close_name_candidates = still_remaining
+        if len(group_rows) > 1:
+            close_name_groups.append(group_rows)
+
+    for rows in close_name_groups:
+        register_plan("Same DOB + Designation + CLI + close name spelling", rows)
 
     dsl_groups: dict[tuple[str, str], list[Employee]] = {}
     for employee in employees:
@@ -5980,6 +6052,19 @@ def _cleanup_employee_master_duplicates_for_record(
             )
         ):
             duplicates.append((employee, "Same Name (DSL variant) + EMP/DOB match"))
+            continue
+
+        if (
+            target_role
+            and normalize_role(employee.role) == target_role
+            and dob
+            and employee.dob == dob
+            and _cli_value_key(employee.cli) == _cli_value_key(target.cli)
+            and _cli_value_key(target.cli)
+            and (same_working_at or blank_vs_value_working_at)
+            and _close_spelling_name_match(name, employee.name)
+        ):
+            duplicates.append((employee, "Same DOB + Designation + CLI + close name spelling"))
 
     for duplicate, reason in duplicates:
         for field_name in merge_fields:
