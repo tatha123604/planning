@@ -5280,20 +5280,35 @@ def _build_duplicate_cleanup_plan(session: Session) -> tuple[list[dict[str, obje
         if len(rows) < 2:
             continue
 
-        identity_groups: dict[str, list[Employee]] = {}
-        for employee in rows:
-            dob_key = employee.dob.isoformat() if employee.dob else ""
-            last5_key = _emp_no_last5(employee.pf_no) or ""
-            identity_key = ""
-            if last5_key:
-                identity_key = f"LAST5:{last5_key}"
-            elif dob_key:
-                identity_key = f"DOB:{dob_key}"
-            if not identity_key:
-                continue
-            identity_groups.setdefault(identity_key, []).append(employee)
+        remaining = list(rows)
+        identity_groups: list[list[Employee]] = []
+        while remaining:
+            seed = remaining.pop(0)
+            group_rows = [seed]
+            changed = True
+            while changed:
+                changed = False
+                still_remaining: list[Employee] = []
+                for candidate in remaining:
+                    if any(
+                        _dsl_name_identity_match(
+                            existing.name,
+                            candidate.name,
+                            first_emp_no=existing.pf_no,
+                            second_emp_no=candidate.pf_no,
+                            first_dob=existing.dob,
+                            second_dob=candidate.dob,
+                        )
+                        for existing in group_rows
+                    ):
+                        group_rows.append(candidate)
+                        changed = True
+                    else:
+                        still_remaining.append(candidate)
+                remaining = still_remaining
+            identity_groups.append(group_rows)
 
-        for group_rows in identity_groups.values():
+        for group_rows in identity_groups:
             if len(group_rows) < 2:
                 continue
             if not any(_has_dsl_name_marker(employee.name) for employee in group_rows):
