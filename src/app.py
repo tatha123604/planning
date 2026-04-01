@@ -1329,6 +1329,8 @@ def index(
 def _cli_page_context(
     request: Request,
     session: Session,
+    *,
+    active_page: str = "cli",
     roster_name: Optional[str] = None,
     roster_cli: Optional[str] = None,
     roster_role: Optional[str] = None,
@@ -1420,7 +1422,7 @@ def _cli_page_context(
 
     return {
         "request": request,
-        "active_page": "cli",
+        "active_page": active_page,
         "cli_distribution": cli_distribution,
         "cli_distribution_totals_all": cli_distribution_totals_all,
         "cli_roster": cli_roster,
@@ -1470,11 +1472,29 @@ def cli_page(
         _cli_page_context(
             request,
             session,
+            active_page="cli",
             roster_name=roster_name,
             roster_cli=roster_cli,
             roster_role=roster_role,
             roster_gradation=roster_gradation,
             distribution_cli=distribution_cli,
+            cli_plan_notice=request.query_params.get("plan_notice", ""),
+            cli_plan_error=request.query_params.get("plan_error", ""),
+        ),
+    )
+
+
+@app.get("/cli-distribution-planner")
+def cli_distribution_planner_page(
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    return templates.TemplateResponse(
+        "cli_distribution_planner.html",
+        _cli_page_context(
+            request,
+            session,
+            active_page="cli_distribution_planner",
             cli_plan_notice=request.query_params.get("plan_notice", ""),
             cli_plan_error=request.query_params.get("plan_error", ""),
         ),
