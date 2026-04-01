@@ -1536,12 +1536,12 @@ def add_cli_distribution_target(
             session.add(row)
             session.commit()
             return RedirectResponse(
-                url="/cli?plan_notice=CLI target updated#cli-distribution-planner", status_code=303
+                url="/cli-distribution-planner?plan_notice=CLI target updated#cli-distribution-planner", status_code=303
             )
     session.add(CliDistributionTarget(cli_name=name_text, cli_id=id_text))
     session.commit()
     return RedirectResponse(
-        url="/cli?plan_notice=CLI target added#cli-distribution-planner", status_code=303
+        url="/cli-distribution-planner?plan_notice=CLI target added#cli-distribution-planner", status_code=303
     )
 
 
@@ -1557,7 +1557,7 @@ def remove_cli_distribution_target(
     session.add(target)
     session.commit()
     return RedirectResponse(
-        url="/cli?plan_notice=CLI target removed#cli-distribution-planner", status_code=303
+        url="/cli-distribution-planner?plan_notice=CLI target removed#cli-distribution-planner", status_code=303
     )
 
 
