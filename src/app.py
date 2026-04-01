@@ -118,6 +118,20 @@ def format_dmy(value):
 templates.env.filters["dmy"] = format_dmy
 
 
+def _parse_dmy_date(value: str | None) -> date | None:
+    if not value:
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    for fmt in ("%d/%m/%Y", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
 CLI_NAME_MANUAL_ALIASES = {
     "ATKHAN": "ABU TAYAB KHAN",
     "SAMARESHMONDAL": "SAMARESH MANDAL",
@@ -2124,6 +2138,7 @@ def merge_employee_master_conflict(
     request: Request,
     conflict_reason: str = Form(...),
     conflict_row_ids: str = Form(...),
+    dob_choice: Optional[str] = Form(None),
     session: Session = Depends(get_session),
 ):
     try:
@@ -2141,6 +2156,7 @@ def merge_employee_master_conflict(
         reason=conflict_reason,
         row_ids=row_ids,
         details=cleanup_details,
+        dob_choice=dob_choice,
     )
     plan, conflicts, summary = _build_combined_cleanup_view(session)
     notice = (
@@ -2281,6 +2297,7 @@ def merge_employee_master_extra_rows(
     review_reason: str = Form(...),
     keep_id: int = Form(...),
     review_row_ids: str = Form(...),
+    dob_choice: Optional[str] = Form(None),
     session: Session = Depends(get_session),
 ):
     try:
@@ -2299,6 +2316,7 @@ def merge_employee_master_extra_rows(
         keep_id=keep_id,
         remove_ids=row_ids,
         details=details,
+        dob_choice=dob_choice,
     )
     plan, conflicts, summary = _build_combined_cleanup_view(session)
     notice = (
@@ -5127,6 +5145,7 @@ def _merge_conflict_rows(
     reason: str,
     row_ids: list[int],
     details: list[str],
+    dob_choice: str | None = None,
 ) -> int:
     rows = [session.get(Employee, row_id) for row_id in row_ids]
     employees = [row for row in rows if row is not None]
@@ -5166,7 +5185,8 @@ def _merge_conflict_rows(
         removed += 1
     dob_note = ""
     if "DOB differs" in reason:
-        chosen_dob = _choose_merge_dob([keeper] + duplicates_for_dob)
+        selected_dob = _parse_dmy_date(dob_choice)
+        chosen_dob = selected_dob or _choose_merge_dob([keeper] + duplicates_for_dob)
         if chosen_dob:
             keeper.dob = chosen_dob
             dob_note = f" DOB kept as {chosen_dob.strftime('%d-%m-%Y')}."
@@ -5186,6 +5206,7 @@ def _merge_employee_rows(
     keep_id: int,
     remove_ids: list[int],
     details: list[str],
+    dob_choice: str | None = None,
 ) -> int:
     keeper = session.get(Employee, keep_id)
     if keeper is None:
@@ -5225,7 +5246,8 @@ def _merge_employee_rows(
         removed += 1
     dob_note = ""
     if "DOB differs" in reason:
-        chosen_dob = _choose_merge_dob([keeper] + duplicates_for_dob)
+        selected_dob = _parse_dmy_date(dob_choice)
+        chosen_dob = selected_dob or _choose_merge_dob([keeper] + duplicates_for_dob)
         if chosen_dob:
             keeper.dob = chosen_dob
             dob_note = f" DOB kept as {chosen_dob.strftime('%d-%m-%Y')}."

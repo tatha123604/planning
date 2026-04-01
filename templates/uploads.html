@@ -213,6 +213,17 @@
                 <form method="post" action="{{ item.merge_action }}" class="cleanup-action-card" onsubmit="return confirm('Merge these rows now and delete the duplicate row(s)?');">
                   <input type="hidden" name="conflict_reason" value="{{ item.reason }}" />
                   <input type="hidden" name="conflict_row_ids" value="{{ item.row_ids | join(',') }}" />
+                  {% if "DOB differs" in item.reason %}
+                  <label>Choose DOB
+                    <select name="dob_choice" required>
+                      {% for row in item.rows %}
+                        {% if row.dob %}
+                        <option value="{{ row.dob }}">Row {{ loop.index }} - {{ row.name }} ({{ row.dob }})</option>
+                        {% endif %}
+                      {% endfor %}
+                    </select>
+                  </label>
+                  {% endif %}
                   <label>Action Code
                     <input type="password" name="action_password" autocomplete="current-password" required />
                   </label>
@@ -311,6 +322,17 @@
                   <input type="hidden" name="review_reason" value="{{ item.reason }}" />
                   <input type="hidden" name="keep_id" value="{{ item.keep_id }}" />
                   <input type="hidden" name="review_row_ids" value="{{ item.row_ids | join(',') }}" />
+                  {% endif %}
+                  {% if "DOB differs" in item.reason %}
+                  <label>Choose DOB
+                    <select name="dob_choice" required>
+                      {% for row in item.rows %}
+                        {% if row.dob %}
+                        <option value="{{ row.dob }}">Row {{ loop.index }} - {{ row.name }} ({{ row.dob }})</option>
+                        {% endif %}
+                      {% endfor %}
+                    </select>
+                  </label>
                   {% endif %}
                   <label>Action Code
                     <input type="password" name="action_password" autocomplete="current-password" required />
