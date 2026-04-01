@@ -173,6 +173,9 @@
               {% endfor %}
             </select>
           </label>
+          <label>Name
+            <input id="cli-plan-assignments-name-filter" placeholder="Type name" />
+          </label>
         </div>
         <div class="table-wrap">
           <table class="paged" id="cli-plan-assignments-table">
@@ -255,12 +258,14 @@
       const assignmentsFilter = document.getElementById('cli-plan-assignments-filter');
       const assignmentsTable = document.getElementById('cli-plan-assignments-table');
       const assignmentsRoleFilter = document.getElementById('cli-plan-assignments-role-filter');
+      const assignmentsNameFilter = document.getElementById('cli-plan-assignments-name-filter');
       const assignmentsTotalCell = document.getElementById('cli-plan-assignments-total-count');
 
       const applyAssignmentFilters = () => {
         if (!assignmentsTable) return;
         const cliValue = assignmentsFilter?.value || '';
         const roleValue = assignmentsRoleFilter?.value || '';
+        const nameValue = (assignmentsNameFilter?.value || '').trim().toLowerCase();
         const rows = Array.from(assignmentsTable.tBodies?.[0]?.rows || []);
         let visibleCount = 0;
         rows.forEach((row) => {
@@ -270,9 +275,11 @@
           }
           const rowCli = (row.dataset.cli || '').trim();
           const roleCell = row.cells?.[1]?.textContent?.trim() || '';
+          const nameCell = row.cells?.[0]?.textContent?.trim().toLowerCase() || '';
           const hide = (cliValue && rowCli !== cliValue) || (roleValue && roleCell !== roleValue);
-          row.dataset.filterHidden = hide ? 'true' : 'false';
-          if (!hide) visibleCount += 1;
+          const finalHide = hide || (nameValue && !nameCell.includes(nameValue));
+          row.dataset.filterHidden = finalHide ? 'true' : 'false';
+          if (!finalHide) visibleCount += 1;
         });
         if (assignmentsTotalCell) {
           assignmentsTotalCell.textContent = String(visibleCount);
@@ -287,6 +294,11 @@
       }
       if (assignmentsRoleFilter && assignmentsTable) {
         assignmentsRoleFilter.addEventListener('change', () => {
+          applyAssignmentFilters();
+        });
+      }
+      if (assignmentsNameFilter && assignmentsTable) {
+        assignmentsNameFilter.addEventListener('input', () => {
           applyAssignmentFilters();
         });
       }
