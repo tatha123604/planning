@@ -112,6 +112,16 @@
             <div class="hint" id="retiring-cli-selected">Selected: none</div>
             <button type="button" class="ghost small planner-reset-button" id="retiring-cli-reset">Reset selection</button>
           </label>
+          <label>Exclude Staff Name
+            <select name="exclude_staff_ids" multiple size="6">
+              {% for staff in cli_plan_staff_opts %}
+                <option value="{{ staff.id }}">{{ staff.name }} | {{ staff.role }}{% if staff.cli %} | {{ staff.cli }}{% endif %}</option>
+              {% endfor %}
+            </select>
+            <span class="hint">Use Ctrl/Shift to select multiple.</span>
+            <div class="hint" id="exclude-staff-selected">Selected: none</div>
+            <button type="button" class="ghost small planner-reset-button" id="exclude-staff-reset">Reset selection</button>
+          </label>
           <button type="submit" data-confirm="Calculate new CLI distribution plan?">Calculate Distribution</button>
           {% if cli_plan_created_at %}<span class="hint">Last calculated: {{ cli_plan_created_at }}</span>{% endif %}
         </form>
@@ -360,6 +370,20 @@
             option.selected = false;
           });
           updateSelectedLabel(retiringSelect, retiringLabel);
+        });
+      }
+
+      const excludeStaffSelect = document.querySelector('select[name="exclude_staff_ids"]');
+      const excludeStaffLabel = document.getElementById('exclude-staff-selected');
+      const excludeStaffReset = document.getElementById('exclude-staff-reset');
+      if (excludeStaffSelect && excludeStaffLabel) {
+        updateSelectedLabel(excludeStaffSelect, excludeStaffLabel);
+        excludeStaffSelect.addEventListener('change', () => updateSelectedLabel(excludeStaffSelect, excludeStaffLabel));
+        excludeStaffReset?.addEventListener('click', () => {
+          Array.from(excludeStaffSelect.options).forEach((option) => {
+            option.selected = false;
+          });
+          updateSelectedLabel(excludeStaffSelect, excludeStaffLabel);
         });
       }
     })();

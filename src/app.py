@@ -1004,6 +1004,8 @@ def _distribution_targets(session: Session, employees: list[Employee]) -> list[d
 def _build_cli_distribution_plan(
     employees: list[Employee],
     targets: list[dict[str, str]],
+    *,
+    excluded_employee_ids: set[int] | None = None,
 ) -> tuple[CliDistributionPlan, list[CliDistributionAssignment], list[dict[str, int | str]]]:
     if not targets:
         raise HTTPException(status_code=400, detail="Please add at least one CLI target before calculating.")
@@ -1024,6 +1026,7 @@ def _build_cli_distribution_plan(
         return _cli_name_key(cli_name) or (cli_id or "").lower() or "unassigned"
 
     assignments: dict[int, str] = {}
+    excluded_ids = {int(value) for value in (excluded_employee_ids or set())}
 
     def grade_key(employee: Employee) -> str:
         grad = (employee.gradation or "").strip().upper()
@@ -1035,8 +1038,15 @@ def _build_cli_distribution_plan(
     eligible = [e for e in employees if normalize_role(e.role) in CLI_DISTRIBUTION_ROLE_ORDER]
     gradation_roles = {"Motorman", "LPG", "LPM", "LPP"}
     non_gradation_roles = {"ALP", "SALP", "LPS/SHT", "SSHT"}
-    gradation_employees = [e for e in eligible if normalize_role(e.role) in gradation_roles]
-    non_gradation_employees = [e for e in eligible if normalize_role(e.role) in non_gradation_roles]
+    fixed_employees = [e for e in eligible if e.id is not None and e.id in excluded_ids]
+    movable_eligible = [e for e in eligible if e.id is None or e.id not in excluded_ids]
+    gradation_employees = [e for e in movable_eligible if normalize_role(e.role) in gradation_roles]
+    non_gradation_employees = [e for e in movable_eligible if normalize_role(e.role) in non_gradation_roles]
+
+    for emp in fixed_employees:
+        if emp.id is None:
+            continue
+        assignments[emp.id] = employee_key(emp)
 
     for grade in ("A", "B", "C", "OTHER"):
         grade_emps = [e for e in gradation_employees if grade_key(e) == grade]
@@ -1153,9 +1163,8 @@ def _build_cli_distribution_plan(
 
     for emp in sorted(eligible, key=lambda e: (employee_key(e), e.name)):
         proposed_key = assignments.get(emp.id)
-        if not proposed_key:
+        if emp.id is None or not proposed_key:
             continue
-        target = target_lookup[proposed_key]
         cli_name, cli_id = _canonicalize_cli_name(
             emp.cli,
             emp.cli_id,
@@ -1163,10 +1172,14 @@ def _build_cli_distribution_plan(
             alias_map=alias_map,
             id_by_name=id_by_name,
         )
+        target = target_lookup.get(proposed_key)
+        proposed_cli_name = target.get("cli_name") if target else (cli_name or "")
+        proposed_cli_id = target.get("cli_id") if target else (cli_id or None)
         grad = grade_key(emp)
-        if grad in ("A", "B", "C"):
-            summary_counts[proposed_key][grad] += 1
-        summary_counts[proposed_key]["total"] += 1
+        if proposed_key in summary_counts:
+            if grad in ("A", "B", "C"):
+                summary_counts[proposed_key][grad] += 1
+            summary_counts[proposed_key]["total"] += 1
         assignment_rows.append(
             CliDistributionAssignment(
                 plan_id=0,
@@ -1176,8 +1189,8 @@ def _build_cli_distribution_plan(
                 gradation=grad,
                 current_cli=cli_name,
                 current_cli_id=cli_id,
-                proposed_cli=target.get("cli_name") or "",
-                proposed_cli_id=target.get("cli_id") or None,
+                proposed_cli=proposed_cli_name or "",
+                proposed_cli_id=proposed_cli_id,
             )
         )
 
@@ -1490,8 +1503,23 @@ def _cli_page_context(
     plan_summary: list[dict[str, int | str]] = []
     plan_current_cli_opts: list[str] = []
     plan_proposed_cli_opts: list[str] = []
+    planner_staff_opts: list[dict[str, str | int]] = []
     plan_created_at = ""
     plan_targets: list[dict[str, str]] = []
+    for employee in sorted(
+        [e for e in employees_all if normalize_role(e.role) in CLI_DISTRIBUTION_ROLE_ORDER],
+        key=lambda e: (e.name.lower(), normalize_role(e.role), (e.cli or "").lower()),
+    ):
+        if employee.id is None:
+            continue
+        planner_staff_opts.append(
+            {
+                "id": employee.id,
+                "name": employee.name,
+                "role": normalize_role(employee.role),
+                "cli": employee.cli or "",
+            }
+        )
     if latest_plan:
         plan_assignments = session.exec(
             select(CliDistributionAssignment).where(CliDistributionAssignment.plan_id == latest_plan.id)
@@ -1541,6 +1569,7 @@ def _cli_page_context(
         "cli_plan_assignments": plan_assignments,
         "cli_plan_current_cli_opts": plan_current_cli_opts,
         "cli_plan_proposed_cli_opts": plan_proposed_cli_opts,
+        "cli_plan_staff_opts": planner_staff_opts,
         "cli_plan_created_at": plan_created_at,
         "cli_plan_targets": plan_targets,
         "cli_manual_targets": manual_targets,
@@ -1650,6 +1679,7 @@ def remove_cli_distribution_target(
 def calculate_cli_distribution(
     exclude_cli: Optional[list[str]] = Form(None),
     retiring_cli: Optional[list[str]] = Form(None),
+    exclude_staff_ids: Optional[list[int]] = Form(None),
     session: Session = Depends(get_session),
 ):
     employees_all = session.exec(select(Employee)).all()
@@ -1674,7 +1704,12 @@ def calculate_cli_distribution(
             url="/cli-distribution-planner?plan_error=Please add at least one CLI target#cli-distribution-planner",
             status_code=303,
         )
-    plan, assignment_rows, summary_rows = _build_cli_distribution_plan(employees_all, targets)
+    excluded_staff_set = {int(value) for value in (exclude_staff_ids or [])}
+    plan, assignment_rows, summary_rows = _build_cli_distribution_plan(
+        employees_all,
+        targets,
+        excluded_employee_ids=excluded_staff_set,
+    )
     session.exec(text("DELETE FROM clidistributionassignment;"))
     session.exec(text("DELETE FROM clidistributionplan;"))
     session.add(plan)
@@ -1686,6 +1721,8 @@ def calculate_cli_distribution(
     notice = "Distribution calculated"
     if excluded_keys:
         notice += f" (excluded {len(excluded_keys)} CLI)"
+    if excluded_staff_set:
+        notice += f" (locked {len(excluded_staff_set)} staff)"
     return RedirectResponse(
         url=f"/cli-distribution-planner?plan_notice={quote(notice)}#cli-distribution-planner", status_code=303
     )
