@@ -1154,12 +1154,14 @@ def _summarize_cli_plan(assignments: list[CliDistributionAssignment]) -> list[di
                 "A": 0,
                 "B": 0,
                 "C": 0,
-                "total": 0,
+                "total_gradation": 0,
+                "total_staff": 0,
             }
+        summary[key]["total_staff"] += 1  # type: ignore[index]
         grad_key = (row.gradation or "").strip().upper()
         if grad_key in ("A", "B", "C"):
             summary[key][grad_key] += 1  # type: ignore[index]
-            summary[key]["total"] += 1  # type: ignore[index]
+            summary[key]["total_gradation"] += 1  # type: ignore[index]
     return [
         summary[key]
         for key in sorted(summary, key=lambda item: (item[0] or "", item[1] or ""))
@@ -1421,6 +1423,8 @@ def _cli_page_context(
     ).first()
     plan_assignments: list[CliDistributionAssignment] = []
     plan_summary: list[dict[str, int | str]] = []
+    plan_current_cli_opts: list[str] = []
+    plan_proposed_cli_opts: list[str] = []
     plan_created_at = ""
     plan_targets: list[dict[str, str]] = []
     if latest_plan:
@@ -1428,6 +1432,20 @@ def _cli_page_context(
             select(CliDistributionAssignment).where(CliDistributionAssignment.plan_id == latest_plan.id)
         ).all()
         plan_summary = _summarize_cli_plan(plan_assignments)
+        plan_current_cli_opts = sorted(
+            {
+                (row.current_cli or "").strip()
+                for row in plan_assignments
+                if (row.current_cli or "").strip()
+            }
+        )
+        plan_proposed_cli_opts = sorted(
+            {
+                (row.proposed_cli or "").strip()
+                for row in plan_assignments
+                if (row.proposed_cli or "").strip()
+            }
+        )
         plan_created_at = latest_plan.created_at.strftime("%d-%m-%Y %I:%M %p")
         try:
             plan_targets = json.loads(latest_plan.targets_json or "[]")
@@ -1456,6 +1474,8 @@ def _cli_page_context(
         "cli_plan_error": cli_plan_error,
         "cli_plan_summary": plan_summary,
         "cli_plan_assignments": plan_assignments,
+        "cli_plan_current_cli_opts": plan_current_cli_opts,
+        "cli_plan_proposed_cli_opts": plan_proposed_cli_opts,
         "cli_plan_created_at": plan_created_at,
         "cli_plan_targets": plan_targets,
         "cli_manual_targets": manual_targets,
@@ -4617,6 +4637,8 @@ def _normalize_import_name(value: object | None) -> str | None:
         return None
     text = text.upper()
     text = re.sub(r"\([^)]*\)", " ", text)
+    # Treat trailing/standalone DSL markers as transport tags, not part of identity.
+    text = re.sub(r"\bDSL\b", " ", text)
     text = re.sub(r"\b(I|II|III|IV|V|VI|VII|VIII|IX|X)\b", " ", text)
     text = re.sub(r"[^A-Z0-9]+", " ", text)
     return " ".join(text.split()) or None
