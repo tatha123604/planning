@@ -273,6 +273,14 @@
                 {% endfor %}
               </select>
             </label>
+            <label>Designation
+              <select id="cli-plan-assignments-role-filter">
+                <option value="">All</option>
+                {% for opt in role_opts %}
+                  <option value="{{ opt }}">{{ opt }}</option>
+                {% endfor %}
+              </select>
+            </label>
           </div>
           <div class="table-wrap">
             <table class="paged" id="cli-plan-assignments-table">
@@ -299,6 +307,15 @@
                   <td>{{ row.proposed_cli_id or '' }}</td>
                 </tr>
                 {% endfor %}
+                <tr class="total-highlight" id="cli-plan-assignments-total">
+                  <td>TOTAL</td>
+                  <td></td>
+                  <td></td>
+                  <td></td>
+                  <td></td>
+                  <td></td>
+                  <td id="cli-plan-assignments-total-count">0</td>
+                </tr>
               </tbody>
             </table>
           </div>
@@ -530,10 +547,44 @@
 
       const assignmentsFilter = document.getElementById('cli-plan-assignments-filter');
       const assignmentsTable = document.getElementById('cli-plan-assignments-table');
+      const assignmentsRoleFilter = document.getElementById('cli-plan-assignments-role-filter');
+      const assignmentsTotalCell = document.getElementById('cli-plan-assignments-total-count');
+
+      const applyAssignmentFilters = () => {
+        if (!assignmentsTable) return;
+        const cliValue = assignmentsFilter?.value || '';
+        const roleValue = assignmentsRoleFilter?.value || '';
+        const rows = Array.from(assignmentsTable.tBodies?.[0]?.rows || []);
+        let visibleCount = 0;
+        rows.forEach((row) => {
+          if (row.id === 'cli-plan-assignments-total') {
+            row.dataset.filterHidden = 'false';
+            return;
+          }
+          const rowCli = (row.dataset.cli || '').trim();
+          const roleCell = row.cells?.[1]?.textContent?.trim() || '';
+          const hide = (cliValue && rowCli !== cliValue) || (roleValue && roleCell !== roleValue);
+          row.dataset.filterHidden = hide ? 'true' : 'false';
+          if (!hide) visibleCount += 1;
+        });
+        if (assignmentsTotalCell) {
+          assignmentsTotalCell.textContent = String(visibleCount);
+        }
+        assignmentsTable.dispatchEvent(new CustomEvent('table-pager:refresh', { detail: { resetPage: true } }));
+      };
+
       if (assignmentsFilter && assignmentsTable) {
         assignmentsFilter.addEventListener('change', () => {
-          applyCliFilter(assignmentsTable, assignmentsFilter.value);
+          applyAssignmentFilters();
         });
+      }
+      if (assignmentsRoleFilter && assignmentsTable) {
+        assignmentsRoleFilter.addEventListener('change', () => {
+          applyAssignmentFilters();
+        });
+      }
+      if (assignmentsTable) {
+        applyAssignmentFilters();
       }
     })();
   </script>
