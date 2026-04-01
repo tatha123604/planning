@@ -137,7 +137,8 @@
                 <th>Gradation A</th>
                 <th>Gradation B</th>
                 <th>Gradation C</th>
-                <th>Total</th>
+                <th>Total/Gradation</th>
+                <th>Total staff under CLI</th>
               </tr>
             </thead>
             <tbody>
@@ -148,7 +149,8 @@
                 <td>{{ row.A }}</td>
                 <td>{{ row.B }}</td>
                 <td>{{ row.C }}</td>
-                <td>{{ row.total }}</td>
+                <td>{{ row.total_gradation }}</td>
+                <td>{{ row.total_staff }}</td>
               </tr>
               {% endfor %}
             </tbody>
@@ -160,10 +162,20 @@
         <h3 class="highlight-yellow">CLI Distribution Summary in Detailed</h3>
         <div class="inline planner-filter-row">
           <label>Current CLI
-            <input id="cli-plan-assignments-current-filter" placeholder="Type current CLI" />
+            <select id="cli-plan-assignments-current-filter">
+              <option value="">All</option>
+              {% for opt in cli_plan_current_cli_opts %}
+                <option value="{{ opt }}">{{ opt }}</option>
+              {% endfor %}
+            </select>
           </label>
           <label>Proposed CLI
-            <input id="cli-plan-assignments-proposed-filter" placeholder="Type proposed CLI" />
+            <select id="cli-plan-assignments-proposed-filter">
+              <option value="">All</option>
+              {% for opt in cli_plan_proposed_cli_opts %}
+                <option value="{{ opt }}">{{ opt }}</option>
+              {% endfor %}
+            </select>
           </label>
           <label>Designation
             <select id="cli-plan-assignments-role-filter">
@@ -280,8 +292,8 @@
           const roleCell = row.cells?.[1]?.textContent?.trim() || '';
           const nameCell = row.cells?.[0]?.textContent?.trim().toLowerCase() || '';
           const hide =
-            (currentValue && !rowCurrentCli.includes(currentValue)) ||
-            (proposedValue && !rowCli.includes(proposedValue)) ||
+            (currentValue && rowCurrentCli !== currentValue) ||
+            (proposedValue && rowCli !== proposedValue) ||
             (roleValue && roleCell !== roleValue);
           const finalHide = hide || (nameValue && !nameCell.includes(nameValue));
           row.dataset.filterHidden = finalHide ? 'true' : 'false';
@@ -294,12 +306,12 @@
       };
 
       if (assignmentsCurrentFilter && assignmentsTable) {
-        assignmentsCurrentFilter.addEventListener('input', () => {
+        assignmentsCurrentFilter.addEventListener('change', () => {
           applyAssignmentFilters();
         });
       }
       if (assignmentsProposedFilter && assignmentsTable) {
-        assignmentsProposedFilter.addEventListener('input', () => {
+        assignmentsProposedFilter.addEventListener('change', () => {
           applyAssignmentFilters();
         });
       }
