@@ -5379,14 +5379,20 @@ def _apply_duplicate_cleanup_plan(
         merged_count = 0
         dob_note = ""
         duplicates_for_dob: list[Employee] = []
+        merged_names: list[str] = []
+        field_updates: list[str] = []
         for duplicate_id in remove_ids:
             duplicate = session.get(Employee, duplicate_id) if duplicate_id is not None else None
             if duplicate is None:
                 continue
             duplicates_for_dob.append(duplicate)
+            merged_names.append(duplicate.name)
             for field_name in merge_fields:
                 if not _employee_has_value(getattr(keeper, field_name)) and _employee_has_value(getattr(duplicate, field_name)):
                     setattr(keeper, field_name, getattr(duplicate, field_name))
+                    pretty_name = field_name.replace("_", " ").title()
+                    pretty_value = _format_sync_value(getattr(duplicate, field_name))
+                    field_updates.append(f"{pretty_name}: {pretty_value}")
             session.delete(duplicate)
             removed += 1
             merged_count += 1
@@ -5397,8 +5403,19 @@ def _apply_duplicate_cleanup_plan(
                 dob_note = f" DOB kept as {chosen_dob.strftime('%d-%m-%Y')}."
 
         if merged_count:
+            merged_text = ", ".join(merged_names) if merged_names else "unknown row"
+            update_text = ""
+            if field_updates:
+                unique_updates = []
+                seen_updates: set[str] = set()
+                for update in field_updates:
+                    if update in seen_updates:
+                        continue
+                    seen_updates.add(update)
+                    unique_updates.append(update)
+                update_text = f" Filled fields -> {'; '.join(unique_updates)}."
             details.append(
-                f"{item['reason']}: kept {keeper.name} ({_format_sync_value(keeper.pf_no)}), removed {merged_count} duplicate row(s).{dob_note}"
+                f"{item['reason']}: kept {keeper.name} ({_format_sync_value(keeper.pf_no)}), merged {merged_text}, removed {merged_count} duplicate row(s).{dob_note}{update_text}"
             )
 
     session.commit()
