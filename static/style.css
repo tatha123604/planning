@@ -907,6 +907,10 @@ ul { padding-left: 18px; margin: 6px 0; }
   min-width: 0;
   margin: 0;
 }
+.planner-reset-button {
+  align-self: flex-start;
+  margin-top: 2px;
+}
 .planner-filter-row input,
 .planner-filter-row select {
   width: 100%;

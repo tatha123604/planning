@@ -100,6 +100,7 @@
             </select>
             <span class="hint">Use Ctrl/Shift to select multiple.</span>
             <div class="hint" id="exclude-cli-selected">Selected: none</div>
+            <button type="button" class="ghost small planner-reset-button" id="exclude-cli-reset">Reset selection</button>
           </label>
           <label>Retiring CLI
             <select name="retiring_cli" multiple size="5">
@@ -109,6 +110,7 @@
             </select>
             <span class="hint">Use Ctrl/Shift to select multiple.</span>
             <div class="hint" id="retiring-cli-selected">Selected: none</div>
+            <button type="button" class="ghost small planner-reset-button" id="retiring-cli-reset">Reset selection</button>
           </label>
           <button type="submit" data-confirm="Calculate new CLI distribution plan?">Calculate Distribution</button>
           {% if cli_plan_created_at %}<span class="hint">Last calculated: {{ cli_plan_created_at }}</span>{% endif %}
@@ -323,16 +325,30 @@
 
       const excludeSelect = document.querySelector('select[name="exclude_cli"]');
       const excludeLabel = document.getElementById('exclude-cli-selected');
+      const excludeReset = document.getElementById('exclude-cli-reset');
       if (excludeSelect && excludeLabel) {
         updateSelectedLabel(excludeSelect, excludeLabel);
         excludeSelect.addEventListener('change', () => updateSelectedLabel(excludeSelect, excludeLabel));
+        excludeReset?.addEventListener('click', () => {
+          Array.from(excludeSelect.options).forEach((option) => {
+            option.selected = false;
+          });
+          updateSelectedLabel(excludeSelect, excludeLabel);
+        });
       }
 
       const retiringSelect = document.querySelector('select[name="retiring_cli"]');
       const retiringLabel = document.getElementById('retiring-cli-selected');
+      const retiringReset = document.getElementById('retiring-cli-reset');
       if (retiringSelect && retiringLabel) {
         updateSelectedLabel(retiringSelect, retiringLabel);
         retiringSelect.addEventListener('change', () => updateSelectedLabel(retiringSelect, retiringLabel));
+        retiringReset?.addEventListener('click', () => {
+          Array.from(retiringSelect.options).forEach((option) => {
+            option.selected = false;
+          });
+          updateSelectedLabel(retiringSelect, retiringLabel);
+        });
       }
     })();
   </script>
