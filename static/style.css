@@ -813,6 +813,10 @@ ul { padding-left: 18px; margin: 6px 0; }
   border-top: 1px solid rgba(255, 230, 102, 0.5);
   border-bottom: 1px solid rgba(255, 230, 102, 0.5);
 }
+
+.highlight-yellow {
+  color: #ffe666;
+}
 .clickable-table tbody tr[data-href] td {
   transition: background 0.16s ease, color 0.16s ease;
 }
