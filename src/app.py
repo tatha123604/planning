@@ -68,7 +68,7 @@ from processor import (
 
 BASE_PATH = Path(__file__).resolve().parent.parent
 GOOGLE_EMPLOYEE_STATION_TABS = ["North", "South", "KOAA", "DDJ", "RHA", "NH", "BT"]
-CLI_DISTRIBUTION_ROLE_ORDER = ["Motorman", "LPG", "LPM", "LPS/SHT", "LPP"]
+CLI_DISTRIBUTION_ROLE_ORDER = ["Motorman", "LPG", "LPM", "LPS/SHT", "LPP", "ALP", "SALP", "SSHT"]
 TEMPLATE_STORE_DIR = DB_PATH.parent / "saved_templates"
 CLI_MATRIX_2026_03_24_CLEANUP_SENTINEL = DB_PATH.parent / ".cli_matrix_cleanup_2026_03_24.done"
 EMPLOYEE_MASTER_SMART_CLEANUP_SENTINEL = DB_PATH.parent / ".employee_master_smart_cleanup_2026_03_27.done"
