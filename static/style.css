@@ -915,6 +915,16 @@ ul { padding-left: 18px; margin: 6px 0; }
 .planner-filter-row select {
   width: 100%;
 }
+.card select[multiple] option:checked {
+  background: linear-gradient(135deg, rgba(255, 230, 102, 0.92), rgba(255, 194, 46, 0.88));
+  color: #3f2a00;
+  font-weight: 700;
+}
+.card select[multiple] option:hover,
+.card select[multiple] option:focus {
+  background: linear-gradient(135deg, rgba(255, 230, 102, 0.72), rgba(255, 194, 46, 0.64));
+  color: #2e1c00;
+}
 .cleanup-group-search,
 .cleanup-group-name-list {
   width: 100%;
