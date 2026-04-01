@@ -4637,11 +4637,60 @@ def _normalize_import_name(value: object | None) -> str | None:
         return None
     text = text.upper()
     text = re.sub(r"\([^)]*\)", " ", text)
-    # Treat trailing/standalone DSL markers as transport tags, not part of identity.
+    text = re.sub(r"\b(I|II|III|IV|V|VI|VII|VIII|IX|X)\b", " ", text)
+    text = re.sub(r"[^A-Z0-9]+", " ", text)
+    return " ".join(text.split()) or None
+
+
+def _strip_dsl_name_marker(value: object | None) -> str | None:
+    text = _clean_import_text(value)
+    if text is None:
+        return None
+    text = text.upper()
+    text = re.sub(r"\([^)]*\)", " ", text)
     text = re.sub(r"\bDSL\b", " ", text)
     text = re.sub(r"\b(I|II|III|IV|V|VI|VII|VIII|IX|X)\b", " ", text)
     text = re.sub(r"[^A-Z0-9]+", " ", text)
     return " ".join(text.split()) or None
+
+
+def _has_dsl_name_marker(value: object | None) -> bool:
+    text = _clean_import_text(value)
+    if text is None:
+        return False
+    return bool(re.search(r"(^|[^A-Z0-9])DSL([^A-Z0-9]|$)", text.upper()))
+
+
+def _dsl_name_identity_match(
+    first_name: object | None,
+    second_name: object | None,
+    *,
+    first_emp_no: object | None,
+    second_emp_no: object | None,
+    first_dob: date | None,
+    second_dob: date | None,
+) -> bool:
+    first_base = _strip_dsl_name_marker(first_name)
+    second_base = _strip_dsl_name_marker(second_name)
+    if not first_base or first_base != second_base:
+        return False
+    if not (_has_dsl_name_marker(first_name) or _has_dsl_name_marker(second_name)):
+        return False
+
+    first_emp = _clean_import_text(first_emp_no)
+    second_emp = _clean_import_text(second_emp_no)
+    if first_emp and second_emp and first_emp == second_emp:
+        return True
+
+    first_last5 = _emp_no_last5(first_emp)
+    second_last5 = _emp_no_last5(second_emp)
+    if first_last5 and second_last5 and first_last5 == second_last5:
+        return True
+
+    if first_dob and second_dob and first_dob == second_dob:
+        return True
+
+    return False
 
 
 def _emp_no_last5(value: object | None) -> str | None:
@@ -4692,6 +4741,24 @@ def _find_employee_master_merge_candidate(
             candidate = candidates[0]
             candidate_pf = _clean_import_text(candidate.pf_no)
             if candidate_pf and target_last5 and _emp_no_last5(candidate_pf) == target_last5:
+                return candidate
+
+    if name:
+        dsl_candidates = [
+            employee
+            for employee in employees
+            if _dsl_name_identity_match(
+                name,
+                employee.name,
+                first_emp_no=emp_no,
+                second_emp_no=employee.pf_no,
+                first_dob=dob,
+                second_dob=employee.dob,
+            )
+        ]
+        if len(dsl_candidates) == 1:
+            candidate = dsl_candidates[0]
+            if not target_role or normalize_role(candidate.role) == target_role:
                 return candidate
 
     return None
@@ -5664,6 +5731,22 @@ def _cleanup_employee_master_duplicates_for_record(
         if target_name and target_role and candidate_name == target_name and normalize_role(employee.role) == target_role:
             if candidate_pf and target_last5 and candidate_last5 == target_last5:
                 duplicates.append((employee, "Same Name + Designation"))
+                continue
+
+        if (
+            target_role
+            and normalize_role(employee.role) == target_role
+            and same_working_at
+            and _dsl_name_identity_match(
+                name,
+                employee.name,
+                first_emp_no=emp_no,
+                second_emp_no=candidate_pf,
+                first_dob=dob,
+                second_dob=employee.dob,
+            )
+        ):
+            duplicates.append((employee, "Same Name (DSL variant) + EMP/DOB match"))
 
     for duplicate, reason in duplicates:
         for field_name in merge_fields:
