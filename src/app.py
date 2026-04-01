@@ -76,6 +76,7 @@ EMPLOYEE_MASTER_SMART_CLEANUP_SENTINEL = DB_PATH.parent / ".employee_master_smar
 EMPLOYEE_MASTER_KEEP_BOTH_FILE = DB_PATH.parent / "employee_master_keep_both.json"
 EMPLOYEE_MASTER_SOURCE_SNAPSHOT_FILE = DB_PATH.parent / "employee_master_source_snapshot.json"
 EMPLOYEE_MASTER_EXTRA_REVIEW_KEEP_FILE = DB_PATH.parent / "employee_master_extra_review_keep.json"
+EMPLOYEE_MASTER_CLEANUP_LOG_FILE = DB_PATH.parent / "employee_master_cleanup_log.json"
 LI_GRADING_METADATA_FILE = DB_PATH.parent / "li_grading_metadata.json"
 EMPLOYEE_SYNC_BACKUP_DIR = DB_PATH.parent / "employee_sync_backups"
 GOOGLE_SHEETS_READONLY_SCOPE = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
@@ -2175,6 +2176,8 @@ def _uploads_context(
     cleanup_plan: Optional[list[dict[str, object]]] = None,
     cleanup_conflicts: Optional[list[dict[str, object]]] = None,
     cleanup_details: Optional[list[str]] = None,
+    cleanup_confirm_plan: Optional[list[dict[str, object]]] = None,
+    cleanup_confirm_password: str = "",
     extra_review_notice: str = "",
     extra_review_error: Optional[str] = None,
     extra_review_summary: Optional[dict[str, object]] = None,
@@ -2191,6 +2194,7 @@ def _uploads_context(
         except Exception:
             snapshot_saved_at = ""
     cleanup_groups = _group_cleanup_items(cleanup_plan or [], cleanup_conflicts or [])
+    saved_cleanup_details, saved_cleanup_at = _load_employee_master_cleanup_log()
     return {
         "request": request,
         "active_page": "uploads",
@@ -2212,7 +2216,10 @@ def _uploads_context(
         "cleanup_plan": cleanup_plan or [],
         "cleanup_conflicts": cleanup_conflicts or [],
         "cleanup_groups": cleanup_groups,
-        "cleanup_details": cleanup_details or [],
+        "cleanup_details": cleanup_details or saved_cleanup_details,
+        "cleanup_saved_at": saved_cleanup_at,
+        "cleanup_confirm_plan": cleanup_confirm_plan or [],
+        "cleanup_confirm_password": cleanup_confirm_password,
         "extra_review_notice": extra_review_notice,
         "extra_review_error": extra_review_error,
         "extra_review_summary": extra_review_summary or {},
@@ -2248,6 +2255,50 @@ def preview_employee_master_cleanup(request: Request, session: Session = Depends
 
 
 @app.post("/uploads/employee-master-cleanup-apply")
+def confirm_employee_master_cleanup(
+    request: Request,
+    action_password: str = Form(...),
+    session: Session = Depends(get_session),
+):
+    try:
+        _validate_sensitive_action_password(action_password)
+        plan, conflicts, summary = _build_combined_cleanup_view(session)
+        if not plan:
+            notice = "No cleanup candidate found"
+            return templates.TemplateResponse(
+                "uploads.html",
+                _uploads_context(
+                    request,
+                    cleanup_notice=notice,
+                    cleanup_summary=summary,
+                    cleanup_conflicts=conflicts,
+                ),
+                status_code=200,
+            )
+
+        confirm_notice = "Review the row details below, then choose Proceed Yes or No."
+        return templates.TemplateResponse(
+            "uploads.html",
+            _uploads_context(
+                request,
+                cleanup_notice=confirm_notice,
+                cleanup_summary=summary,
+                cleanup_plan=plan,
+                cleanup_conflicts=conflicts,
+                cleanup_confirm_plan=plan,
+                cleanup_confirm_password=action_password,
+            ),
+        )
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "Smart cleanup failed."
+        return templates.TemplateResponse(
+            "uploads.html",
+            _uploads_context(request, cleanup_error=detail),
+            status_code=exc.status_code,
+        )
+
+
+@app.post("/uploads/employee-master-cleanup-proceed")
 def apply_employee_master_cleanup(
     request: Request,
     action_password: str = Form(...),
@@ -2271,6 +2322,7 @@ def apply_employee_master_cleanup(
 
         cleanup_details: list[str] = []
         removed = _apply_duplicate_cleanup_plan(session, plan, cleanup_details)
+        _save_employee_master_cleanup_log(cleanup_details)
         notice = f"Smart cleanup complete: {removed} duplicate row(s) deleted."
         return templates.TemplateResponse(
             "uploads.html",
@@ -5111,6 +5163,33 @@ def _load_keep_both_decisions() -> set[str]:
 
 def _save_keep_both_decisions(keys: set[str]) -> None:
     _save_string_set(EMPLOYEE_MASTER_KEEP_BOTH_FILE, keys)
+
+
+def _save_employee_master_cleanup_log(details: list[str]) -> None:
+    payload = {
+        "saved_at": datetime.now().strftime("%d-%m-%Y %I:%M %p"),
+        "details": details,
+    }
+    EMPLOYEE_MASTER_CLEANUP_LOG_FILE.write_text(
+        json.dumps(payload, ensure_ascii=True, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _load_employee_master_cleanup_log() -> tuple[list[str], str]:
+    if not EMPLOYEE_MASTER_CLEANUP_LOG_FILE.exists():
+        return [], ""
+    try:
+        raw = json.loads(EMPLOYEE_MASTER_CLEANUP_LOG_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return [], ""
+    if not isinstance(raw, dict):
+        return [], ""
+    details = raw.get("details")
+    saved_at = str(raw.get("saved_at") or "")
+    if not isinstance(details, list):
+        return [], saved_at
+    return [str(item) for item in details if str(item).strip()], saved_at
 
 
 def _review_group_key(reason: str, keep_id: int | None, review_ids: list[int]) -> str:

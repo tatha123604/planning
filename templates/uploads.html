@@ -180,13 +180,92 @@
             <form method="post" action="/uploads/employee-master-cleanup-preview">
               <button type="submit">Preview Smart Cleanup</button>
             </form>
-            <form method="post" action="/uploads/employee-master-cleanup-apply" class="cleanup-apply-form sensitive-inline-form" data-password-gated-form data-password-gated-code="11111" onsubmit="return confirm('Apply smart cleanup and delete the duplicate rows shown in the preview?');">
+            <form method="post" action="/uploads/employee-master-cleanup-apply" class="cleanup-apply-form sensitive-inline-form" data-password-gated-form data-password-gated-code="11111">
               <label class="site-password-label cleanup-password-label">Action Code
                 <input class="site-password-input cleanup-password-input" type="password" name="action_password" autocomplete="current-password" required data-password-gated-input />
               </label>
               <button type="submit" class="secondary-action" data-password-gated-button disabled>Auto correct and Push</button>
             </form>
           </div>
+
+          {% if cleanup_confirm_plan %}
+          <div class="card" style="margin-top: 14px; border-color: rgba(255, 214, 92, 0.38);">
+            <p class="hint warning-text"><strong>Final cleanup review</strong></p>
+            <p class="hint">Please review these rows before applying smart cleanup.</p>
+            {% for item in cleanup_confirm_plan %}
+            <details class="collapsible-card" {% if loop.first %}open{% endif %}>
+              <summary>{{ item.reason }} - {{ item.keep.name }} + {{ item.remove|length }} duplicate row(s)</summary>
+              <div class="table-wrap">
+                <table class="table report-table">
+                  <thead>
+                    <tr>
+                      <th>Row ID</th>
+                      <th>Action</th>
+                      <th>Name</th>
+                      <th>Designation</th>
+                      <th>DOB</th>
+                      <th>Hire Date</th>
+                      <th>Retirement Date</th>
+                      <th>EMP NO</th>
+                      <th>Working At</th>
+                      <th>HRMS ID</th>
+                      <th>CREW ID</th>
+                      <th>Category</th>
+                      <th>Gradation</th>
+                      <th>CLI</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr class="table-paged-active-odd">
+                      <td>{{ item.keep.id }}</td>
+                      <td>KEEP</td>
+                      <td>{{ item.keep.name }}</td>
+                      <td>{{ item.keep.designation }}</td>
+                      <td>{{ item.keep.dob }}</td>
+                      <td>{{ item.keep.hire_date }}</td>
+                      <td>{{ item.keep.retirement_date }}</td>
+                      <td>{{ item.keep.emp_no }}</td>
+                      <td>{% if item.keep.working_at %}<span class="designation-pill">{{ item.keep.working_at }}</span>{% endif %}</td>
+                      <td>{{ item.keep.hrms }}</td>
+                      <td>{{ item.keep.crew_id }}</td>
+                      <td>{{ item.keep.category }}</td>
+                      <td>{{ item.keep.gradation }}</td>
+                      <td>{{ item.keep.cli }}</td>
+                    </tr>
+                    {% for row in item.remove %}
+                    <tr>
+                      <td>{{ row.id }}</td>
+                      <td>DELETE</td>
+                      <td>{{ row.name }}</td>
+                      <td>{{ row.designation }}</td>
+                      <td>{{ row.dob }}</td>
+                      <td>{{ row.hire_date }}</td>
+                      <td>{{ row.retirement_date }}</td>
+                      <td>{{ row.emp_no }}</td>
+                      <td>{% if row.working_at %}<span class="designation-pill">{{ row.working_at }}</span>{% endif %}</td>
+                      <td>{{ row.hrms }}</td>
+                      <td>{{ row.crew_id }}</td>
+                      <td>{{ row.category }}</td>
+                      <td>{{ row.gradation }}</td>
+                      <td>{{ row.cli }}</td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </details>
+            {% endfor %}
+            <div class="button-row" style="margin-top: 12px;">
+              <form method="post" action="/uploads/employee-master-cleanup-proceed" onsubmit="return confirm('Proceed with smart cleanup for the reviewed rows?');">
+                <input type="hidden" name="action_password" value="{{ cleanup_confirm_password }}" />
+                <button type="submit">Proceed Yes</button>
+              </form>
+              <form method="post" action="/uploads/employee-master-cleanup-preview">
+                <button type="submit" class="secondary-action">Proceed No</button>
+              </form>
+            </div>
+          </div>
+          {% endif %}
 
           {% if cleanup_groups %}
           <p class="hint warning-text"><strong>Grouped by cleanup reason</strong></p>
@@ -436,6 +515,9 @@
 
 {% if cleanup_details %}
           <p class="hint success-text"><strong>Last auto cleanup actions</strong></p>
+          {% if cleanup_saved_at %}
+          <p class="hint">Saved on {{ cleanup_saved_at }}</p>
+          {% endif %}
           <ul class="sync-warning-list">
             {% for item in cleanup_details %}
             <li>{{ item }}</li>
