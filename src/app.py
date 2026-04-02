@@ -1369,6 +1369,17 @@ def logout():
     return response
 
 
+def _safe_return_to(value: str | None, fallback: str = "/employees") -> str:
+    target = (value or "").strip()
+    if not target:
+        return fallback
+    if not target.startswith("/"):
+        return fallback
+    if target.startswith("//"):
+        return fallback
+    return target
+
+
 @app.get("/")
 def index(
     request: Request,
@@ -1940,6 +1951,10 @@ def employees_page(
             "sync_backup_label": _latest_employee_sync_backup()[1],
             "google_sync_ready": _google_sheet_sync_ready(),
             "google_sync_range": ", ".join(GOOGLE_EMPLOYEE_STATION_TABS),
+            "employee_return_to": quote(
+                f"{request.url.path}{('?' + request.url.query) if request.url.query else ''}#employees-card",
+                safe="/",
+            ),
         },
     )
 
@@ -2072,6 +2087,10 @@ def edit_employee_page(emp_id: int, request: Request, session: Session = Depends
     employee = session.get(Employee, emp_id)
     if not employee:
         raise HTTPException(status_code=404, detail="Employee not found")
+    return_to = _safe_return_to(
+        request.query_params.get("return_to") or request.headers.get("referer"),
+        fallback="/employees",
+    )
     return templates.TemplateResponse(
         "employees_edit.html",
         {
@@ -2079,6 +2098,7 @@ def edit_employee_page(emp_id: int, request: Request, session: Session = Depends
             "employee": employee,
             "role_order": ROLE_ORDER,
             "active_page": "employees",
+            "return_to": return_to,
         },
     )
 
@@ -2086,6 +2106,7 @@ def edit_employee_page(emp_id: int, request: Request, session: Session = Depends
 @app.post("/employees/{emp_id}")
 def update_employee(
     emp_id: int,
+    return_to: Optional[str] = Form(None),
     name: str = Form(...),
     role: str = Form(...),
     retirement_date: str = Form(...),
@@ -2141,7 +2162,7 @@ def update_employee(
 
     session.add(employee)
     session.commit()
-    return RedirectResponse("/", status_code=303)
+    return RedirectResponse(_safe_return_to(return_to, fallback="/employees"), status_code=303)
 
 
 @app.post("/employees/{emp_id}/delete")

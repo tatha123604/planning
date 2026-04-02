@@ -223,7 +223,7 @@
                   <td>{% if e.dob %}<span class="employee-date-pill employee-date-pill-birth">{{ e.dob | dmy }}</span>{% endif %}</td>
                   <td class="working-at-col">{% if e.working_at %}<span class="designation-pill">{{ e.working_at }}</span>{% endif %}</td>
                   <td class="actions-cell actions-col">
-                    <a class="ghost small employee-edit-link" href="/employees/{{ e.id }}" data-employee-name="{{ e.name }}">Edit</a>
+                    <a class="ghost small employee-edit-link" href="/employees/{{ e.id }}?return_to={{ employee_return_to }}" data-employee-name="{{ e.name }}">Edit</a>
                     <form method="post" action="/employees/{{ e.id }}/delete" class="employee-delete-form" data-employee-name="{{ e.name }}" style="display:inline;">
                       <button type="submit" class="danger small">Delete</button>
                     </form>

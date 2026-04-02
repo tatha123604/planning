@@ -44,6 +44,7 @@
 
       <section class="card">
         <form method="post" action="/employees/{{ employee.id }}">
+          <input type="hidden" name="return_to" value="{{ return_to }}" />
           <div class="grid">
             <label>Name <input name="name" value="{{ employee.name }}" required /></label>
             <label>Designation
@@ -81,7 +82,7 @@
           </div>
           <div class="actions">
             <button type="submit">Save</button>
-            <a class="ghost" href="/employees">Cancel</a>
+            <a class="ghost" href="{{ return_to }}">Cancel</a>
           </div>
         </form>
       </section>
