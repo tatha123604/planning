@@ -327,8 +327,19 @@
         employeesSearchInput.addEventListener('keydown', (event) => {
           if (event.key === 'Enter') {
             event.preventDefault();
-      applyLiveSearch();
-    }
+            applyLiveSearch();
+          }
+        });
+        employeesSearchInput.addEventListener('compositionstart', () => {
+          composing = true;
+        });
+        employeesSearchInput.addEventListener('compositionend', () => {
+          composing = false;
+          applyLiveSearch();
+        });
+
+        applyLiveSearch();
+      }
 
       if (employeesTable && columnButton && columnPanel) {
         const storageKey = 'employeesColumnVisibility';
@@ -391,17 +402,6 @@
             columnPanel.hidden = true;
           }
         });
-      }
-        });
-        employeesSearchInput.addEventListener('compositionstart', () => {
-          composing = true;
-        });
-        employeesSearchInput.addEventListener('compositionend', () => {
-          composing = false;
-          applyLiveSearch();
-        });
-
-        applyLiveSearch();
       }
 
       document.querySelectorAll('.employee-edit-link').forEach((link) => {
