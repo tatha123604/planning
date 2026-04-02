@@ -1915,6 +1915,7 @@ def employees_page(
     prev_url = ""
     next_url = ""
 
+    employee_return_to_raw = f"{request.url.path}{('?' + request.url.query) if request.url.query else ''}#employees-card"
     return templates.TemplateResponse(
         "employees.html",
         {
@@ -1951,10 +1952,8 @@ def employees_page(
             "sync_backup_label": _latest_employee_sync_backup()[1],
             "google_sync_ready": _google_sheet_sync_ready(),
             "google_sync_range": ", ".join(GOOGLE_EMPLOYEE_STATION_TABS),
-            "employee_return_to": quote(
-                f"{request.url.path}{('?' + request.url.query) if request.url.query else ''}#employees-card",
-                safe="/",
-            ),
+            "employee_return_to": employee_return_to_raw,
+            "employee_return_to_query": quote(employee_return_to_raw, safe="/"),
         },
     )
 
