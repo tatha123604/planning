@@ -225,6 +225,7 @@
                   <td class="actions-cell actions-col">
                     <a class="ghost small employee-edit-link" href="/employees/{{ e.id }}?return_to={{ employee_return_to }}" data-employee-name="{{ e.name }}">Edit</a>
                     <form method="post" action="/employees/{{ e.id }}/delete" class="employee-delete-form" data-employee-name="{{ e.name }}" style="display:inline;">
+                      <input type="hidden" name="return_to" value="{{ employee_return_to }}" />
                       <button type="submit" class="danger small">Delete</button>
                     </form>
                   </td>

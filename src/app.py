@@ -2166,13 +2166,17 @@ def update_employee(
 
 
 @app.post("/employees/{emp_id}/delete")
-def delete_employee(emp_id: int, session: Session = Depends(get_session)):
+def delete_employee(
+    emp_id: int,
+    return_to: Optional[str] = Form(None),
+    session: Session = Depends(get_session),
+):
     employee = session.get(Employee, emp_id)
     if not employee:
         raise HTTPException(status_code=404, detail="Employee not found")
     session.delete(employee)
     session.commit()
-    return RedirectResponse("/", status_code=303)
+    return RedirectResponse(_safe_return_to(return_to, fallback="/employees"), status_code=303)
 
 
 def _uploads_context(
