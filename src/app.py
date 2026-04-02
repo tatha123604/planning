@@ -1834,9 +1834,6 @@ def employees_page(
                 e
                 for e in employees
                 if q_lower in e.name.lower()
-                or q_lower in e.role.lower()
-                or (e.cli and q_lower in _employee_cli_label(e).lower())
-                or (e.gradation and q_lower in e.gradation.lower())
             ]
         if cli:
             cli_lower = cli.strip().lower()

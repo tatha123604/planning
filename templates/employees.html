@@ -121,7 +121,7 @@
         <details {% if employees_open %}open{% endif %}>
           <summary>Employees</summary>
           <form class="inline" id="employees-filter-form" method="get" action="/employees#employees-card" data-no-confirm="true">
-            <label>Search <input id="employees-search-input" type="search" name="q" value="{{ query }}" placeholder="Name or designation" autocomplete="off" /></label>
+            <label>Name Search <input id="employees-search-input" type="search" name="q" value="{{ query }}" placeholder="Search employee name" autocomplete="off" /></label>
             <label>Designation
               <select name="role">
                 <option value="">All</option>
@@ -288,10 +288,8 @@
 
         const rowSearchText = (row) => {
           if (!row.dataset.searchText) {
-            const searchCells = Array.from(row.cells || []).slice(0, -1);
-            row.dataset.searchText = normalizeText(
-              searchCells.map((cell) => cell.textContent || '').join(' ')
-            );
+            const nameCell = row.cells?.[1];
+            row.dataset.searchText = normalizeText(nameCell?.textContent || '');
           }
           return row.dataset.searchText;
         };
