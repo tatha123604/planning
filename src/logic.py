@@ -28,6 +28,7 @@ def normalize_role(role: str | None) -> str | None:
         "LPS(SHUNTER)": "LPS/SHT",
         "LPS/SHT": "LPS/SHT",
         "MOTORMAN": "Motorman",
+        "MTM": "Motorman",
         "MOTOR MAN": "Motorman",
         "M/MAN": "Motorman",
         "MMAN": "Motorman",
