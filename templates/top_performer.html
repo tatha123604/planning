@@ -73,26 +73,6 @@
         </form>
       </section>
 
-      <section class="card">
-        <h2>Comparison Between Two Months</h2>
-        <form method="post" action="/top-performer/compare" enctype="multipart/form-data" class="stack-form" data-no-confirm="true">
-          <div class="grid compact-grid">
-            <label>Previous Month File
-              <input type="file" name="previous_file" accept=".xlsx,.csv" required />
-            </label>
-            <label>Current Month File
-              <input type="file" name="current_file" accept=".xlsx,.csv" required />
-            </label>
-            <label>Minimum Runs
-              <input type="number" name="minimum_runs" min="0" step="1" value="{{ minimum_runs or 3 }}" required />
-            </label>
-          </div>
-          <div class="actions">
-            <button type="submit">Compare Two Months</button>
-          </div>
-        </form>
-      </section>
-
       {% if summary %}
       <section class="card">
         <h2>Generation Summary</h2>
@@ -101,63 +81,6 @@
           <div class="summary-chip">Rows read: {{ summary.overall_rows or 0 }}</div>
           <div class="summary-chip">Eligible rows: {{ summary.overall_eligible or 0 }}</div>
           <div class="summary-chip">Minimum runs: {{ minimum_runs or 0 }}</div>
-        </div>
-      </section>
-      {% endif %}
-
-      {% if comparison and comparison.get('rows') is not none %}
-      <section class="card">
-        <div class="card-head-inline">
-          <h2>Monthly Comparison Output</h2>
-          <form method="post" action="/top-performer/comparison/reset" class="inline">
-            <button type="submit" class="ghost small" data-confirm-label="reset monthly comparison output">Reset</button>
-          </form>
-        </div>
-        <div class="summary-chip-row">
-          <div class="summary-chip">Previous file: {{ comparison.get('previous_filename', '') }}</div>
-          <div class="summary-chip">Current file: {{ comparison.get('current_filename', '') }}</div>
-          {% if comparison.get('previous_report_date') %}
-          <div class="summary-chip">Previous date: {{ comparison.get('previous_report_date') }}</div>
-          {% endif %}
-          {% if comparison.get('current_report_date') %}
-          <div class="summary-chip">Current date: {{ comparison.get('current_report_date') }}</div>
-          {% endif %}
-          <div class="summary-chip">Previous eligible: {{ comparison.get('previous_eligible_count', 0) }}</div>
-          <div class="summary-chip">Current eligible: {{ comparison.get('current_eligible_count', 0) }}</div>
-          <div class="summary-chip">Matched crew: {{ comparison.get('matched_count', 0) }}</div>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Crew Name</th>
-                <th>Previous Runs</th>
-                <th>Current Runs</th>
-                <th>Previous Score</th>
-                <th>Current Score</th>
-                <th>Score Change</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for row in comparison.get('rows', []) %}
-              <tr>
-                <td><span class="employee-data-pill employee-data-pill-name">{{ row.get('crew_name', '') }}</span></td>
-                <td>{{ row.get('previous_runs', '') }}</td>
-                <td>{{ row.get('current_runs', '') }}</td>
-                <td>{{ row.get('previous_score', '') }}</td>
-                <td>{{ row.get('current_score', '') }}</td>
-                <td>{{ row.get('score_change', '') }}</td>
-                <td>{{ row.get('status', '') }}</td>
-              </tr>
-              {% endfor %}
-              {% if not comparison.get('rows') %}
-              <tr>
-                <td colspan="7">No comparison rows found for the current minimum runs value.</td>
-              </tr>
-              {% endif %}
-            </tbody>
-          </table>
         </div>
       </section>
       {% endif %}
@@ -221,6 +144,83 @@
         </div>
       </section>
       {% endfor %}
+
+      <section class="card">
+        <h2>Comparison Between Two Months</h2>
+        <form method="post" action="/top-performer/compare" enctype="multipart/form-data" class="stack-form" data-no-confirm="true">
+          <div class="grid compact-grid">
+            <label>Previous Month File
+              <input type="file" name="previous_file" accept=".xlsx,.csv" required />
+            </label>
+            <label>Current Month File
+              <input type="file" name="current_file" accept=".xlsx,.csv" required />
+            </label>
+            <label>Minimum Runs
+              <input type="number" name="minimum_runs" min="0" step="1" value="{{ minimum_runs or 3 }}" required />
+            </label>
+          </div>
+          <div class="actions">
+            <button type="submit">Compare Two Months</button>
+          </div>
+        </form>
+      </section>
+
+      {% if comparison and comparison.get('rows') is not none %}
+      <section class="card">
+        <div class="card-head-inline">
+          <h2>Monthly Comparison Output</h2>
+          <form method="post" action="/top-performer/comparison/reset" class="inline">
+            <button type="submit" class="ghost small" data-confirm-label="reset monthly comparison output">Reset</button>
+          </form>
+        </div>
+        <div class="summary-chip-row">
+          <div class="summary-chip">Previous file: {{ comparison.get('previous_filename', '') }}</div>
+          <div class="summary-chip">Current file: {{ comparison.get('current_filename', '') }}</div>
+          {% if comparison.get('previous_report_date') %}
+          <div class="summary-chip">Previous date: {{ comparison.get('previous_report_date') }}</div>
+          {% endif %}
+          {% if comparison.get('current_report_date') %}
+          <div class="summary-chip">Current date: {{ comparison.get('current_report_date') }}</div>
+          {% endif %}
+          <div class="summary-chip">Previous eligible: {{ comparison.get('previous_eligible_count', 0) }}</div>
+          <div class="summary-chip">Current eligible: {{ comparison.get('current_eligible_count', 0) }}</div>
+          <div class="summary-chip">Matched crew: {{ comparison.get('matched_count', 0) }}</div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Crew Name</th>
+                <th>Previous Runs</th>
+                <th>Current Runs</th>
+                <th>Previous Score</th>
+                <th>Current Score</th>
+                <th>Score Change</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in comparison.get('rows', []) %}
+              <tr>
+                <td><span class="employee-data-pill employee-data-pill-name">{{ row.get('crew_name', '') }}</span></td>
+                <td>{{ row.get('previous_runs', '') }}</td>
+                <td>{{ row.get('current_runs', '') }}</td>
+                <td>{{ row.get('previous_score', '') }}</td>
+                <td>{{ row.get('current_score', '') }}</td>
+                <td>{{ row.get('score_change', '') }}</td>
+                <td>{{ row.get('status', '') }}</td>
+              </tr>
+              {% endfor %}
+              {% if not comparison.get('rows') %}
+              <tr>
+                <td colspan="7">No comparison rows found for the current minimum runs value.</td>
+              </tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      {% endif %}
     </main>
   </div>
   <script src="/static/sidebar-toggle.js"></script>
