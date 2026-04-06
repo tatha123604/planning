@@ -197,8 +197,11 @@
                 <td>
                   <form method="post" action="/top-performer/photo" enctype="multipart/form-data" class="top-performer-photo-form">
                     <input type="hidden" name="crew_name" value="{{ row.crew_name }}" />
+                    {% if row.photo_url %}
+                    <img class="top-performer-table-photo" src="{{ row.photo_url }}" alt="{{ row.crew_name }}" />
+                    {% endif %}
                     <input type="file" name="photo_file" accept=".png,.jpg,.jpeg,.webp" required />
-              <button type="submit" class="ghost small" data-confirm-label="save this employee photo to the performer card">Save Photo</button>
+                    <button type="submit" class="ghost small" data-confirm-label="save this employee photo to the performer card">Save Photo</button>
                   </form>
                 </td>
                 <td>{{ row.runs }}</td>
