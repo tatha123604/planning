@@ -102,7 +102,7 @@
           <div class="summary-chip">Top rows: {{ result.top_rows | length }}</div>
         </div>
         <div class="table-wrap">
-          <table>
+          <table class="paged">
             <thead>
               <tr>
                 <th>Rank</th>
@@ -187,7 +187,7 @@
           <div class="summary-chip">Matched crew: {{ comparison.get('matched_count', 0) }}</div>
         </div>
         <div class="table-wrap">
-          <table>
+          <table class="paged">
             <thead>
               <tr>
                 <th>Crew Name</th>
@@ -224,6 +224,7 @@
     </main>
   </div>
   <script src="/static/sidebar-toggle.js"></script>
+  <script src="/static/table-pager.js"></script>
   <script src="/static/table-export.js"></script>
   <script src="/static/button-confirm.js"></script>
 </body>
