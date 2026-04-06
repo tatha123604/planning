@@ -1260,10 +1260,12 @@ ul { padding-left: 18px; margin: 6px 0; }
   inset: 0;
   background-image:
     radial-gradient(circle, rgba(255,255,255,0.55) 0 1px, transparent 1.5px),
-    radial-gradient(circle, rgba(255,255,255,0.38) 0 1px, transparent 1.5px);
-  background-size: 120px 120px, 170px 170px;
-  background-position: 20px 30px, 60px 80px;
-  opacity: 0.16;
+    radial-gradient(circle, rgba(255,255,255,0.38) 0 1px, transparent 1.5px),
+    radial-gradient(circle, rgba(255,255,255,0.75) 0 1.5px, transparent 2px),
+    radial-gradient(circle, rgba(255,255,255,0.28) 0 1px, transparent 1.5px);
+  background-size: 120px 120px, 170px 170px, 90px 90px, 210px 210px;
+  background-position: 20px 30px, 60px 80px, 10px 12px, 90px 40px;
+  opacity: 0.24;
   pointer-events: none;
 }
 .top-performer-poster-head {
