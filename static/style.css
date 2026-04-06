@@ -1294,6 +1294,8 @@ ul { padding-left: 18px; margin: 6px 0; }
 .top-performer-poster-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-flow: column;
+  grid-template-rows: repeat(5, auto);
   gap: 12px 14px;
   position: relative;
   z-index: 1;
