@@ -3124,7 +3124,7 @@ def _build_top_performer_comparison(
         "previous_report_date": previous_report_date,
         "current_report_date": current_report_date,
         "rows": comparison_rows,
-        "matched_count": sum(1 for row in comparison_rows if row["previous_rank"] != "-"),
+        "matched_count": sum(1 for row in comparison_rows if row["status"] == "Matched"),
         "previous_eligible_count": len(previous_eligible),
         "current_eligible_count": len(current_eligible),
     }, warnings
