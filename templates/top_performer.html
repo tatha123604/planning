@@ -93,12 +93,32 @@
       <section class="card">
         <div class="card-head-inline">
           <h2>{{ result.title or result.filename }}</h2>
-          <form method="post" action="/top-performer/reset" class="inline">
-            <button type="submit" class="ghost small" data-confirm-label="reset top performer results">Reset</button>
-          </form>
+          <div class="actions">
+            <button
+              type="button"
+              class="ghost small top-performer-poster-download"
+              data-export-format="jpeg"
+              data-export-target="top-performer-poster-{{ loop.index }}"
+              data-export-title="{{ result.poster_title or 'BEST PERFORMERS' }}"
+            >
+              Download JPEG
+            </button>
+            <button
+              type="button"
+              class="ghost small top-performer-poster-download"
+              data-export-format="pdf"
+              data-export-target="top-performer-poster-{{ loop.index }}"
+              data-export-title="{{ result.poster_title or 'BEST PERFORMERS' }}"
+            >
+              Download PDF
+            </button>
+            <form method="post" action="/top-performer/reset" class="inline">
+              <button type="submit" class="ghost small" data-confirm-label="reset top performer results">Reset</button>
+            </form>
+          </div>
         </div>
         {% if result.top_rows %}
-        <section class="top-performer-poster">
+        <section class="top-performer-poster" id="top-performer-poster-{{ loop.index }}">
           <div class="top-performer-poster-head">
             <h3>{{ result.poster_title or 'BEST PERFORMERS' }}</h3>
             <p>Top Ten Ranked Crew</p>
@@ -132,7 +152,7 @@
           </div>
           <div class="top-performer-poster-foot">
             <span>"Consistency, dedication, and professional excellence define our best performers."</span>
-            <span>Data source: Ranking upload</span>
+            <span>Data source: SSTS</span>
           </div>
         </section>
         {% endif %}
@@ -270,5 +290,79 @@
   <script src="/static/table-pager.js"></script>
   <script src="/static/table-export.js"></script>
   <script src="/static/button-confirm.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script>
+    (() => {
+      const buttons = Array.from(document.querySelectorAll('.top-performer-poster-download'));
+      if (!buttons.length) return;
+
+      const sanitizeFilename = (value, fallback = 'top_performer_poster') => {
+        const cleaned = String(value || '')
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '_')
+          .replace(/^_+|_+$/g, '');
+        return cleaned || fallback;
+      };
+
+      const exportPoster = async (button) => {
+        const targetId = button.dataset.exportTarget || '';
+        const format = button.dataset.exportFormat || 'jpeg';
+        const title = button.dataset.exportTitle || 'BEST PERFORMERS';
+        const target = document.getElementById(targetId);
+        if (!target || typeof html2canvas !== 'function') {
+          window.alert('Poster export is not ready yet.');
+          return;
+        }
+
+        const originalText = button.textContent;
+        button.disabled = true;
+        button.textContent = format === 'pdf' ? 'Preparing PDF...' : 'Preparing JPEG...';
+        try {
+          const canvas = await html2canvas(target, {
+            backgroundColor: null,
+            scale: 2,
+            useCORS: true,
+          });
+          const imageData = canvas.toDataURL('image/jpeg', 0.95);
+          const filename = sanitizeFilename(title);
+
+          if (format === 'pdf') {
+            const { jsPDF } = window.jspdf || {};
+            if (!jsPDF) {
+              throw new Error('PDF library not loaded.');
+            }
+            const pdf = new jsPDF({
+              orientation: canvas.width >= canvas.height ? 'landscape' : 'portrait',
+              unit: 'px',
+              format: [canvas.width, canvas.height],
+            });
+            pdf.addImage(imageData, 'JPEG', 0, 0, canvas.width, canvas.height);
+            pdf.save(`${filename}.pdf`);
+          } else {
+            const link = document.createElement('a');
+            link.href = imageData;
+            link.download = `${filename}.jpeg`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+          }
+        } catch (error) {
+          console.error(error);
+          window.alert('Poster export failed.');
+        } finally {
+          button.disabled = false;
+          button.textContent = originalText;
+        }
+      };
+
+      buttons.forEach((button) => {
+        button.addEventListener('click', () => {
+          exportPoster(button);
+        });
+      });
+    })();
+  </script>
 </body>
 </html>
