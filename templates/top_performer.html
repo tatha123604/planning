@@ -105,21 +105,21 @@
       </section>
       {% endif %}
 
-      {% if comparison and comparison.rows is defined %}
+      {% if comparison and comparison.get('rows') is not none %}
       <section class="card">
         <h2>Monthly Comparison Output</h2>
         <div class="summary-chip-row">
-          <div class="summary-chip">Previous file: {{ comparison.previous_filename }}</div>
-          <div class="summary-chip">Current file: {{ comparison.current_filename }}</div>
-          {% if comparison.previous_report_date %}
-          <div class="summary-chip">Previous date: {{ comparison.previous_report_date }}</div>
+          <div class="summary-chip">Previous file: {{ comparison.get('previous_filename', '') }}</div>
+          <div class="summary-chip">Current file: {{ comparison.get('current_filename', '') }}</div>
+          {% if comparison.get('previous_report_date') %}
+          <div class="summary-chip">Previous date: {{ comparison.get('previous_report_date') }}</div>
           {% endif %}
-          {% if comparison.current_report_date %}
-          <div class="summary-chip">Current date: {{ comparison.current_report_date }}</div>
+          {% if comparison.get('current_report_date') %}
+          <div class="summary-chip">Current date: {{ comparison.get('current_report_date') }}</div>
           {% endif %}
-          <div class="summary-chip">Previous eligible: {{ comparison.previous_eligible_count or 0 }}</div>
-          <div class="summary-chip">Current eligible: {{ comparison.current_eligible_count or 0 }}</div>
-          <div class="summary-chip">Matched crew: {{ comparison.matched_count or 0 }}</div>
+          <div class="summary-chip">Previous eligible: {{ comparison.get('previous_eligible_count', 0) }}</div>
+          <div class="summary-chip">Current eligible: {{ comparison.get('current_eligible_count', 0) }}</div>
+          <div class="summary-chip">Matched crew: {{ comparison.get('matched_count', 0) }}</div>
         </div>
         <div class="table-wrap">
           <table>
@@ -135,18 +135,18 @@
               </tr>
             </thead>
             <tbody>
-              {% for row in comparison.rows %}
+              {% for row in comparison.get('rows', []) %}
               <tr>
-                <td><span class="employee-data-pill employee-data-pill-name">{{ row.crew_name }}</span></td>
-                <td>{{ row.previous_runs }}</td>
-                <td>{{ row.current_runs }}</td>
-                <td>{{ row.previous_score }}</td>
-                <td>{{ row.current_score }}</td>
-                <td>{{ row.score_change }}</td>
-                <td>{{ row.status }}</td>
+                <td><span class="employee-data-pill employee-data-pill-name">{{ row.get('crew_name', '') }}</span></td>
+                <td>{{ row.get('previous_runs', '') }}</td>
+                <td>{{ row.get('current_runs', '') }}</td>
+                <td>{{ row.get('previous_score', '') }}</td>
+                <td>{{ row.get('current_score', '') }}</td>
+                <td>{{ row.get('score_change', '') }}</td>
+                <td>{{ row.get('status', '') }}</td>
               </tr>
               {% endfor %}
-              {% if not comparison.rows %}
+              {% if not comparison.get('rows') %}
               <tr>
                 <td colspan="7">No comparison rows found for the current minimum runs value.</td>
               </tr>
