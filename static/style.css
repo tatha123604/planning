@@ -1281,6 +1281,20 @@ ul { padding-left: 18px; margin: 6px 0; }
   background-position: 30px 18px, 120px 60px, 12px 94px;
   opacity: 0.3;
 }
+.top-performer-poster.export-capture .top-performer-poster-stars {
+  opacity: 0.82;
+  filter: brightness(1.35) saturate(1.15);
+}
+.top-performer-poster.export-capture .top-performer-poster-stars-secondary {
+  opacity: 0.52;
+  filter: brightness(1.45) saturate(1.2);
+}
+.top-performer-poster.export-capture {
+  box-shadow:
+    inset 0 0 0 1px rgba(255,255,255,0.1),
+    0 18px 40px rgba(0, 0, 0, 0.28),
+    0 0 36px rgba(255, 255, 255, 0.08);
+}
 .top-performer-poster-head::before,
 .top-performer-poster-head::after {
   content: "";

@@ -338,9 +338,10 @@
         button.disabled = true;
         button.textContent = format === 'pdf' ? 'Preparing PDF...' : 'Preparing JPEG...';
         try {
+          target.classList.add('export-capture');
           const canvas = await html2canvas(target, {
-            backgroundColor: null,
-            scale: 2,
+            backgroundColor: '#10245d',
+            scale: 3,
             useCORS: true,
           });
           const imageData = canvas.toDataURL('image/jpeg', 0.95);
@@ -370,6 +371,7 @@
           console.error(error);
           window.alert('Poster export failed.');
         } finally {
+          target.classList.remove('export-capture');
           button.disabled = false;
           button.textContent = originalText;
         }
