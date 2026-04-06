@@ -1693,6 +1693,7 @@ def top_performer_page(request: Request):
             "results": state.get("results") or [],
             "warnings": state.get("warnings") or [],
             "summary": state.get("summary") or {},
+            "comparison": state.get("comparison") or {},
             "saved_at_label": saved_at_label,
         },
     )
@@ -1719,6 +1720,7 @@ async def generate_top_performer(
                     "results": [],
                     "warnings": [f"{filename}: only .xlsx and .csv files are supported."],
                     "summary": {},
+                    "comparison": {},
                     "saved_at_label": "",
                 },
                 status_code=400,
@@ -1735,6 +1737,7 @@ async def generate_top_performer(
                 "results": [],
                 "warnings": ["Please upload at least one ranking file."],
                 "summary": {},
+                "comparison": {},
                 "saved_at_label": "",
             },
             status_code=400,
@@ -1747,6 +1750,7 @@ async def generate_top_performer(
         "results": results,
         "warnings": warnings,
         "summary": summary,
+        "comparison": {},
         "saved_at": datetime.now().isoformat(timespec="seconds"),
     }
     _save_top_performer_state(payload)
@@ -1760,6 +1764,85 @@ async def generate_top_performer(
             "results": results,
             "warnings": warnings,
             "summary": summary,
+            "comparison": {},
+            "saved_at_label": saved_at_label,
+        },
+    )
+
+
+@app.post("/top-performer/compare")
+async def compare_top_performer_months(
+    request: Request,
+    previous_file: UploadFile = File(...),
+    current_file: UploadFile = File(...),
+    minimum_runs: int = Form(3),
+):
+    previous_filename = (previous_file.filename or "").strip()
+    current_filename = (current_file.filename or "").strip()
+    bad_files = [
+        filename
+        for filename in [previous_filename, current_filename]
+        if filename and not filename.lower().endswith((".xlsx", ".csv"))
+    ]
+    if bad_files:
+        return templates.TemplateResponse(
+            "top_performer.html",
+            {
+                "request": request,
+                "active_page": "top_performer",
+                "minimum_runs": minimum_runs,
+                "results": [],
+                "warnings": [f"{', '.join(bad_files)}: only .xlsx and .csv files are supported."],
+                "summary": {},
+                "comparison": {},
+                "saved_at_label": "",
+            },
+            status_code=400,
+        )
+
+    if not previous_filename or not current_filename:
+        return templates.TemplateResponse(
+            "top_performer.html",
+            {
+                "request": request,
+                "active_page": "top_performer",
+                "minimum_runs": minimum_runs,
+                "results": [],
+                "warnings": ["Please upload both previous month and current month files."],
+                "summary": {},
+                "comparison": {},
+                "saved_at_label": "",
+            },
+            status_code=400,
+        )
+
+    minimum_runs = max(0, minimum_runs)
+    comparison, warnings = _build_top_performer_comparison(
+        (previous_filename, await previous_file.read()),
+        (current_filename, await current_file.read()),
+        minimum_runs,
+    )
+    current_state = _load_top_performer_state()
+    payload = {
+        "minimum_runs": minimum_runs,
+        "results": current_state.get("results") or [],
+        "warnings": warnings,
+        "summary": current_state.get("summary") or {},
+        "comparison": comparison,
+        "saved_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    _save_top_performer_state(payload)
+    saved_at_label = datetime.fromisoformat(str(payload["saved_at"])).strftime("%d-%m-%Y %I:%M %p")
+    return templates.TemplateResponse(
+        "top_performer.html",
+        {
+            "request": request,
+            "active_page": "top_performer",
+            "minimum_runs": minimum_runs,
+            "results": payload["results"],
+            "warnings": warnings,
+            "summary": payload["summary"],
+            "comparison": comparison,
             "saved_at_label": saved_at_label,
         },
     )
@@ -2863,6 +2946,57 @@ def _read_top_performer_dataframe(filename: str, content: bytes) -> pd.DataFrame
     return pd.read_excel(BytesIO(content))
 
 
+def _normalize_top_performer_name(value: object | None) -> str:
+    text = _normalize_export_text(value).upper()
+    return re.sub(r"[^A-Z0-9]+", " ", text).strip()
+
+
+def _parse_top_performer_upload(
+    filename: str,
+    content: bytes,
+) -> tuple[list[dict[str, object]], str, list[str]]:
+    warnings: list[str] = []
+    dataframe = _read_top_performer_dataframe(filename, content)
+    if dataframe.empty:
+        warnings.append(f"{filename}: file is empty.")
+        return [], "", warnings
+
+    normalized_columns = {_normalize_top_performer_column(col): col for col in dataframe.columns}
+    missing = [column for column in TOP_PERFORMER_REQUIRED_COLUMNS if column not in normalized_columns]
+    if missing:
+        warnings.append(f"{filename}: missing column(s): {', '.join(missing)}.")
+        return [], "", warnings
+
+    renamed = dataframe.rename(
+        columns={
+            normalized_columns[source]: target
+            for source, target in TOP_PERFORMER_REQUIRED_COLUMNS.items()
+        }
+    )
+    ranked_rows: list[dict[str, object]] = []
+    for _, raw in renamed.iterrows():
+        crew_name = _normalize_export_text(raw.get("crew_name"))
+        if not crew_name:
+            continue
+        ranked_rows.append(
+            {
+                "crew_name": crew_name,
+                "crew_key": _normalize_top_performer_name(crew_name),
+                "runs": _to_int_from_value(raw.get("runs")),
+                "total_score": round(_to_float(raw.get("total_score")), 2),
+                "bft": round(_to_float(raw.get("bft")), 2),
+                "bpt": round(_to_float(raw.get("bpt")), 2),
+                "speed": round(_to_float(raw.get("speed")), 2),
+                "platform": round(_to_float(raw.get("platform")), 2),
+                "emergency": round(_to_float(raw.get("emergency")), 2),
+                "cautious": round(_to_float(raw.get("cautious")), 2),
+                "punctuality": round(_to_float(raw.get("punctuality")), 2),
+            }
+        )
+    report_date = infer_report_date(filename)
+    return ranked_rows, report_date.strftime("%d-%m-%Y") if report_date else "", warnings
+
+
 def _build_top_performer_result(
     uploads: list[tuple[str, bytes]],
     minimum_runs: int,
@@ -2873,44 +3007,10 @@ def _build_top_performer_result(
     overall_eligible = 0
 
     for filename, content in uploads:
-        dataframe = _read_top_performer_dataframe(filename, content)
-        if dataframe.empty:
-            warnings.append(f"{filename}: file is empty.")
+        ranked_rows, report_date_label, file_warnings = _parse_top_performer_upload(filename, content)
+        warnings.extend(file_warnings)
+        if file_warnings:
             continue
-
-        normalized_columns = {_normalize_top_performer_column(col): col for col in dataframe.columns}
-        missing = [column for column in TOP_PERFORMER_REQUIRED_COLUMNS if column not in normalized_columns]
-        if missing:
-            warnings.append(
-                f"{filename}: missing column(s): {', '.join(missing)}."
-            )
-            continue
-
-        renamed = dataframe.rename(
-            columns={
-                normalized_columns[source]: target
-                for source, target in TOP_PERFORMER_REQUIRED_COLUMNS.items()
-            }
-        )
-        ranked_rows: list[dict[str, object]] = []
-        for _, raw in renamed.iterrows():
-            crew_name = _normalize_export_text(raw.get("crew_name"))
-            if not crew_name:
-                continue
-            ranked_rows.append(
-                {
-                    "crew_name": crew_name,
-                    "runs": _to_int_from_value(raw.get("runs")),
-                    "total_score": round(_to_float(raw.get("total_score")), 2),
-                    "bft": round(_to_float(raw.get("bft")), 2),
-                    "bpt": round(_to_float(raw.get("bpt")), 2),
-                    "speed": round(_to_float(raw.get("speed")), 2),
-                    "platform": round(_to_float(raw.get("platform")), 2),
-                    "emergency": round(_to_float(raw.get("emergency")), 2),
-                    "cautious": round(_to_float(raw.get("cautious")), 2),
-                    "punctuality": round(_to_float(raw.get("punctuality")), 2),
-                }
-            )
 
         eligible_rows = [row for row in ranked_rows if int(row["runs"]) >= minimum_runs]
         eligible_rows.sort(
@@ -2938,11 +3038,10 @@ def _build_top_performer_result(
                 }
             )
 
-        report_date = infer_report_date(filename)
         results.append(
             {
                 "filename": filename,
-                "report_date": report_date.strftime("%d-%m-%Y") if report_date else "",
+                "report_date": report_date_label,
                 "row_count": len(ranked_rows),
                 "eligible_count": len(eligible_rows),
                 "top_rows": top_rows,
@@ -2956,6 +3055,88 @@ def _build_top_performer_result(
         "overall_rows": overall_rows,
         "overall_eligible": overall_eligible,
     }
+
+
+def _build_top_performer_comparison(
+    previous_upload: tuple[str, bytes],
+    current_upload: tuple[str, bytes],
+    minimum_runs: int,
+) -> tuple[dict[str, object], list[str]]:
+    warnings: list[str] = []
+    previous_filename, previous_content = previous_upload
+    current_filename, current_content = current_upload
+    previous_rows, previous_report_date, previous_warnings = _parse_top_performer_upload(previous_filename, previous_content)
+    current_rows, current_report_date, current_warnings = _parse_top_performer_upload(current_filename, current_content)
+    warnings.extend(previous_warnings)
+    warnings.extend(current_warnings)
+    if previous_warnings or current_warnings:
+        return {
+            "previous_filename": previous_filename,
+            "current_filename": current_filename,
+            "previous_report_date": previous_report_date,
+            "current_report_date": current_report_date,
+            "rows": [],
+            "matched_count": 0,
+            "previous_eligible_count": 0,
+            "current_eligible_count": 0,
+        }, warnings
+
+    previous_eligible = [row for row in previous_rows if int(row["runs"]) >= minimum_runs]
+    current_eligible = [row for row in current_rows if int(row["runs"]) >= minimum_runs]
+    previous_eligible.sort(
+        key=lambda row: (-float(row["total_score"]), -int(row["runs"]), str(row["crew_name"]).lower())
+    )
+    current_eligible.sort(
+        key=lambda row: (-float(row["total_score"]), -int(row["runs"]), str(row["crew_name"]).lower())
+    )
+    previous_rank_map = {str(row["crew_key"]): idx for idx, row in enumerate(previous_eligible, start=1)}
+    previous_row_map = {str(row["crew_key"]): row for row in previous_eligible}
+
+    comparison_rows: list[dict[str, object]] = []
+    for current_rank, current_row in enumerate(current_eligible, start=1):
+        crew_key = str(current_row["crew_key"])
+        previous_row = previous_row_map.get(crew_key)
+        previous_rank = previous_rank_map.get(crew_key)
+        previous_score = float(previous_row["total_score"]) if previous_row else 0.0
+        current_score = float(current_row["total_score"])
+        score_change = current_score - previous_score if previous_row else current_score
+        if previous_rank is None:
+            rank_change_label = "New"
+        else:
+            rank_delta = previous_rank - current_rank
+            rank_change_label = f"{rank_delta:+d}"
+        comparison_rows.append(
+            {
+                "current_rank": current_rank,
+                "previous_rank": previous_rank or "-",
+                "crew_name": current_row["crew_name"],
+                "previous_runs": previous_row["runs"] if previous_row else "-",
+                "current_runs": current_row["runs"],
+                "previous_score": f"{previous_score:.2f}" if previous_row else "-",
+                "current_score": f"{current_score:.2f}",
+                "score_change": f"{score_change:+.2f}",
+                "rank_change": rank_change_label,
+            }
+        )
+
+    comparison_rows.sort(
+        key=lambda row: (
+            row["previous_rank"] == "-",
+            int(row["current_rank"]),
+            str(row["crew_name"]).lower(),
+        )
+    )
+
+    return {
+        "previous_filename": previous_filename,
+        "current_filename": current_filename,
+        "previous_report_date": previous_report_date,
+        "current_report_date": current_report_date,
+        "rows": comparison_rows,
+        "matched_count": sum(1 for row in comparison_rows if row["previous_rank"] != "-"),
+        "previous_eligible_count": len(previous_eligible),
+        "current_eligible_count": len(current_eligible),
+    }, warnings
 
 
 def _save_top_performer_state(payload: dict[str, object]) -> None:
@@ -2972,6 +3153,7 @@ def _load_top_performer_state() -> dict[str, object]:
             "results": [],
             "warnings": [],
             "summary": {},
+            "comparison": {},
             "saved_at": "",
         }
     try:
@@ -2982,6 +3164,7 @@ def _load_top_performer_state() -> dict[str, object]:
             "results": [],
             "warnings": [],
             "summary": {},
+            "comparison": {},
             "saved_at": "",
         }
     if not isinstance(raw, dict):
@@ -2990,6 +3173,7 @@ def _load_top_performer_state() -> dict[str, object]:
             "results": [],
             "warnings": [],
             "summary": {},
+            "comparison": {},
             "saved_at": "",
         }
     return raw
