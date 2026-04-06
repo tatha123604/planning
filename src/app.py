@@ -1745,12 +1745,13 @@ async def generate_top_performer(
 
     minimum_runs = max(0, minimum_runs)
     results, warnings, summary = _build_top_performer_result(uploads, minimum_runs)
+    current_state = _load_top_performer_state()
     payload = {
         "minimum_runs": minimum_runs,
         "results": results,
         "warnings": warnings,
         "summary": summary,
-        "comparison": {},
+        "comparison": current_state.get("comparison") if isinstance(current_state.get("comparison"), dict) else {},
         "saved_at": datetime.now().isoformat(timespec="seconds"),
     }
     _save_top_performer_state(payload)
@@ -1764,7 +1765,7 @@ async def generate_top_performer(
             "results": results,
             "warnings": warnings,
             "summary": summary,
-            "comparison": {},
+            "comparison": payload["comparison"],
             "saved_at_label": saved_at_label,
         },
     )
