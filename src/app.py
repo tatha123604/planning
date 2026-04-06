@@ -1916,6 +1916,14 @@ def reset_top_performer_comparison():
     return RedirectResponse("/top-performer", status_code=303)
 
 
+@app.post("/top-performer/clear-stored")
+def clear_top_performer_stored_data():
+    if TOP_PERFORMER_STATE_FILE.exists():
+        TOP_PERFORMER_STATE_FILE.unlink(missing_ok=True)
+    _clear_top_performer_photos()
+    return RedirectResponse("/top-performer", status_code=303)
+
+
 @app.post("/cli/distribution/targets/add")
 def add_cli_distribution_target(
     cli_name: str = Form(...),
@@ -3105,6 +3113,14 @@ def _top_performer_poster_title(filename: str, report_date_label: str) -> str:
 def _ensure_top_performer_photo_dir() -> Path:
     TOP_PERFORMER_PHOTO_DIR.mkdir(parents=True, exist_ok=True)
     return TOP_PERFORMER_PHOTO_DIR
+
+
+def _clear_top_performer_photos() -> None:
+    if not TOP_PERFORMER_PHOTO_DIR.exists():
+        return
+    for path in TOP_PERFORMER_PHOTO_DIR.iterdir():
+        if path.is_file():
+            path.unlink(missing_ok=True)
 
 
 def _save_top_performer_photos(

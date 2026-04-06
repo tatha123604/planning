@@ -72,9 +72,14 @@
             </label>
           </div>
           <div class="actions">
-            <button type="submit">Generate Top Performer</button>
+            <button type="submit" data-confirm-label="generate top performer results">Generate Top Performer</button>
           </div>
         </form>
+        <div class="actions">
+          <form method="post" action="/top-performer/clear-stored" class="inline">
+            <button type="submit" class="danger" data-confirm-label="delete stored top performer data">Delete Stored Data</button>
+          </form>
+        </div>
       </section>
 
       {% if summary %}
@@ -191,7 +196,7 @@
                   <form method="post" action="/top-performer/photo" enctype="multipart/form-data" class="top-performer-photo-form">
                     <input type="hidden" name="crew_name" value="{{ row.crew_name }}" />
                     <input type="file" name="photo_file" accept=".png,.jpg,.jpeg,.webp" required />
-                    <button type="submit" class="ghost small">Save Photo</button>
+              <button type="submit" class="ghost small" data-confirm-label="save this employee photo to the performer card">Save Photo</button>
                   </form>
                 </td>
                 <td>{{ row.runs }}</td>
@@ -231,7 +236,7 @@
             </label>
           </div>
           <div class="actions">
-            <button type="submit">Compare Two Months</button>
+            <button type="submit" data-confirm-label="compare the two uploaded months">Compare Two Months</button>
           </div>
         </form>
       </section>
@@ -367,6 +372,11 @@
 
       buttons.forEach((button) => {
         button.addEventListener('click', () => {
+          const format = button.dataset.exportFormat || 'jpeg';
+          const proceed = window.confirm(`Download performer poster as ${format.toUpperCase()}?`);
+          if (!proceed) {
+            return;
+          }
           exportPoster(button);
         });
       });
