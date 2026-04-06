@@ -1359,13 +1359,11 @@ ul { padding-left: 18px; margin: 6px 0; }
   color: #ffe179;
   font-weight: 800;
 }
-.top-performer-medal {
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: rgba(255, 220, 109, 0.18);
-  border: 1px solid rgba(255, 220, 109, 0.45);
-  color: #ffe179;
-  font-size: 0.78rem;
+.top-performer-medal-image {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.35));
 }
 .top-performer-poster-foot {
   margin-top: 16px;

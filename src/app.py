@@ -3051,14 +3051,15 @@ def _top_performer_title_from_filename(filename: str) -> str:
 
 def _top_performer_poster_title(filename: str, report_date_label: str) -> str:
     base = Path(filename or "").stem
-    range_match = re.search(r"(\d{4})-(\d{2})-(\d{2})\D+to\D+(\d{4})-(\d{2})-(\d{2})", base, re.IGNORECASE)
+    normalized = base.replace("_", " ").strip()
+    range_match = re.search(r"(\d{4})-(\d{2})-(\d{2})\D+to\D+(\d{4})-(\d{2})-(\d{2})", normalized, re.IGNORECASE)
     if range_match:
         try:
             start_date = date(int(range_match.group(1)), int(range_match.group(2)), int(range_match.group(3)))
             return f"BEST PERFORMERS - {start_date.strftime('%B %Y').upper()}"
         except ValueError:
             pass
-    single_match = re.search(r"(\d{4})-(\d{2})-(\d{2})", base)
+    single_match = re.search(r"(\d{4})-(\d{2})-(\d{2})", normalized)
     if single_match:
         try:
             report_date = date(int(single_match.group(1)), int(single_match.group(2)), int(single_match.group(3)))

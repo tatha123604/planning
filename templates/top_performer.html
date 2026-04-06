@@ -137,11 +137,11 @@
                 <div class="top-performer-rankline">
                   <span>Rank {{ row.rank }}</span>
                   {% if row.rank == 1 %}
-                  <span class="top-performer-medal">Gold</span>
+                  <img class="top-performer-medal-image" src="/static/medal-gold.svg" alt="Gold medal" />
                   {% elif row.rank == 2 %}
-                  <span class="top-performer-medal">Silver</span>
+                  <img class="top-performer-medal-image" src="/static/medal-silver.svg" alt="Silver medal" />
                   {% elif row.rank == 3 %}
-                  <span class="top-performer-medal">Bronze</span>
+                  <img class="top-performer-medal-image" src="/static/medal-bronze.svg" alt="Bronze medal" />
                   {% endif %}
                 </div>
                 <strong>{{ row.crew_name }}</strong>
