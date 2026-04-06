@@ -1262,11 +1262,31 @@ ul { padding-left: 18px; margin: 6px 0; }
     radial-gradient(circle, rgba(255,255,255,0.55) 0 1px, transparent 1.5px),
     radial-gradient(circle, rgba(255,255,255,0.38) 0 1px, transparent 1.5px),
     radial-gradient(circle, rgba(255,255,255,0.75) 0 1.5px, transparent 2px),
-    radial-gradient(circle, rgba(255,255,255,0.28) 0 1px, transparent 1.5px);
-  background-size: 120px 120px, 170px 170px, 90px 90px, 210px 210px;
-  background-position: 20px 30px, 60px 80px, 10px 12px, 90px 40px;
-  opacity: 0.24;
+    radial-gradient(circle, rgba(255,255,255,0.28) 0 1px, transparent 1.5px),
+    radial-gradient(circle, rgba(255,255,255,0.62) 0 1.2px, transparent 1.9px),
+    radial-gradient(circle, rgba(255,255,255,0.22) 0 0.9px, transparent 1.4px),
+    radial-gradient(circle, rgba(255,255,255,0.46) 0 1px, transparent 1.6px);
+  background-size: 120px 120px, 170px 170px, 90px 90px, 210px 210px, 72px 72px, 145px 145px, 56px 56px;
+  background-position: 20px 30px, 60px 80px, 10px 12px, 90px 40px, 0 0, 35px 24px, 18px 42px;
+  opacity: 0.38;
   pointer-events: none;
+}
+.top-performer-poster-head::before,
+.top-performer-poster-head::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 28%;
+  height: 2px;
+  transform: translateY(-50%);
+  background: linear-gradient(90deg, transparent, rgba(255, 232, 157, 0.95), transparent);
+  box-shadow: 0 0 16px rgba(255, 232, 157, 0.55);
+}
+.top-performer-poster-head::before {
+  left: 0;
+}
+.top-performer-poster-head::after {
+  right: 0;
 }
 .top-performer-poster-head {
   text-align: center;
@@ -1309,6 +1329,8 @@ ul { padding-left: 18px; margin: 6px 0; }
   padding: 12px 14px;
   border-radius: 16px;
   background:
+    radial-gradient(circle at 90% 50%, rgba(255,255,255,0.18), transparent 20%),
+    radial-gradient(circle at 95% 14%, rgba(255,255,255,0.24), transparent 12%),
     radial-gradient(circle at right center, rgba(255,255,255,0.13), transparent 24%),
     linear-gradient(180deg, rgba(28,66,156,0.86), rgba(14,39,112,0.86));
   border: 2px solid rgba(255, 222, 122, 0.45);
