@@ -1297,7 +1297,7 @@ ul { padding-left: 18px; margin: 6px 0; }
 .top-performer-poster-head h3 {
   margin: 0 0 6px;
   color: #ffd86b;
-  font-size: 1.7rem;
+  font-size: 2rem;
   letter-spacing: 0.05em;
   text-shadow: 0 2px 12px rgba(0,0,0,0.4);
 }
@@ -1310,7 +1310,7 @@ ul { padding-left: 18px; margin: 6px 0; }
 .top-performer-poster-head p {
   margin: 0;
   color: #eef4ff;
-  font-size: 1rem;
+  font-size: 1.12rem;
   font-weight: 700;
   padding: 8px 14px;
   display: inline-block;
@@ -1376,12 +1376,13 @@ ul { padding-left: 18px; margin: 6px 0; }
 }
 .top-performer-copy strong {
   color: #ffe179;
-  font-size: 1rem;
+  font-size: 1.14rem;
   line-height: 1.2;
 }
 .top-performer-copy span {
   color: #eef4ff;
   font-weight: 600;
+  font-size: 1.02rem;
 }
 .top-performer-rankline {
   display: flex;
@@ -1390,6 +1391,7 @@ ul { padding-left: 18px; margin: 6px 0; }
   gap: 8px;
   color: #ffe179;
   font-weight: 800;
+  font-size: 1.08rem;
 }
 .top-performer-medal-image {
   width: 44px;
