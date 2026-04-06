@@ -1217,6 +1217,13 @@ ul { padding-left: 18px; margin: 6px 0; }
   gap: 8px;
   flex-wrap: wrap;
 }
+.card-head-inline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
 .table-export-button {
   min-width: 128px;
 }

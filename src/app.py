@@ -3147,6 +3147,7 @@ def _build_top_performer_comparison(
             str(row["crew_name"]).lower(),
         )
     )
+    comparison_rows = comparison_rows[:10]
 
     return {
         "previous_filename": previous_filename,
