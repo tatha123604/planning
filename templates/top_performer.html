@@ -125,34 +125,30 @@
           <table>
             <thead>
               <tr>
-                <th>Current Rank</th>
-                <th>Previous Rank</th>
                 <th>Crew Name</th>
                 <th>Previous Runs</th>
                 <th>Current Runs</th>
                 <th>Previous Score</th>
                 <th>Current Score</th>
                 <th>Score Change</th>
-                <th>Rank Change</th>
+                <th>Status</th>
               </tr>
             </thead>
             <tbody>
               {% for row in comparison.rows %}
               <tr>
-                <td>{{ row.current_rank }}</td>
-                <td>{{ row.previous_rank }}</td>
                 <td><span class="employee-data-pill employee-data-pill-name">{{ row.crew_name }}</span></td>
                 <td>{{ row.previous_runs }}</td>
                 <td>{{ row.current_runs }}</td>
                 <td>{{ row.previous_score }}</td>
                 <td>{{ row.current_score }}</td>
                 <td>{{ row.score_change }}</td>
-                <td>{{ row.rank_change }}</td>
+                <td>{{ row.status }}</td>
               </tr>
               {% endfor %}
               {% if not comparison.rows %}
               <tr>
-                <td colspan="9">No comparison rows found for the current minimum runs value.</td>
+                <td colspan="7">No comparison rows found for the current minimum runs value.</td>
               </tr>
               {% endif %}
             </tbody>

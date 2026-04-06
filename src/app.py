@@ -3089,40 +3089,31 @@ def _build_top_performer_comparison(
     current_eligible.sort(
         key=lambda row: (-float(row["total_score"]), -int(row["runs"]), str(row["crew_name"]).lower())
     )
-    previous_rank_map = {str(row["crew_key"]): idx for idx, row in enumerate(previous_eligible, start=1)}
     previous_row_map = {str(row["crew_key"]): row for row in previous_eligible}
 
     comparison_rows: list[dict[str, object]] = []
-    for current_rank, current_row in enumerate(current_eligible, start=1):
+    for current_row in current_eligible:
         crew_key = str(current_row["crew_key"])
         previous_row = previous_row_map.get(crew_key)
-        previous_rank = previous_rank_map.get(crew_key)
         previous_score = float(previous_row["total_score"]) if previous_row else 0.0
         current_score = float(current_row["total_score"])
         score_change = current_score - previous_score if previous_row else current_score
-        if previous_rank is None:
-            rank_change_label = "New"
-        else:
-            rank_delta = previous_rank - current_rank
-            rank_change_label = f"{rank_delta:+d}"
         comparison_rows.append(
             {
-                "current_rank": current_rank,
-                "previous_rank": previous_rank or "-",
                 "crew_name": current_row["crew_name"],
                 "previous_runs": previous_row["runs"] if previous_row else "-",
                 "current_runs": current_row["runs"],
                 "previous_score": f"{previous_score:.2f}" if previous_row else "-",
                 "current_score": f"{current_score:.2f}",
                 "score_change": f"{score_change:+.2f}",
-                "rank_change": rank_change_label,
+                "status": "Matched" if previous_row else "New",
             }
         )
 
     comparison_rows.sort(
         key=lambda row: (
-            row["previous_rank"] == "-",
-            int(row["current_rank"]),
+            0 if row["status"] == "Matched" else 1,
+            -float(str(row["score_change"]).replace("+", "")),
             str(row["crew_name"]).lower(),
         )
     )
