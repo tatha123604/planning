@@ -1863,8 +1863,9 @@ async def upload_top_performer_photo(
     photo_file: UploadFile = File(...),
 ):
     current_state = _load_top_performer_state()
-    photo_map = _save_top_performer_photos(
-        [photo_file],
+    photo_map = _save_single_top_performer_photo(
+        crew_name,
+        photo_file,
         current_state.get("photo_map") if isinstance(current_state.get("photo_map"), dict) else {},
     )
     results = _attach_top_performer_photos(
@@ -3151,6 +3152,30 @@ def _save_top_performer_photos(
             continue
         target_path.write_bytes(content)
         photo_map[crew_key] = f"/static/top_performer_photos/{target_name}"
+    return photo_map
+
+
+def _save_single_top_performer_photo(
+    crew_name: str,
+    photo_upload: UploadFile,
+    existing_map: dict[str, str] | None = None,
+) -> dict[str, str]:
+    photo_map = dict(existing_map or {})
+    filename = (photo_upload.filename or "").strip()
+    suffix = Path(filename).suffix.lower()
+    if suffix not in {".png", ".jpg", ".jpeg", ".webp"}:
+        return photo_map
+    crew_key = _normalize_top_performer_name(crew_name)
+    if not crew_key:
+        return photo_map
+    safe_stem = re.sub(r"[^a-z0-9]+", "_", crew_key.lower()).strip("_") or "photo"
+    target_name = f"{safe_stem}{suffix}"
+    target_path = _ensure_top_performer_photo_dir() / target_name
+    content = photo_upload.file.read()
+    if not content:
+        return photo_map
+    target_path.write_bytes(content)
+    photo_map[crew_key] = f"/static/top_performer_photos/{target_name}"
     return photo_map
 
 
