@@ -79,6 +79,7 @@ EMPLOYEE_MASTER_EXTRA_REVIEW_KEEP_FILE = DB_PATH.parent / "employee_master_extra
 EMPLOYEE_MASTER_CLEANUP_LOG_FILE = DB_PATH.parent / "employee_master_cleanup_log.json"
 LI_GRADING_METADATA_FILE = DB_PATH.parent / "li_grading_metadata.json"
 TOP_PERFORMER_STATE_FILE = DB_PATH.parent / "top_performer_state.json"
+TOP_PERFORMER_PHOTO_DIR = BASE_PATH / "static" / "top_performer_photos"
 EMPLOYEE_SYNC_BACKUP_DIR = DB_PATH.parent / "employee_sync_backups"
 GOOGLE_SHEETS_READONLY_SCOPE = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 NON_CONTINUOUS_VARIANTS = {
@@ -1694,6 +1695,7 @@ def top_performer_page(request: Request):
             "warnings": state.get("warnings") or [],
             "summary": state.get("summary") or {},
             "comparison": state.get("comparison") or {},
+            "photo_map": state.get("photo_map") or {},
             "saved_at_label": saved_at_label,
         },
     )
@@ -1703,6 +1705,7 @@ def top_performer_page(request: Request):
 async def generate_top_performer(
     request: Request,
     files: list[UploadFile] = File(...),
+    photo_files: Optional[list[UploadFile]] = File(None),
     minimum_runs: int = Form(3),
 ):
     uploads: list[tuple[str, bytes]] = []
@@ -1746,12 +1749,15 @@ async def generate_top_performer(
     minimum_runs = max(0, minimum_runs)
     results, warnings, summary = _build_top_performer_result(uploads, minimum_runs)
     current_state = _load_top_performer_state()
+    photo_map = _save_top_performer_photos(photo_files, current_state.get("photo_map") if isinstance(current_state.get("photo_map"), dict) else {})
+    results = _attach_top_performer_photos(results, photo_map)
     payload = {
         "minimum_runs": minimum_runs,
         "results": results,
         "warnings": warnings,
         "summary": summary,
         "comparison": current_state.get("comparison") if isinstance(current_state.get("comparison"), dict) else {},
+        "photo_map": photo_map,
         "saved_at": datetime.now().isoformat(timespec="seconds"),
     }
     _save_top_performer_state(payload)
@@ -1766,6 +1772,7 @@ async def generate_top_performer(
             "warnings": warnings,
             "summary": summary,
             "comparison": payload["comparison"],
+            "photo_map": photo_map,
             "saved_at_label": saved_at_label,
         },
     )
@@ -1830,6 +1837,7 @@ async def compare_top_performer_months(
         "warnings": warnings,
         "summary": current_state.get("summary") or {},
         "comparison": comparison,
+        "photo_map": current_state.get("photo_map") if isinstance(current_state.get("photo_map"), dict) else {},
         "saved_at": datetime.now().isoformat(timespec="seconds"),
     }
     _save_top_performer_state(payload)
@@ -1858,6 +1866,7 @@ def reset_top_performer():
         "warnings": [],
         "summary": {},
         "comparison": current_state.get("comparison") if isinstance(current_state.get("comparison"), dict) else {},
+        "photo_map": current_state.get("photo_map") if isinstance(current_state.get("photo_map"), dict) else {},
         "saved_at": datetime.now().isoformat(timespec="seconds"),
     }
     _save_top_performer_state(payload)
@@ -1873,6 +1882,7 @@ def reset_top_performer_comparison():
         "warnings": [],
         "summary": current_state.get("summary") if isinstance(current_state.get("summary"), dict) else {},
         "comparison": {},
+        "photo_map": current_state.get("photo_map") if isinstance(current_state.get("photo_map"), dict) else {},
         "saved_at": datetime.now().isoformat(timespec="seconds"),
     }
     _save_top_performer_state(payload)
@@ -3064,6 +3074,61 @@ def _top_performer_poster_title(filename: str, report_date_label: str) -> str:
     return "BEST PERFORMERS"
 
 
+def _ensure_top_performer_photo_dir() -> Path:
+    TOP_PERFORMER_PHOTO_DIR.mkdir(parents=True, exist_ok=True)
+    return TOP_PERFORMER_PHOTO_DIR
+
+
+def _save_top_performer_photos(
+    photo_uploads: list[UploadFile] | None,
+    existing_map: dict[str, str] | None = None,
+) -> dict[str, str]:
+    photo_map = dict(existing_map or {})
+    if not photo_uploads:
+        return photo_map
+
+    photo_dir = _ensure_top_performer_photo_dir()
+    allowed = {".png", ".jpg", ".jpeg", ".webp"}
+    for upload in photo_uploads:
+        filename = (upload.filename or "").strip()
+        if not filename:
+            continue
+        suffix = Path(filename).suffix.lower()
+        if suffix not in allowed:
+            continue
+        crew_key = _normalize_top_performer_name(Path(filename).stem)
+        if not crew_key:
+            continue
+        safe_stem = re.sub(r"[^a-z0-9]+", "_", crew_key.lower()).strip("_") or "photo"
+        target_name = f"{safe_stem}{suffix}"
+        target_path = photo_dir / target_name
+        content = upload.file.read()
+        if not content:
+            continue
+        target_path.write_bytes(content)
+        photo_map[crew_key] = f"/static/top_performer_photos/{target_name}"
+    return photo_map
+
+
+def _attach_top_performer_photos(
+    results: list[dict[str, object]],
+    photo_map: dict[str, str] | None,
+) -> list[dict[str, object]]:
+    resolved_map = dict(photo_map or {})
+    updated_results: list[dict[str, object]] = []
+    for result in results:
+        top_rows = []
+        for row in list(result.get("top_rows") or []):
+            row_data = dict(row)
+            crew_key = _normalize_top_performer_name(row_data.get("crew_name"))
+            row_data["photo_url"] = resolved_map.get(crew_key, "")
+            top_rows.append(row_data)
+        result_data = dict(result)
+        result_data["top_rows"] = top_rows
+        updated_results.append(result_data)
+    return updated_results
+
+
 def _build_top_performer_result(
     uploads: list[tuple[str, bytes]],
     minimum_runs: int,
@@ -3215,6 +3280,7 @@ def _load_top_performer_state() -> dict[str, object]:
             "warnings": [],
             "summary": {},
             "comparison": {},
+            "photo_map": {},
             "saved_at": "",
         }
     try:
@@ -3226,6 +3292,7 @@ def _load_top_performer_state() -> dict[str, object]:
             "warnings": [],
             "summary": {},
             "comparison": {},
+            "photo_map": {},
             "saved_at": "",
         }
     if not isinstance(raw, dict):
@@ -3235,6 +3302,7 @@ def _load_top_performer_state() -> dict[str, object]:
             "warnings": [],
             "summary": {},
             "comparison": {},
+            "photo_map": {},
             "saved_at": "",
         }
     try:
@@ -3245,12 +3313,14 @@ def _load_top_performer_state() -> dict[str, object]:
     warnings = raw.get("warnings")
     summary = raw.get("summary")
     comparison = raw.get("comparison")
+    photo_map = raw.get("photo_map")
     return {
         "minimum_runs": minimum_runs,
         "results": results if isinstance(results, list) else [],
         "warnings": warnings if isinstance(warnings, list) else [],
         "summary": summary if isinstance(summary, dict) else {},
         "comparison": comparison if isinstance(comparison, dict) else {},
+        "photo_map": photo_map if isinstance(photo_map, dict) else {},
         "saved_at": str(raw.get("saved_at") or ""),
     }
 
