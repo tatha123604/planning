@@ -1301,6 +1301,12 @@ ul { padding-left: 18px; margin: 6px 0; }
   letter-spacing: 0.05em;
   text-shadow: 0 2px 12px rgba(0,0,0,0.4);
 }
+.top-performer-title-star {
+  color: #ffd86b;
+  text-shadow: 0 0 12px rgba(255, 216, 107, 0.75);
+  margin: 0 8px;
+  font-size: 1.15em;
+}
 .top-performer-poster-head p {
   margin: 0;
   color: #eef4ff;

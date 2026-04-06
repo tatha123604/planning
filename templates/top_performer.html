@@ -120,7 +120,7 @@
         {% if result.top_rows %}
         <section class="top-performer-poster" id="top-performer-poster-{{ loop.index }}">
           <div class="top-performer-poster-head">
-            <h3>{{ result.poster_title or 'BEST PERFORMERS' }}</h3>
+            <h3><span class="top-performer-title-star">★</span> {{ result.poster_title or 'BEST PERFORMERS' }} <span class="top-performer-title-star">★</span></h3>
             <p>Top Ten Ranked Crew</p>
           </div>
           <div class="top-performer-poster-grid">
