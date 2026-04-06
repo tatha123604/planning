@@ -1848,6 +1848,36 @@ async def compare_top_performer_months(
     )
 
 
+@app.post("/top-performer/reset")
+def reset_top_performer():
+    current_state = _load_top_performer_state()
+    payload = {
+        "minimum_runs": int(current_state.get("minimum_runs") or 3),
+        "results": [],
+        "warnings": [],
+        "summary": {},
+        "comparison": current_state.get("comparison") if isinstance(current_state.get("comparison"), dict) else {},
+        "saved_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    _save_top_performer_state(payload)
+    return RedirectResponse("/top-performer", status_code=303)
+
+
+@app.post("/top-performer/comparison/reset")
+def reset_top_performer_comparison():
+    current_state = _load_top_performer_state()
+    payload = {
+        "minimum_runs": int(current_state.get("minimum_runs") or 3),
+        "results": current_state.get("results") if isinstance(current_state.get("results"), list) else [],
+        "warnings": [],
+        "summary": current_state.get("summary") if isinstance(current_state.get("summary"), dict) else {},
+        "comparison": {},
+        "saved_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    _save_top_performer_state(payload)
+    return RedirectResponse("/top-performer", status_code=303)
+
+
 @app.post("/cli/distribution/targets/add")
 def add_cli_distribution_target(
     cli_name: str = Form(...),
