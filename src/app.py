@@ -1857,6 +1857,33 @@ async def compare_top_performer_months(
     )
 
 
+@app.post("/top-performer/photo")
+async def upload_top_performer_photo(
+    crew_name: str = Form(...),
+    photo_file: UploadFile = File(...),
+):
+    current_state = _load_top_performer_state()
+    photo_map = _save_top_performer_photos(
+        [photo_file],
+        current_state.get("photo_map") if isinstance(current_state.get("photo_map"), dict) else {},
+    )
+    results = _attach_top_performer_photos(
+        current_state.get("results") if isinstance(current_state.get("results"), list) else [],
+        photo_map,
+    )
+    payload = {
+        "minimum_runs": int(current_state.get("minimum_runs") or 3),
+        "results": results,
+        "warnings": current_state.get("warnings") if isinstance(current_state.get("warnings"), list) else [],
+        "summary": current_state.get("summary") if isinstance(current_state.get("summary"), dict) else {},
+        "comparison": current_state.get("comparison") if isinstance(current_state.get("comparison"), dict) else {},
+        "photo_map": photo_map,
+        "saved_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    _save_top_performer_state(payload)
+    return RedirectResponse("/top-performer", status_code=303)
+
+
 @app.post("/top-performer/reset")
 def reset_top_performer():
     current_state = _load_top_performer_state()

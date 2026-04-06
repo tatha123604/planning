@@ -1377,6 +1377,15 @@ ul { padding-left: 18px; margin: 6px 0; }
   position: relative;
   z-index: 1;
 }
+.top-performer-photo-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.top-performer-photo-form input[type="file"] {
+  max-width: 200px;
+}
 @media (max-width: 900px) {
   .top-performer-poster-grid {
     grid-template-columns: 1fr;

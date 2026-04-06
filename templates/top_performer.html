@@ -170,6 +170,7 @@
               <tr>
                 <th>Rank</th>
                 <th>Crew Name</th>
+                <th>Photo</th>
                 <th>Runs</th>
                 <th>Total Score</th>
                 <th>BFT</th>
@@ -186,6 +187,13 @@
               <tr>
                 <td>{{ row.rank }}</td>
                 <td><span class="employee-data-pill employee-data-pill-name">{{ row.crew_name }}</span></td>
+                <td>
+                  <form method="post" action="/top-performer/photo" enctype="multipart/form-data" class="top-performer-photo-form">
+                    <input type="hidden" name="crew_name" value="{{ row.crew_name }}" />
+                    <input type="file" name="photo_file" accept=".png,.jpg,.jpeg,.webp" required />
+                    <button type="submit" class="ghost small">Save Photo</button>
+                  </form>
+                </td>
                 <td>{{ row.runs }}</td>
                 <td>{{ row.total_score }}</td>
                 <td>{{ row.bft }}</td>
@@ -199,7 +207,7 @@
               {% endfor %}
               {% if not result.top_rows %}
               <tr>
-                <td colspan="11">No eligible performer found for the current minimum runs value.</td>
+                <td colspan="12">No eligible performer found for the current minimum runs value.</td>
               </tr>
               {% endif %}
             </tbody>
