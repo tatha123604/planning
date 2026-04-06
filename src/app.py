@@ -3545,7 +3545,7 @@ def _import_employee_rows(
             field_updates = [
                 ("Name", existing.name, str(name).strip()),
                 ("Designation", existing.role, role),
-                ("Hire Date", existing.hire_date, hire_date),
+                ("APPOINT DATE", existing.hire_date, hire_date),
                 ("Retirement Date", existing.retirement_date, retirement_target),
                 ("Promotion Designation", existing.promotion_role, promo_role_target),
                 ("Promotion Ready Date", existing.promotion_ready_date, promo_ready_target),
@@ -7016,7 +7016,7 @@ def _upsert_employee_master_records(
             field_labels = {
                 "name": "Name",
                 "role": "Designation",
-                "hire_date": "Hire Date",
+                "hire_date": "APPOINT DATE",
                 "doa": "DOA",
                 "retirement_date": "Retirement Date",
                 "promotion_ready_date": "Promotion Date",
