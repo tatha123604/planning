@@ -93,6 +93,39 @@
             <button type="submit" class="ghost small" data-confirm-label="reset top performer results">Reset</button>
           </form>
         </div>
+        {% if result.top_rows %}
+        <section class="top-performer-poster">
+          <div class="top-performer-poster-head">
+            <h3>{{ result.poster_title or 'BEST PERFORMERS' }}</h3>
+            <p>Top Ten Ranked Crew</p>
+          </div>
+          <div class="top-performer-poster-grid">
+            {% for row in result.top_rows %}
+            <article class="top-performer-item">
+              <div class="top-performer-avatar">{{ row.rank }}</div>
+              <div class="top-performer-copy">
+                <div class="top-performer-rankline">
+                  <span>Rank {{ row.rank }}</span>
+                  {% if row.rank == 1 %}
+                  <span class="top-performer-medal">Gold</span>
+                  {% elif row.rank == 2 %}
+                  <span class="top-performer-medal">Silver</span>
+                  {% elif row.rank == 3 %}
+                  <span class="top-performer-medal">Bronze</span>
+                  {% endif %}
+                </div>
+                <strong>{{ row.crew_name }}</strong>
+                <span>Marks: {{ row.total_score }}</span>
+              </div>
+            </article>
+            {% endfor %}
+          </div>
+          <div class="top-performer-poster-foot">
+            <span>"Consistency, dedication, and professional excellence define our best performers."</span>
+            <span>Data source: Ranking upload</span>
+          </div>
+        </section>
+        {% endif %}
         <div class="summary-chip-row">
           {% if result.report_date %}
           <div class="summary-chip">Report date: {{ result.report_date }}</div>

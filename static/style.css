@@ -1231,6 +1231,107 @@ ul { padding-left: 18px; margin: 6px 0; }
   gap: 12px;
   flex-wrap: wrap;
 }
+.top-performer-poster {
+  margin: 0 0 16px;
+  padding: 18px;
+  border-radius: 20px;
+  color: #f6e8a7;
+  background:
+    radial-gradient(circle at top left, rgba(255,255,255,0.2), transparent 24%),
+    radial-gradient(circle at bottom right, rgba(255,215,120,0.16), transparent 20%),
+    linear-gradient(180deg, #132d77 0%, #10225c 45%, #0e1840 100%);
+  border: 1px solid rgba(255, 221, 129, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08), 0 18px 40px rgba(0, 0, 0, 0.25);
+}
+.top-performer-poster-head {
+  text-align: center;
+  margin-bottom: 16px;
+}
+.top-performer-poster-head h3 {
+  margin: 0 0 6px;
+  color: #ffd86b;
+  font-size: 1.7rem;
+  letter-spacing: 0.05em;
+}
+.top-performer-poster-head p {
+  margin: 0;
+  color: #eef4ff;
+  font-size: 1rem;
+  font-weight: 700;
+}
+.top-performer-poster-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 14px;
+}
+.top-performer-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(17, 35, 94, 0.78);
+  border: 1px solid rgba(255, 222, 122, 0.32);
+}
+.top-performer-avatar {
+  flex: 0 0 52px;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 1rem;
+  color: #0e1f5d;
+  background: linear-gradient(180deg, #f4f1ff 0%, #b6c8ff 100%);
+  box-shadow: inset 0 -6px 14px rgba(62, 90, 170, 0.25);
+}
+.top-performer-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.top-performer-copy strong {
+  color: #ffe179;
+  font-size: 1rem;
+  line-height: 1.2;
+}
+.top-performer-copy span {
+  color: #eef4ff;
+  font-weight: 600;
+}
+.top-performer-rankline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #ffe179;
+  font-weight: 800;
+}
+.top-performer-medal {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255, 220, 109, 0.18);
+  border: 1px solid rgba(255, 220, 109, 0.45);
+  color: #ffe179;
+  font-size: 0.78rem;
+}
+.top-performer-poster-foot {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  color: #dce7ff;
+  font-style: italic;
+}
+@media (max-width: 900px) {
+  .top-performer-poster-grid {
+    grid-template-columns: 1fr;
+  }
+}
 .table-export-button {
   min-width: 128px;
 }

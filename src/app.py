@@ -3039,6 +3039,31 @@ def _top_performer_title_from_filename(filename: str) -> str:
     return filename
 
 
+def _top_performer_poster_title(filename: str, report_date_label: str) -> str:
+    base = Path(filename or "").stem
+    range_match = re.search(r"(\d{4})-(\d{2})-(\d{2})\D+to\D+(\d{4})-(\d{2})-(\d{2})", base, re.IGNORECASE)
+    if range_match:
+        try:
+            start_date = date(int(range_match.group(1)), int(range_match.group(2)), int(range_match.group(3)))
+            return f"BEST PERFORMERS - {start_date.strftime('%B %Y').upper()}"
+        except ValueError:
+            pass
+    single_match = re.search(r"(\d{4})-(\d{2})-(\d{2})", base)
+    if single_match:
+        try:
+            report_date = date(int(single_match.group(1)), int(single_match.group(2)), int(single_match.group(3)))
+            return f"BEST PERFORMERS - {report_date.strftime('%B %Y').upper()}"
+        except ValueError:
+            pass
+    if report_date_label:
+        try:
+            report_date = datetime.strptime(report_date_label, "%d-%m-%Y").date()
+            return f"BEST PERFORMERS - {report_date.strftime('%B %Y').upper()}"
+        except ValueError:
+            pass
+    return "BEST PERFORMERS"
+
+
 def _build_top_performer_result(
     uploads: list[tuple[str, bytes]],
     minimum_runs: int,
@@ -3084,6 +3109,7 @@ def _build_top_performer_result(
             {
                 "filename": filename,
                 "title": _top_performer_title_from_filename(filename),
+                "poster_title": _top_performer_poster_title(filename, report_date_label),
                 "report_date": report_date_label,
                 "row_count": len(ranked_rows),
                 "eligible_count": len(eligible_rows),
