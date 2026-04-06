@@ -1281,6 +1281,66 @@ ul { padding-left: 18px; margin: 6px 0; }
   background-position: 30px 18px, 120px 60px, 12px 94px;
   opacity: 0.3;
 }
+.top-performer-poster-particles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+.top-performer-poster-particles .sparkle {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow:
+    0 0 6px rgba(255,255,255,0.95),
+    0 0 12px rgba(255,255,255,0.72),
+    0 0 22px rgba(255,255,255,0.38);
+  opacity: 0.92;
+}
+.top-performer-poster-particles .sparkle::before,
+.top-performer-poster-particles .sparkle::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(255,255,255,0.82);
+  border-radius: 999px;
+}
+.top-performer-poster-particles .sparkle::before {
+  width: 12px;
+  height: 1.5px;
+}
+.top-performer-poster-particles .sparkle::after {
+  width: 1.5px;
+  height: 12px;
+}
+.top-performer-poster-particles .s1 { left: 4%; top: 8%; }
+.top-performer-poster-particles .s2 { left: 11%; top: 18%; transform: scale(0.9); }
+.top-performer-poster-particles .s3 { left: 17%; top: 11%; transform: scale(1.15); }
+.top-performer-poster-particles .s4 { left: 26%; top: 22%; transform: scale(0.85); }
+.top-performer-poster-particles .s5 { left: 33%; top: 9%; }
+.top-performer-poster-particles .s6 { left: 41%; top: 17%; transform: scale(1.1); }
+.top-performer-poster-particles .s7 { left: 48%; top: 8%; transform: scale(0.8); }
+.top-performer-poster-particles .s8 { left: 56%; top: 20%; }
+.top-performer-poster-particles .s9 { left: 63%; top: 12%; transform: scale(1.2); }
+.top-performer-poster-particles .s10 { left: 71%; top: 21%; transform: scale(0.9); }
+.top-performer-poster-particles .s11 { left: 79%; top: 10%; }
+.top-performer-poster-particles .s12 { left: 90%; top: 16%; transform: scale(1.25); }
+.top-performer-poster-particles .s13 { left: 7%; top: 38%; transform: scale(0.95); }
+.top-performer-poster-particles .s14 { left: 22%; top: 46%; transform: scale(1.18); }
+.top-performer-poster-particles .s15 { left: 37%; top: 54%; transform: scale(0.88); }
+.top-performer-poster-particles .s16 { left: 52%; top: 43%; transform: scale(1.08); }
+.top-performer-poster-particles .s17 { left: 67%; top: 57%; transform: scale(0.92); }
+.top-performer-poster-particles .s18 { left: 83%; top: 47%; transform: scale(1.15); }
+.top-performer-poster-particles .s19 { left: 12%; top: 74%; transform: scale(1.05); }
+.top-performer-poster-particles .s20 { left: 29%; top: 84%; transform: scale(0.86); }
+.top-performer-poster-particles .s21 { left: 45%; top: 78%; transform: scale(1.2); }
+.top-performer-poster-particles .s22 { left: 62%; top: 88%; transform: scale(0.9); }
+.top-performer-poster-particles .s23 { left: 77%; top: 79%; transform: scale(1.08); }
+.top-performer-poster-particles .s24 { left: 92%; top: 86%; transform: scale(1.25); }
 .top-performer-poster.export-capture .top-performer-poster-stars {
   opacity: 0.82;
   filter: brightness(1.35) saturate(1.15);
@@ -1288,6 +1348,13 @@ ul { padding-left: 18px; margin: 6px 0; }
 .top-performer-poster.export-capture .top-performer-poster-stars-secondary {
   opacity: 0.52;
   filter: brightness(1.45) saturate(1.2);
+}
+.top-performer-poster.export-capture .top-performer-poster-particles .sparkle {
+  opacity: 1;
+  box-shadow:
+    0 0 8px rgba(255,255,255,1),
+    0 0 16px rgba(255,255,255,0.86),
+    0 0 28px rgba(255,255,255,0.5);
 }
 .top-performer-poster.export-capture {
   box-shadow:
