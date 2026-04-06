@@ -1678,6 +1678,11 @@ def cli_distribution_planner_page(
 @app.get("/top-performer")
 def top_performer_page(request: Request):
     state = _load_top_performer_state()
+    photo_map = state.get("photo_map") if isinstance(state.get("photo_map"), dict) else {}
+    results = _attach_top_performer_photos(
+        state.get("results") if isinstance(state.get("results"), list) else [],
+        photo_map,
+    )
     saved_at = str(state.get("saved_at") or "")
     saved_at_label = ""
     if saved_at:
@@ -1691,11 +1696,11 @@ def top_performer_page(request: Request):
             "request": request,
             "active_page": "top_performer",
             "minimum_runs": int(state.get("minimum_runs") or 3),
-            "results": state.get("results") or [],
+            "results": results,
             "warnings": state.get("warnings") or [],
             "summary": state.get("summary") or {},
             "comparison": state.get("comparison") or {},
-            "photo_map": state.get("photo_map") or {},
+            "photo_map": photo_map,
             "saved_at_label": saved_at_label,
         },
     )
