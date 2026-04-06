@@ -3027,6 +3027,17 @@ def _parse_top_performer_upload(
     return ranked_rows, report_date.strftime("%d-%m-%Y") if report_date else "", warnings
 
 
+def _top_performer_title_from_filename(filename: str) -> str:
+    base = Path(filename or "").stem
+    match = re.search(r"(\d{4}-\d{2}-\d{2})\D+to\D+(\d{4}-\d{2}-\d{2})", base, re.IGNORECASE)
+    if match:
+        return f"Top Performer {match.group(1)} to {match.group(2)}"
+    match = re.search(r"(\d{4}-\d{2}-\d{2})", base)
+    if match:
+        return f"Top Performer {match.group(1)}"
+    return filename
+
+
 def _build_top_performer_result(
     uploads: list[tuple[str, bytes]],
     minimum_runs: int,
@@ -3071,6 +3082,7 @@ def _build_top_performer_result(
         results.append(
             {
                 "filename": filename,
+                "title": _top_performer_title_from_filename(filename),
                 "report_date": report_date_label,
                 "row_count": len(ranked_rows),
                 "eligible_count": len(eligible_rows),

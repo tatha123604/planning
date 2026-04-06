@@ -88,7 +88,7 @@
       {% for result in results %}
       <section class="card">
         <div class="card-head-inline">
-          <h2>{{ result.filename }}</h2>
+          <h2>{{ result.title or result.filename }}</h2>
           <form method="post" action="/top-performer/reset" class="inline">
             <button type="submit" class="ghost small" data-confirm-label="reset top performer results">Reset</button>
           </form>
