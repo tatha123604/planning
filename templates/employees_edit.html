@@ -20,6 +20,7 @@
         <a class="{{ 'active' if active_page == 'uploads' else '' }}" href="/uploads">Uploads</a>
         <a class="{{ 'active' if active_page == 'cli' else '' }}" href="/cli">CLI</a>
         <a class="{{ 'active' if active_page == 'cli_distribution_planner' else '' }}" href="/cli-distribution-planner">CLI DISTRIBUTION PLANNER</a>
+        <a class="{{ 'active' if active_page == 'top_performer' else '' }}" href="/top-performer">Top Performer</a>
         <details class="side-group" {% if active_page in ['cli_matrix', 'non_continuous_duty', 'sub_non_continuous_duty'] %}open{% endif %}>
           <summary>CMS REPORTS</summary>
           <div class="side-sub-links">

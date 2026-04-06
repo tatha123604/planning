@@ -78,6 +78,7 @@ EMPLOYEE_MASTER_SOURCE_SNAPSHOT_FILE = DB_PATH.parent / "employee_master_source_
 EMPLOYEE_MASTER_EXTRA_REVIEW_KEEP_FILE = DB_PATH.parent / "employee_master_extra_review_keep.json"
 EMPLOYEE_MASTER_CLEANUP_LOG_FILE = DB_PATH.parent / "employee_master_cleanup_log.json"
 LI_GRADING_METADATA_FILE = DB_PATH.parent / "li_grading_metadata.json"
+TOP_PERFORMER_STATE_FILE = DB_PATH.parent / "top_performer_state.json"
 EMPLOYEE_SYNC_BACKUP_DIR = DB_PATH.parent / "employee_sync_backups"
 GOOGLE_SHEETS_READONLY_SCOPE = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 NON_CONTINUOUS_VARIANTS = {
@@ -1673,6 +1674,97 @@ def cli_distribution_planner_page(
     )
 
 
+@app.get("/top-performer")
+def top_performer_page(request: Request):
+    state = _load_top_performer_state()
+    saved_at = str(state.get("saved_at") or "")
+    saved_at_label = ""
+    if saved_at:
+        try:
+            saved_at_label = datetime.fromisoformat(saved_at).strftime("%d-%m-%Y %I:%M %p")
+        except ValueError:
+            saved_at_label = saved_at
+    return templates.TemplateResponse(
+        "top_performer.html",
+        {
+            "request": request,
+            "active_page": "top_performer",
+            "minimum_runs": int(state.get("minimum_runs") or 3),
+            "results": state.get("results") or [],
+            "warnings": state.get("warnings") or [],
+            "summary": state.get("summary") or {},
+            "saved_at_label": saved_at_label,
+        },
+    )
+
+
+@app.post("/top-performer")
+async def generate_top_performer(
+    request: Request,
+    files: list[UploadFile] = File(...),
+    minimum_runs: int = Form(3),
+):
+    uploads: list[tuple[str, bytes]] = []
+    for upload in files:
+        filename = (upload.filename or "").strip()
+        if not filename:
+            continue
+        if not filename.lower().endswith((".xlsx", ".csv")):
+            return templates.TemplateResponse(
+                "top_performer.html",
+                {
+                    "request": request,
+                    "active_page": "top_performer",
+                    "minimum_runs": minimum_runs,
+                    "results": [],
+                    "warnings": [f"{filename}: only .xlsx and .csv files are supported."],
+                    "summary": {},
+                    "saved_at_label": "",
+                },
+                status_code=400,
+            )
+        uploads.append((filename, await upload.read()))
+
+    if not uploads:
+        return templates.TemplateResponse(
+            "top_performer.html",
+            {
+                "request": request,
+                "active_page": "top_performer",
+                "minimum_runs": minimum_runs,
+                "results": [],
+                "warnings": ["Please upload at least one ranking file."],
+                "summary": {},
+                "saved_at_label": "",
+            },
+            status_code=400,
+        )
+
+    minimum_runs = max(0, minimum_runs)
+    results, warnings, summary = _build_top_performer_result(uploads, minimum_runs)
+    payload = {
+        "minimum_runs": minimum_runs,
+        "results": results,
+        "warnings": warnings,
+        "summary": summary,
+        "saved_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    _save_top_performer_state(payload)
+    saved_at_label = datetime.fromisoformat(str(payload["saved_at"])).strftime("%d-%m-%Y %I:%M %p")
+    return templates.TemplateResponse(
+        "top_performer.html",
+        {
+            "request": request,
+            "active_page": "top_performer",
+            "minimum_runs": minimum_runs,
+            "results": results,
+            "warnings": warnings,
+            "summary": summary,
+            "saved_at_label": saved_at_label,
+        },
+    )
+
+
 @app.post("/cli/distribution/targets/add")
 def add_cli_distribution_target(
     cli_name: str = Form(...),
@@ -2726,6 +2818,181 @@ def _load_li_grading_metadata() -> dict[str, str]:
         "report_date": str(raw.get("report_date") or ""),
         "saved_at": str(raw.get("saved_at") or ""),
     }
+
+
+TOP_PERFORMER_REQUIRED_COLUMNS = {
+    "crew name": "crew_name",
+    "runs": "runs",
+    "total score": "total_score",
+    "bft": "bft",
+    "bpt": "bpt",
+    "speed": "speed",
+    "platform": "platform",
+    "emergency": "emergency",
+    "cautious": "cautious",
+    "punctuality": "punctuality",
+}
+
+
+def _normalize_top_performer_column(value: object | None) -> str:
+    return re.sub(r"\s+", " ", str(value or "").strip()).lower()
+
+
+def _to_float(value: object | None) -> float:
+    if value in (None, "", " "):
+        return 0.0
+    try:
+        return float(str(value).strip())
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _to_int_from_value(value: object | None) -> int:
+    if value in (None, "", " "):
+        return 0
+    try:
+        return int(float(str(value).strip()))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _read_top_performer_dataframe(filename: str, content: bytes) -> pd.DataFrame:
+    suffix = Path(filename or "").suffix.lower()
+    if suffix == ".csv":
+        return pd.read_csv(BytesIO(content))
+    return pd.read_excel(BytesIO(content))
+
+
+def _build_top_performer_result(
+    uploads: list[tuple[str, bytes]],
+    minimum_runs: int,
+) -> tuple[list[dict[str, object]], list[str], dict[str, int]]:
+    results: list[dict[str, object]] = []
+    warnings: list[str] = []
+    overall_rows = 0
+    overall_eligible = 0
+
+    for filename, content in uploads:
+        dataframe = _read_top_performer_dataframe(filename, content)
+        if dataframe.empty:
+            warnings.append(f"{filename}: file is empty.")
+            continue
+
+        normalized_columns = {_normalize_top_performer_column(col): col for col in dataframe.columns}
+        missing = [column for column in TOP_PERFORMER_REQUIRED_COLUMNS if column not in normalized_columns]
+        if missing:
+            warnings.append(
+                f"{filename}: missing column(s): {', '.join(missing)}."
+            )
+            continue
+
+        renamed = dataframe.rename(
+            columns={
+                normalized_columns[source]: target
+                for source, target in TOP_PERFORMER_REQUIRED_COLUMNS.items()
+            }
+        )
+        ranked_rows: list[dict[str, object]] = []
+        for _, raw in renamed.iterrows():
+            crew_name = _normalize_export_text(raw.get("crew_name"))
+            if not crew_name:
+                continue
+            ranked_rows.append(
+                {
+                    "crew_name": crew_name,
+                    "runs": _to_int_from_value(raw.get("runs")),
+                    "total_score": round(_to_float(raw.get("total_score")), 2),
+                    "bft": round(_to_float(raw.get("bft")), 2),
+                    "bpt": round(_to_float(raw.get("bpt")), 2),
+                    "speed": round(_to_float(raw.get("speed")), 2),
+                    "platform": round(_to_float(raw.get("platform")), 2),
+                    "emergency": round(_to_float(raw.get("emergency")), 2),
+                    "cautious": round(_to_float(raw.get("cautious")), 2),
+                    "punctuality": round(_to_float(raw.get("punctuality")), 2),
+                }
+            )
+
+        eligible_rows = [row for row in ranked_rows if int(row["runs"]) >= minimum_runs]
+        eligible_rows.sort(
+            key=lambda row: (
+                -float(row["total_score"]),
+                -int(row["runs"]),
+                str(row["crew_name"]).lower(),
+            )
+        )
+        top_rows = []
+        for index, row in enumerate(eligible_rows[:10], start=1):
+            top_rows.append(
+                {
+                    "rank": index,
+                    "crew_name": row["crew_name"],
+                    "runs": row["runs"],
+                    "total_score": f"{float(row['total_score']):.2f}",
+                    "bft": f"{float(row['bft']):.2f}",
+                    "bpt": f"{float(row['bpt']):.2f}",
+                    "speed": f"{float(row['speed']):.2f}",
+                    "platform": f"{float(row['platform']):.2f}",
+                    "emergency": f"{float(row['emergency']):.2f}",
+                    "cautious": f"{float(row['cautious']):.2f}",
+                    "punctuality": f"{float(row['punctuality']):.2f}",
+                }
+            )
+
+        report_date = infer_report_date(filename)
+        results.append(
+            {
+                "filename": filename,
+                "report_date": report_date.strftime("%d-%m-%Y") if report_date else "",
+                "row_count": len(ranked_rows),
+                "eligible_count": len(eligible_rows),
+                "top_rows": top_rows,
+            }
+        )
+        overall_rows += len(ranked_rows)
+        overall_eligible += len(eligible_rows)
+
+    return results, warnings, {
+        "file_count": len(results),
+        "overall_rows": overall_rows,
+        "overall_eligible": overall_eligible,
+    }
+
+
+def _save_top_performer_state(payload: dict[str, object]) -> None:
+    TOP_PERFORMER_STATE_FILE.write_text(
+        json.dumps(payload, ensure_ascii=True, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _load_top_performer_state() -> dict[str, object]:
+    if not TOP_PERFORMER_STATE_FILE.exists():
+        return {
+            "minimum_runs": 3,
+            "results": [],
+            "warnings": [],
+            "summary": {},
+            "saved_at": "",
+        }
+    try:
+        raw = json.loads(TOP_PERFORMER_STATE_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {
+            "minimum_runs": 3,
+            "results": [],
+            "warnings": [],
+            "summary": {},
+            "saved_at": "",
+        }
+    if not isinstance(raw, dict):
+        return {
+            "minimum_runs": 3,
+            "results": [],
+            "warnings": [],
+            "summary": {},
+            "saved_at": "",
+        }
+    return raw
 
 
 EMPLOYEE_ALIAS_MAP = {
