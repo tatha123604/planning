@@ -3167,7 +3167,22 @@ def _load_top_performer_state() -> dict[str, object]:
             "comparison": {},
             "saved_at": "",
         }
-    return raw
+    try:
+        minimum_runs = int(raw.get("minimum_runs") or 3)
+    except (TypeError, ValueError):
+        minimum_runs = 3
+    results = raw.get("results")
+    warnings = raw.get("warnings")
+    summary = raw.get("summary")
+    comparison = raw.get("comparison")
+    return {
+        "minimum_runs": minimum_runs,
+        "results": results if isinstance(results, list) else [],
+        "warnings": warnings if isinstance(warnings, list) else [],
+        "summary": summary if isinstance(summary, dict) else {},
+        "comparison": comparison if isinstance(comparison, dict) else {},
+        "saved_at": str(raw.get("saved_at") or ""),
+    }
 
 
 EMPLOYEE_ALIAS_MAP = {
