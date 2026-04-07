@@ -1935,7 +1935,10 @@ def reset_top_performer_comparison():
 
 
 @app.post("/top-performer/clear-stored")
-def clear_top_performer_stored_data():
+def clear_top_performer_stored_data(
+    action_password: str = Form(...),
+):
+    _validate_sensitive_action_password(action_password)
     if TOP_PERFORMER_STATE_FILE.exists():
         TOP_PERFORMER_STATE_FILE.unlink(missing_ok=True)
     _clear_top_performer_photos()

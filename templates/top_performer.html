@@ -76,8 +76,11 @@
           </div>
         </form>
         <div class="actions">
-          <form method="post" action="/top-performer/clear-stored" class="inline">
-            <button type="submit" class="danger" data-confirm-label="delete stored top performer data">Delete Stored Data</button>
+          <form method="post" action="/top-performer/clear-stored" class="inline sensitive-inline-form" data-password-gated-form data-password-gated-code="11111">
+            <label class="site-password-label compact-site-password">Action Code
+              <input class="site-password-input compact-site-password-input" type="password" name="action_password" autocomplete="current-password" required data-password-gated-input />
+            </label>
+            <button type="submit" class="danger" data-confirm-label="delete stored top performer data" data-password-gated-button disabled>Delete Stored Data</button>
           </form>
         </div>
       </section>
@@ -384,6 +387,24 @@
           button.textContent = originalText;
         }
       };
+
+
+    (() => {
+      const gatedForms = document.querySelectorAll('[data-password-gated-form]');
+      gatedForms.forEach((form) => {
+        const passwordInput = form.querySelector('[data-password-gated-input]');
+        const submitButton = form.querySelector('[data-password-gated-button]');
+        if (!passwordInput || !submitButton) {
+          return;
+        }
+        const requiredCode = form.dataset.passwordGatedCode || '11111';
+        const syncButtonState = () => {
+          submitButton.disabled = passwordInput.value.trim() !== requiredCode;
+        };
+        passwordInput.addEventListener('input', syncButtonState);
+        syncButtonState();
+      });
+    })();
 
       buttons.forEach((button) => {
         button.addEventListener('click', () => {
