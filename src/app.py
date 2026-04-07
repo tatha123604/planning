@@ -3211,14 +3211,14 @@ def _monthly_comparison_poster_title(filename: str, report_date_label: str) -> s
     if range_match:
         try:
             start_date = date(int(range_match.group(1)), int(range_match.group(2)), int(range_match.group(3)))
-            return f"MONTHLY COMPARISON - {start_date.strftime('%B %Y').upper()}"
+            return f"TOP TEN IMPROVED CREW - {start_date.strftime('%B %Y').upper()}"
         except ValueError:
             pass
     dmy_match = re.search(r'(\d{2})-(\d{2})-(\d{4})', normalized_label)
     if dmy_match:
         try:
             report_date = date(int(dmy_match.group(3)), int(dmy_match.group(2)), int(dmy_match.group(1)))
-            return f"MONTHLY COMPARISON - {report_date.strftime('%B %Y').upper()}"
+            return f"TOP TEN IMPROVED CREW - {report_date.strftime('%B %Y').upper()}"
         except ValueError:
             pass
     base = Path(filename or '').stem.replace('_', ' ').replace('-', ' ')
@@ -3229,12 +3229,12 @@ def _monthly_comparison_poster_title(filename: str, report_date_label: str) -> s
         if len(year_text) == 2:
             year_text = f"20{year_text}"
         if year_text:
-            return f"MONTHLY COMPARISON - {month_name.upper()} {year_text}"
+            return f"TOP TEN IMPROVED CREW - {month_name.upper()} {year_text}"
     top_title = _top_performer_poster_title(filename, report_date_label)
     if ' - ' in top_title:
         _, suffix = top_title.split(' - ', 1)
-        return f"MONTHLY COMPARISON - {suffix}"
-    return "MONTHLY COMPARISON"
+        return f"TOP TEN IMPROVED CREW - {suffix}"
+    return "TOP TEN IMPROVED CREW"
 
 
 def _ensure_top_performer_photo_dir() -> Path:
