@@ -1679,8 +1679,11 @@ def cli_distribution_planner_page(
 def top_performer_page(request: Request):
     state = _load_top_performer_state()
     photo_map = state.get("photo_map") if isinstance(state.get("photo_map"), dict) else {}
+    state_results = state.get("results") if isinstance(state.get("results"), list) else []
+    if not photo_map:
+        photo_map = _discover_top_performer_photo_map(state_results)
     results = _attach_top_performer_photos(
-        state.get("results") if isinstance(state.get("results"), list) else [],
+        state_results,
         photo_map,
     )
     saved_at = str(state.get("saved_at") or "")
@@ -3201,6 +3204,23 @@ def _attach_top_performer_photos(
         result_data["top_rows"] = top_rows
         updated_results.append(result_data)
     return updated_results
+
+
+def _discover_top_performer_photo_map(results: list[dict[str, object]]) -> dict[str, str]:
+    if not TOP_PERFORMER_PHOTO_DIR.exists():
+        return {}
+    discovered: dict[str, str] = {}
+    available_files = {
+        _normalize_top_performer_name(path.stem): f"/static/top_performer_photos/{path.name}"
+        for path in TOP_PERFORMER_PHOTO_DIR.iterdir()
+        if path.is_file()
+    }
+    for result in results:
+        for row in list(result.get("top_rows") or []):
+            crew_key = _normalize_top_performer_name(row.get("crew_name"))
+            if crew_key and crew_key in available_files:
+                discovered[crew_key] = available_files[crew_key]
+    return discovered
 
 
 def _build_top_performer_result(
