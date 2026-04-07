@@ -71,8 +71,8 @@
             <h4>Save these changes?</h4>
             <p class="hint">Preview first, then choose Yes to write the Google Sheet changes into our database.</p>
             <div class="actions">
-              <button type="button" id="google-sync-apply" class="secondary-action">Yes, save changes</button>
-              <button type="button" id="google-sync-cancel-preview" class="ghost">No, discard preview</button>
+              <button type="button" id="google-sync-apply" class="secondary-action cleanup-keep-button">Yes, save changes</button>
+              <button type="button" id="google-sync-cancel-preview" class="secondary-action cleanup-delete-button">No, discard preview</button>
             </div>
           </div>
         </div>
@@ -534,6 +534,17 @@
         const resetPreviewActions = () => {
           pendingSyncReady = false;
           setCardVisible(syncPreviewActions, false);
+          setCardVisible(syncReport, false);
+          syncAdded.innerHTML = '';
+          syncUpdated.innerHTML = '';
+          syncDeleted.innerHTML = '';
+          currentSyncDetails = [];
+          syncDetailsExpanded = false;
+          renderSyncDetails();
+          syncWarningWrap.hidden = true;
+          syncWarningList.innerHTML = '';
+          syncWarning.textContent = '';
+          syncBackup.textContent = '';
         };
         setCardVisible(syncReport, false);
         setCardVisible(syncPreviewActions, false);
