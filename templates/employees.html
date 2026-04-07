@@ -66,7 +66,7 @@
         <p class="hint" id="google-sync-live" role="status" aria-live="polite"></p>
         <p class="hint warning-text" id="google-sync-warning" role="status" aria-live="polite"></p>
         <p class="hint" id="google-sync-backup" role="status" aria-live="polite"></p>
-        <div class="sync-report-card" id="google-sync-preview-actions" hidden>
+        <div class="sync-report-card" id="google-sync-preview-actions" hidden style="display:none;">
           <div class="sync-report-section">
             <h4>Save these changes?</h4>
             <p class="hint">Preview first, then choose Yes to write the Google Sheet changes into our database.</p>
@@ -76,7 +76,7 @@
             </div>
           </div>
         </div>
-        <div class="sync-report-card" id="google-sync-report" hidden>
+        <div class="sync-report-card" id="google-sync-report" hidden style="display:none;">
           <div class="sync-report-section">
             <h4>Inserted</h4>
             <ul class="sync-report-list" id="google-sync-added"></ul>
@@ -527,12 +527,16 @@
         let syncDetailsExpanded = false;
         let currentSyncDetails = [];
         let pendingSyncReady = false;
+        const setCardVisible = (element, visible) => {
+          element.hidden = !visible;
+          element.style.display = visible ? '' : 'none';
+        };
         const resetPreviewActions = () => {
           pendingSyncReady = false;
-          syncPreviewActions.hidden = true;
+          setCardVisible(syncPreviewActions, false);
         };
-        syncReport.hidden = true;
-        syncPreviewActions.hidden = true;
+        setCardVisible(syncReport, false);
+        setCardVisible(syncPreviewActions, false);
         const renderSyncDetails = () => {
           syncDetailsList.innerHTML = '';
           if (!currentSyncDetails.length) {
@@ -573,7 +577,7 @@
           syncLive.textContent = 'Preview started...';
           syncWarning.textContent = '';
           syncBackup.textContent = '';
-          syncReport.hidden = true;
+          setCardVisible(syncReport, false);
           resetPreviewActions();
           syncAdded.innerHTML = '';
           syncUpdated.innerHTML = '';
@@ -598,7 +602,7 @@
             syncBackup.textContent = data.backup_notice || '';
             if (response.ok && data.preview && data.has_changes) {
               pendingSyncReady = true;
-              syncPreviewActions.hidden = false;
+              setCardVisible(syncPreviewActions, true);
             } else {
               resetPreviewActions();
             }
@@ -622,7 +626,7 @@
             renderReportList(syncAdded, addedItems);
             renderReportList(syncUpdated, updatedItems);
             renderReportList(syncDeleted, deletedItems);
-            syncReport.hidden = !(addedItems.length || updatedItems.length || deletedItems.length);
+            setCardVisible(syncReport, !!(addedItems.length || updatedItems.length || deletedItems.length));
 
             currentSyncDetails = Array.isArray(data.sync_details) ? data.sync_details : [];
             syncDetailsExpanded = false;
@@ -642,7 +646,7 @@
             syncLive.className = 'error-text';
             syncWarning.textContent = '';
             syncBackup.textContent = '';
-            syncReport.hidden = true;
+            setCardVisible(syncReport, false);
             resetPreviewActions();
             syncAdded.innerHTML = '';
             syncUpdated.innerHTML = '';
@@ -702,7 +706,7 @@
             renderReportList(syncAdded, addedItems);
             renderReportList(syncUpdated, updatedItems);
             renderReportList(syncDeleted, deletedItems);
-            syncReport.hidden = !(addedItems.length || updatedItems.length || deletedItems.length);
+            setCardVisible(syncReport, !!(addedItems.length || updatedItems.length || deletedItems.length));
             currentSyncDetails = Array.isArray(data.sync_details) ? data.sync_details : [];
             syncDetailsExpanded = false;
             renderSyncDetails();
