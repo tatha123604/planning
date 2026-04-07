@@ -3185,6 +3185,15 @@ def _monthly_comparison_poster_title(filename: str, report_date_label: str) -> s
             return f"MONTHLY COMPARISON - {report_date.strftime('%B %Y').upper()}"
         except ValueError:
             pass
+    base = Path(filename or '').stem.replace('_', ' ').replace('-', ' ')
+    month_match = re.search(r'(january|february|march|april|may|june|july|august|september|october|november|december)\s*(20\d{2}|\d{2})?', base, re.IGNORECASE)
+    if month_match:
+        month_name = month_match.group(1).title()
+        year_text = (month_match.group(2) or '').strip()
+        if len(year_text) == 2:
+            year_text = f"20{year_text}"
+        if year_text:
+            return f"MONTHLY COMPARISON - {month_name.upper()} {year_text}"
     top_title = _top_performer_poster_title(filename, report_date_label)
     if ' - ' in top_title:
         _, suffix = top_title.split(' - ', 1)
