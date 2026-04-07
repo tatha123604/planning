@@ -1911,3 +1911,12 @@ ul { padding-left: 18px; margin: 6px 0; }
   color: #ffd96b;
   text-shadow: 0 0 16px rgba(255, 217, 107, 0.9);
 }
+
+.top-performer-title-star-image {
+  width: 34px;
+  height: 34px;
+  display: inline-block;
+  vertical-align: -4px;
+  margin: 0 10px;
+  filter: drop-shadow(0 0 10px rgba(255, 216, 107, 0.85));
+}
