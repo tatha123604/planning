@@ -232,6 +232,13 @@
                 {% endfor %}
               </select>
             </label>
+            <label>CLI Status
+              <select name="roster_cli_status">
+                <option value="" {% if not roster_cli_status %}selected{% endif %}>Assigned only</option>
+                <option value="assigned" {% if roster_cli_status == 'assigned' %}selected{% endif %}>Assigned</option>
+                <option value="unassigned" {% if roster_cli_status == 'unassigned' %}selected{% endif %}>Unassigned</option>
+              </select>
+            </label>
             <button type="submit">Filter</button>
             <a class="ghost" href="/cli#cli-roster">Reset</a>
           </form>

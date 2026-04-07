@@ -1464,6 +1464,7 @@ def _cli_page_context(
     roster_cli: Optional[str] = None,
     roster_role: Optional[str] = None,
     roster_gradation: Optional[str] = None,
+    roster_cli_status: Optional[str] = None,
     distribution_cli: Optional[str] = None,
     grading_update_notice: str = "",
     grading_update_warning: str = "",
@@ -1516,8 +1517,14 @@ def _cli_page_context(
         key=role_sort_key,
     )
 
-    roster_filter_active = any([roster_name, roster_cli, roster_role, roster_gradation])
-    cli_roster = [e for e in employees_all if e.cli]
+    roster_filter_active = any([roster_name, roster_cli, roster_role, roster_gradation, roster_cli_status])
+    cli_roster = list(employees_all)
+    if roster_cli_status == "assigned":
+        cli_roster = [e for e in cli_roster if _employee_cli_label(e)]
+    elif roster_cli_status == "unassigned":
+        cli_roster = [e for e in cli_roster if not _employee_cli_label(e)]
+    else:
+        cli_roster = [e for e in cli_roster if e.cli]
     if roster_name:
         name_lower = roster_name.lower()
         cli_roster = [e for e in cli_roster if name_lower in e.name.lower()]
@@ -1615,6 +1622,7 @@ def _cli_page_context(
         "roster_cli": roster_cli or "",
         "roster_role": roster_role or "",
         "roster_gradation": roster_gradation or "",
+        "roster_cli_status": roster_cli_status or "",
         "roster_open": roster_filter_active,
         "distribution_cli": selected_distribution_cli,
         "cli_distribution_detail_label": detail_cli_label,
@@ -1652,6 +1660,7 @@ def cli_page(
     roster_cli: Optional[str] = None,
     roster_role: Optional[str] = None,
     roster_gradation: Optional[str] = None,
+    roster_cli_status: Optional[str] = None,
     distribution_cli: Optional[str] = None,
     session: Session = Depends(get_session),
 ):
@@ -1665,6 +1674,7 @@ def cli_page(
             roster_cli=roster_cli,
             roster_role=roster_role,
             roster_gradation=roster_gradation,
+            roster_cli_status=roster_cli_status,
             distribution_cli=distribution_cli,
             cli_plan_notice=request.query_params.get("plan_notice", ""),
             cli_plan_error=request.query_params.get("plan_error", ""),
@@ -2065,6 +2075,7 @@ def employees_page(
     category: Optional[str] = None,
     working_at: Optional[str] = None,
     cli: Optional[str] = None,
+    cli_status: Optional[str] = None,
     gradation: Optional[str] = None,
     sort: str = "role",
     page: int = 1,
@@ -2108,12 +2119,16 @@ def employees_page(
         query_employees = query_employees.where(func.lower(Employee.category) == category_lower)
     if working_at:
         query_employees = query_employees.where(Employee.working_at.ilike(f"%{working_at}%"))
+    if cli_status == "assigned":
+        query_employees = query_employees.where(func.trim(func.coalesce(Employee.cli, "")) != "")
+    elif cli_status == "unassigned":
+        query_employees = query_employees.where(func.trim(func.coalesce(Employee.cli, "")) == "")
     if gradation:
         query_employees = query_employees.where(Employee.gradation.ilike(f"%{gradation}%"))
 
     total_count = None
     employees = []
-    if q or cli:
+    if q or cli or cli_status:
         employees_all = session.exec(query_employees).all()
         employees = list(employees_all)
         if q:
@@ -5184,6 +5199,8 @@ def reports_page(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     role: Optional[str] = None,
+    unassigned_name: Optional[str] = None,
+    unassigned_role: Optional[str] = None,
     session: Session = Depends(get_session),
 ):
     start = _parse_date_cookie(request, "reports_start_date", start_date)
@@ -5234,6 +5251,14 @@ def reports_page(
     retirements = {k: retirements.get(k, 0) for k in ROLE_ORDER if k in retirements} | {
         k: v for k, v in retirements.items() if k not in ROLE_ORDER
     }
+
+    unassigned_cli_staff = [e for e in employees if not _employee_cli_label(e)]
+    if unassigned_name:
+        name_key = unassigned_name.strip().lower()
+        unassigned_cli_staff = [e for e in unassigned_cli_staff if name_key in e.name.lower()]
+    if unassigned_role:
+        unassigned_cli_staff = [e for e in unassigned_cli_staff if normalize_role(e.role) == unassigned_role]
+    unassigned_cli_staff = sorted(unassigned_cli_staff, key=lambda e: (role_sort_key(e.role), e.name.lower()))
     if role:
         retiring_list = [e for e in retiring_list if e.role == role]
     retiring_list = sorted(retiring_list, key=lambda e: (e.retirement_date, role_sort_key(e.role), e.name))

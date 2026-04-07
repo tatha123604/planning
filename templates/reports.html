@@ -146,6 +146,58 @@
           </div>
         </details>
       </section>
+
+      <section class="card collapsible" id="unassigned-cli-card">
+        <details open>
+          <summary>Staff Without CLI Assigned</summary>
+          <form class="inline" method="get" action="/reports#unassigned-cli-card">
+            <input type="hidden" name="start_date" value="{{ start_date.isoformat() }}" />
+            <input type="hidden" name="end_date" value="{{ end_date.isoformat() }}" />
+            {% if role_filter %}<input type="hidden" name="role" value="{{ role_filter }}" />{% endif %}
+            <label>Name
+              <input name="unassigned_name" value="{{ unassigned_name }}" placeholder="Search name" />
+            </label>
+            <label>Designation
+              <select name="unassigned_role">
+                <option value="">All</option>
+                {% for opt in role_headers %}
+                  <option value="{{ opt }}" {% if unassigned_role == opt %}selected{% endif %}>{{ opt }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <button type="submit">Filter</button>
+            <a class="ghost" href="/reports#unassigned-cli-card">Reset</a>
+          </form>
+          <div class="table-wrap">
+            <table class="employee-table paged">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>HRMS ID</th>
+                  <th>CREW ID</th>
+                  <th>Designation</th>
+                  <th>Gradation</th>
+                  <th>Working At</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for e in unassigned_cli_staff %}
+                <tr>
+                  <td>{{ e.name }}</td>
+                  <td>{{ e.hrms or '' }}</td>
+                  <td>{{ e.crew_id or '' }}</td>
+                  <td>{{ e.role }}</td>
+                  <td>{{ e.gradation or '' }}</td>
+                  <td>{% if e.working_at %}<span class="designation-pill">{{ e.working_at }}</span>{% endif %}</td>
+                  <td><a class="ghost small" href="/employees/{{ e.id }}">Edit</a></td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      </section>
     </main>
   </div>
   <script>
