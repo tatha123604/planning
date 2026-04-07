@@ -66,6 +66,16 @@
         <p class="hint" id="google-sync-live" role="status" aria-live="polite"></p>
         <p class="hint warning-text" id="google-sync-warning" role="status" aria-live="polite"></p>
         <p class="hint" id="google-sync-backup" role="status" aria-live="polite"></p>
+        <div class="sync-report-card" id="google-sync-preview-actions" hidden>
+          <div class="sync-report-section">
+            <h4>Save these changes?</h4>
+            <p class="hint">Preview first, then choose Yes to write the Google Sheet changes into our database.</p>
+            <div class="actions">
+              <button type="button" id="google-sync-apply" class="secondary-action">Yes, save changes</button>
+              <button type="button" id="google-sync-cancel-preview" class="ghost">No, discard preview</button>
+            </div>
+          </div>
+        </div>
         <div class="sync-report-card" id="google-sync-report" hidden>
           <div class="sync-report-section">
             <h4>Inserted</h4>
@@ -78,16 +88,6 @@
           <div class="sync-report-section">
             <h4>Deleted</h4>
             <ul class="sync-report-list" id="google-sync-deleted"></ul>
-          </div>
-        </div>
-        <div class="sync-report-card" id="google-sync-preview-actions" hidden>
-          <div class="sync-report-section">
-            <h4>Save these changes?</h4>
-            <p class="hint">Preview first, then choose Yes to write the Google Sheet changes into our database.</p>
-            <div class="actions">
-              <button type="button" id="google-sync-apply" class="secondary-action">Yes, save changes</button>
-              <button type="button" id="google-sync-cancel-preview" class="ghost">No, discard preview</button>
-            </div>
           </div>
         </div>
         <div id="google-sync-details-wrap" hidden>
@@ -109,7 +109,7 @@
             <input class="site-password-input compact-site-password-input" type="password" name="action_password" autocomplete="current-password" required data-password-gated-input />
           </label>
           <div class="actions">
-            <button type="submit" data-sync-button data-password-gated-button disabled>Preview Google Sheet Sync</button>
+            <button type="submit" data-sync-button data-password-gated-button disabled>Google Sheet Sync</button>
           </div>
         </form>
         <form method="post" action="/employees/restore-backup" class="inline sensitive-inline-form" data-password-gated-form data-password-gated-code="11111">
