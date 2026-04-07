@@ -229,10 +229,16 @@
     actions.append(pdfButton, excelButton);
     toolbar.append(label, status, actions);
 
-    const insertionPoint =
-      primaryAnchor.previousElementSibling?.classList.contains("table-pager")
-        ? primaryAnchor.previousElementSibling
-        : primaryAnchor;
+    let insertionPoint = primaryAnchor;
+    let sibling = primaryAnchor.previousElementSibling;
+    while (sibling) {
+      if (sibling.classList.contains("table-pager") || sibling.classList.contains("table-scrollbar-top")) {
+        insertionPoint = sibling;
+        sibling = sibling.previousElementSibling;
+        continue;
+      }
+      break;
+    }
     host.insertBefore(toolbar, insertionPoint);
     table.dataset.exportReady = "true";
   };
