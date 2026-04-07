@@ -1478,16 +1478,21 @@ ul { padding-left: 18px; margin: 6px 0; }
 .top-performer-rankline {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 8px;
   color: #ffe179;
   font-weight: 800;
   font-size: 1.18rem;
 }
+.top-performer-rankline > span:first-child {
+  display: inline-block;
+  min-width: 150px;
+}
 .top-performer-medal-image {
   width: 44px;
   height: 44px;
   flex: 0 0 44px;
+  margin-left: 2px;
   filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.35));
 }
 .top-performer-poster-foot {
