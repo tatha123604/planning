@@ -3890,17 +3890,61 @@ def _import_employee_rows(
         elif hrms_matches:
             existing = hrms_matches[0]
         else:
-            exact_matches = session.exec(
-                select(Employee).where(Employee.name == str(name).strip(), Employee.role == role)
-            ).all()
-            if len(exact_matches) == 1 and not exact_matches[0].pf_no and not exact_matches[0].hrms:
-                existing = exact_matches[0]
-            elif pf_no is None and hrms is None:
+            if crew_id:
+                crew_matches = session.exec(select(Employee).where(Employee.crew_id == crew_id)).all()
+                if len(crew_matches) > 1:
+                    if sync_stats is not None:
+                        sync_stats["skipped"] = sync_stats.get("skipped", 0) + 1
+                    if warnings is not None:
+                        warnings.append(
+                            f"{source_label} {row_hint}: skipped because CREW ID {crew_id} matches multiple employees in the current database."
+                        )
+                    continue
+                if len(crew_matches) == 1:
+                    existing = crew_matches[0]
+
+            if existing is None:
+                exact_matches = session.exec(
+                    select(Employee).where(Employee.name == str(name).strip(), Employee.role == role)
+                ).all()
+                if len(exact_matches) == 1 and not exact_matches[0].pf_no and not exact_matches[0].hrms:
+                    existing = exact_matches[0]
+                else:
+                    normalized_name = _normalize_import_name(name)
+                    role_candidates = session.exec(select(Employee).where(Employee.role == role)).all()
+                    fallback_candidates = []
+                    for candidate in role_candidates:
+                        if _normalize_import_name(candidate.name) != normalized_name:
+                            continue
+                        working_at_compatible = (
+                            not working_at
+                            or not candidate.working_at
+                            or candidate.working_at == working_at
+                        )
+                        dob_compatible = (
+                            dob is None
+                            or candidate.dob is None
+                            or candidate.dob == dob
+                        )
+                        if working_at_compatible and dob_compatible:
+                            fallback_candidates.append(candidate)
+                    if len(fallback_candidates) == 1:
+                        existing = fallback_candidates[0]
+                    elif len(fallback_candidates) > 1:
+                        if sync_stats is not None:
+                            sync_stats["skipped"] = sync_stats.get("skipped", 0) + 1
+                        if warnings is not None:
+                            warnings.append(
+                                f"{source_label} {row_hint}: skipped because name/role fallback matched multiple existing employees."
+                            )
+                        continue
+
+            if existing is None and pf_no is None and hrms is None and crew_id is None:
                 if sync_stats is not None:
                     sync_stats["skipped"] = sync_stats.get("skipped", 0) + 1
                 if warnings is not None:
                     warnings.append(
-                        f"{source_label} {row_hint}: skipped because both PF No and HRMS are blank and strict sync requires an identifier."
+                        f"{source_label} {row_hint}: skipped because PF No, HRMS, and CREW ID are blank and no unique existing employee match was found."
                     )
                 continue
 
