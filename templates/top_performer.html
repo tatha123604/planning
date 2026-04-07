@@ -258,10 +258,79 @@
       <section class="card">
         <div class="card-head-inline">
           <h2>Monthly Comparison Output</h2>
-          <form method="post" action="/top-performer/comparison/reset" class="inline">
-            <button type="submit" class="ghost small" data-confirm-label="reset monthly comparison output">Reset</button>
-          </form>
+          <div class="actions">
+            <button
+              type="button"
+              class="ghost small top-performer-poster-download"
+              data-export-format="jpeg"
+              data-export-target="top-performer-comparison-poster"
+              data-export-title="{{ comparison.get('poster_title') or 'MONTHLY COMPARISON' }}"
+            >
+              Download JPEG
+            </button>
+            <button
+              type="button"
+              class="ghost small top-performer-poster-download"
+              data-export-format="pdf"
+              data-export-target="top-performer-comparison-poster"
+              data-export-title="{{ comparison.get('poster_title') or 'MONTHLY COMPARISON' }}"
+            >
+              Download PDF
+            </button>
+            <form method="post" action="/top-performer/comparison/reset" class="inline">
+              <button type="submit" class="ghost small" data-confirm-label="reset monthly comparison output">Reset</button>
+            </form>
+          </div>
         </div>
+        {% if comparison.get('rows') %}
+        <section class="top-performer-poster" id="top-performer-comparison-poster">
+          <div class="top-performer-poster-stars" aria-hidden="true"></div>
+          <div class="top-performer-poster-stars top-performer-poster-stars-secondary" aria-hidden="true"></div>
+          <div class="top-performer-poster-particles" aria-hidden="true">
+            <span class="sparkle s1"></span><span class="sparkle s2"></span><span class="sparkle s3"></span><span class="sparkle s4"></span>
+            <span class="sparkle s5"></span><span class="sparkle s6"></span><span class="sparkle s7"></span><span class="sparkle s8"></span>
+            <span class="sparkle s9"></span><span class="sparkle s10"></span><span class="sparkle s11"></span><span class="sparkle s12"></span>
+            <span class="sparkle s13"></span><span class="sparkle s14"></span><span class="sparkle s15"></span><span class="sparkle s16"></span>
+            <span class="sparkle s17"></span><span class="sparkle s18"></span><span class="sparkle s19"></span><span class="sparkle s20"></span>
+            <span class="sparkle s21"></span><span class="sparkle s22"></span><span class="sparkle s23"></span><span class="sparkle s24"></span>
+          </div>
+          <div class="top-performer-poster-head">
+            <h3><span class="top-performer-title-star">?</span> {{ comparison.get('poster_title') or 'MONTHLY COMPARISON' }} <span class="top-performer-title-star">?</span></h3>
+            <p>Top Ten Ranked Crew</p>
+          </div>
+          <div class="top-performer-poster-grid">
+            {% for row in comparison.get('rows', []) %}
+            <article class="top-performer-item">
+              <div class="top-performer-avatar-wrap">
+                {% if row.get('photo_url') %}
+                <img class="top-performer-photo" src="{{ row.get('photo_url') }}" alt="{{ row.get('crew_name', '') }}" />
+                {% else %}
+                <div class="top-performer-avatar">{{ row.get('rank', loop.index) }}</div>
+                {% endif %}
+              </div>
+              <div class="top-performer-copy">
+                <div class="top-performer-rankline">
+                  <span>Rank {{ row.get('rank', loop.index) }}</span>
+                  {% if row.get('rank', loop.index) == 1 %}
+                  <img class="top-performer-medal-image" src="/static/medal-gold.svg" alt="Gold medal" />
+                  {% elif row.get('rank', loop.index) == 2 %}
+                  <img class="top-performer-medal-image" src="/static/medal-silver.svg" alt="Silver medal" />
+                  {% elif row.get('rank', loop.index) == 3 %}
+                  <img class="top-performer-medal-image" src="/static/medal-bronze.svg" alt="Bronze medal" />
+                  {% endif %}
+                </div>
+                <strong>{{ row.get('crew_name', '') }}</strong>
+                <span>Current: {{ row.get('current_score', '') }} | Change: {{ row.get('score_change', '') }}</span>
+              </div>
+            </article>
+            {% endfor %}
+          </div>
+          <div class="top-performer-poster-foot">
+            <span>"Consistency, dedication, and professional excellence define our best performers."</span>
+            <span>Data source: SSTS</span>
+          </div>
+        </section>
+        {% endif %}
         <div class="summary-chip-row">
           <div class="summary-chip">Previous file: {{ comparison.get('previous_filename', '') }}</div>
           <div class="summary-chip">Current file: {{ comparison.get('current_filename', '') }}</div>
@@ -279,7 +348,9 @@
           <table class="paged">
             <thead>
               <tr>
+                <th>Rank</th>
                 <th>Crew Name</th>
+                <th>Photo</th>
                 <th>Previous Runs</th>
                 <th>Current Runs</th>
                 <th>Previous Score</th>
@@ -291,7 +362,18 @@
             <tbody>
               {% for row in comparison.get('rows', []) %}
               <tr>
+                <td>{{ row.get('rank', loop.index) }}</td>
                 <td><span class="employee-data-pill employee-data-pill-name">{{ row.get('crew_name', '') }}</span></td>
+                <td>
+                  <form method="post" action="/top-performer/photo" enctype="multipart/form-data" class="top-performer-photo-form">
+                    <input type="hidden" name="crew_name" value="{{ row.get('crew_name', '') }}" />
+                    {% if row.get('photo_url') %}
+                    <img class="top-performer-table-photo" src="{{ row.get('photo_url') }}" alt="{{ row.get('crew_name', '') }}" />
+                    {% endif %}
+                    <input type="file" name="photo_file" accept=".png,.jpg,.jpeg,.webp" required />
+                    <button type="submit" class="ghost small" data-confirm-label="save this employee photo to the performer card">Save Photo</button>
+                  </form>
+                </td>
                 <td>{{ row.get('previous_runs', '') }}</td>
                 <td>{{ row.get('current_runs', '') }}</td>
                 <td>{{ row.get('previous_score', '') }}</td>
@@ -302,7 +384,7 @@
               {% endfor %}
               {% if not comparison.get('rows') %}
               <tr>
-                <td colspan="7">No comparison rows found for the current minimum runs value.</td>
+                <td colspan="9">No comparison rows found for the current minimum runs value.</td>
               </tr>
               {% endif %}
             </tbody>

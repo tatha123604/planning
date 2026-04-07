@@ -1704,12 +1704,14 @@ def top_performer_page(request: Request):
     state = _load_top_performer_state()
     photo_map = state.get("photo_map") if isinstance(state.get("photo_map"), dict) else {}
     state_results = state.get("results") if isinstance(state.get("results"), list) else []
+    state_comparison = state.get("comparison") if isinstance(state.get("comparison"), dict) else {}
     if not photo_map:
-        photo_map = _discover_top_performer_photo_map(state_results)
+        photo_map = _discover_top_performer_photo_map(state_results, state_comparison)
     results = _attach_top_performer_photos(
         state_results,
         photo_map,
     )
+    comparison = _attach_top_performer_comparison_photos(state_comparison, photo_map)
     saved_at = str(state.get("saved_at") or "")
     saved_at_label = ""
     if saved_at:
@@ -1726,7 +1728,7 @@ def top_performer_page(request: Request):
             "results": results,
             "warnings": state.get("warnings") or [],
             "summary": state.get("summary") or {},
-            "comparison": state.get("comparison") or {},
+            "comparison": comparison,
             "photo_map": photo_map,
             "saved_at_label": saved_at_label,
         },
@@ -1788,7 +1790,10 @@ async def generate_top_performer(
         "results": results,
         "warnings": warnings,
         "summary": summary,
-        "comparison": current_state.get("comparison") if isinstance(current_state.get("comparison"), dict) else {},
+        "comparison": _attach_top_performer_comparison_photos(
+            current_state.get("comparison") if isinstance(current_state.get("comparison"), dict) else {},
+            photo_map,
+        ),
         "photo_map": photo_map,
         "saved_at": datetime.now().isoformat(timespec="seconds"),
     }
@@ -1863,13 +1868,15 @@ async def compare_top_performer_months(
         minimum_runs,
     )
     current_state = _load_top_performer_state()
+    photo_map = current_state.get("photo_map") if isinstance(current_state.get("photo_map"), dict) else {}
+    comparison = _attach_top_performer_comparison_photos(comparison, photo_map)
     payload = {
         "minimum_runs": minimum_runs,
         "results": current_state.get("results") or [],
         "warnings": warnings,
         "summary": current_state.get("summary") or {},
         "comparison": comparison,
-        "photo_map": current_state.get("photo_map") if isinstance(current_state.get("photo_map"), dict) else {},
+        "photo_map": photo_map,
         "saved_at": datetime.now().isoformat(timespec="seconds"),
     }
     _save_top_performer_state(payload)
@@ -1909,7 +1916,10 @@ async def upload_top_performer_photo(
         "results": results,
         "warnings": current_state.get("warnings") if isinstance(current_state.get("warnings"), list) else [],
         "summary": current_state.get("summary") if isinstance(current_state.get("summary"), dict) else {},
-        "comparison": current_state.get("comparison") if isinstance(current_state.get("comparison"), dict) else {},
+        "comparison": _attach_top_performer_comparison_photos(
+            current_state.get("comparison") if isinstance(current_state.get("comparison"), dict) else {},
+            photo_map,
+        ),
         "photo_map": photo_map,
         "saved_at": datetime.now().isoformat(timespec="seconds"),
     }
@@ -3219,26 +3229,51 @@ def _save_single_top_performer_photo(
     return photo_map
 
 
+def _attach_top_performer_photo_rows(
+    rows: list[dict[str, object]] | None,
+    photo_map: dict[str, str] | None,
+) -> list[dict[str, object]]:
+    resolved_map = dict(photo_map or {})
+    updated_rows: list[dict[str, object]] = []
+    for row in list(rows or []):
+        row_data = dict(row)
+        crew_key = _normalize_top_performer_name(row_data.get("crew_name"))
+        row_data["photo_url"] = resolved_map.get(crew_key, "")
+        updated_rows.append(row_data)
+    return updated_rows
+
+
 def _attach_top_performer_photos(
     results: list[dict[str, object]],
     photo_map: dict[str, str] | None,
 ) -> list[dict[str, object]]:
-    resolved_map = dict(photo_map or {})
     updated_results: list[dict[str, object]] = []
     for result in results:
-        top_rows = []
-        for row in list(result.get("top_rows") or []):
-            row_data = dict(row)
-            crew_key = _normalize_top_performer_name(row_data.get("crew_name"))
-            row_data["photo_url"] = resolved_map.get(crew_key, "")
-            top_rows.append(row_data)
         result_data = dict(result)
-        result_data["top_rows"] = top_rows
+        result_data["top_rows"] = _attach_top_performer_photo_rows(
+            list(result.get("top_rows") or []),
+            photo_map,
+        )
         updated_results.append(result_data)
     return updated_results
 
 
-def _discover_top_performer_photo_map(results: list[dict[str, object]]) -> dict[str, str]:
+def _attach_top_performer_comparison_photos(
+    comparison: dict[str, object] | None,
+    photo_map: dict[str, str] | None,
+) -> dict[str, object]:
+    comparison_data = dict(comparison or {})
+    comparison_data["rows"] = _attach_top_performer_photo_rows(
+        list(comparison_data.get("rows") or []),
+        photo_map,
+    )
+    return comparison_data
+
+
+def _discover_top_performer_photo_map(
+    results: list[dict[str, object]],
+    comparison: dict[str, object] | None = None,
+) -> dict[str, str]:
     if not TOP_PERFORMER_PHOTO_DIR.exists():
         return {}
     discovered: dict[str, str] = {}
@@ -3252,6 +3287,10 @@ def _discover_top_performer_photo_map(results: list[dict[str, object]]) -> dict[
             crew_key = _normalize_top_performer_name(row.get("crew_name"))
             if crew_key and crew_key in available_files:
                 discovered[crew_key] = available_files[crew_key]
+    for row in list((comparison or {}).get("rows") or []):
+        crew_key = _normalize_top_performer_name(row.get("crew_name"))
+        if crew_key and crew_key in available_files:
+            discovered[crew_key] = available_files[crew_key]
     return discovered
 
 
@@ -3384,7 +3423,8 @@ def _build_top_performer_comparison(
         "current_filename": current_filename,
         "previous_report_date": previous_report_date,
         "current_report_date": current_report_date,
-        "rows": comparison_rows,
+        "poster_title": _top_performer_poster_title(current_filename, current_report_date).replace("BEST PERFORMERS", "MONTHLY COMPARISON"),
+        "rows": [dict(row, rank=index + 1) for index, row in enumerate(comparison_rows)],
         "matched_count": sum(1 for row in comparison_rows if row["status"] == "Matched"),
         "previous_eligible_count": len(previous_eligible),
         "current_eligible_count": len(current_eligible),
