@@ -3162,6 +3162,21 @@ def _top_performer_poster_title(filename: str, report_date_label: str) -> str:
 
 
 def _monthly_comparison_poster_title(filename: str, report_date_label: str) -> str:
+    normalized_label = str(report_date_label or '').strip()
+    range_match = re.search(r'(\d{4})-(\d{2})-(\d{2})\D+to\D+(\d{4})-(\d{2})-(\d{2})', normalized_label, re.IGNORECASE)
+    if range_match:
+        try:
+            start_date = date(int(range_match.group(1)), int(range_match.group(2)), int(range_match.group(3)))
+            return f"MONTHLY COMPARISON - {start_date.strftime('%B %Y').upper()}"
+        except ValueError:
+            pass
+    dmy_match = re.search(r'(\d{2})-(\d{2})-(\d{4})', normalized_label)
+    if dmy_match:
+        try:
+            report_date = date(int(dmy_match.group(3)), int(dmy_match.group(2)), int(dmy_match.group(1)))
+            return f"MONTHLY COMPARISON - {report_date.strftime('%B %Y').upper()}"
+        except ValueError:
+            pass
     top_title = _top_performer_poster_title(filename, report_date_label)
     if ' - ' in top_title:
         _, suffix = top_title.split(' - ', 1)
