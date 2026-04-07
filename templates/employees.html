@@ -218,6 +218,7 @@
                   <th>Gradation</th>
                   <th>CLI</th>
                   <th>DOB</th>
+                  <th>Date of Appointment</th>
                   <th class="working-at-col">Working At</th>
                   <th class="actions-col">Actions</th>
                 </tr>
@@ -239,6 +240,7 @@
                   <td>{% if e.gradation %}<span class="employee-data-pill employee-data-pill-gradation" data-gradation="{{ e.gradation | trim | upper }}">{{ e.gradation }}</span>{% endif %}</td>
                   <td>{% if e.cli or e.cli_id %}<span class="employee-data-pill employee-data-pill-cli">{{ e.cli | cli_label(e.cli_id) }}</span>{% endif %}</td>
                   <td>{% if e.dob %}<span class="employee-date-pill employee-date-pill-birth">{{ e.dob | dmy }}</span>{% endif %}</td>
+                  <td>{% if e.doa %}<span class="employee-date-pill">{{ e.doa | dmy }}</span>{% endif %}</td>
                   <td class="working-at-col">{% if e.working_at %}<span class="designation-pill">{{ e.working_at }}</span>{% endif %}</td>
                   <td class="actions-cell actions-col">
                     <a class="ghost small employee-edit-link" href="/employees/{{ e.id }}?return_to={{ employee_return_to_query }}" data-employee-name="{{ e.name }}">Edit</a>

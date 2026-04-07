@@ -3708,6 +3708,24 @@ def _format_sync_value(value: object | None) -> str:
     return text if text else "blank"
 
 
+GOOGLE_SYNC_UPDATED_FIELDS = {
+    "CREW ID",
+    "Designation",
+    "PME Due",
+    "Technical Due",
+    "Transportation Due",
+    "Gradation",
+    "CLI",
+    "Working At",
+}
+
+
+def _google_sync_change_label(changed_labels: list[str]) -> str:
+    if any(label in GOOGLE_SYNC_UPDATED_FIELDS for label in changed_labels):
+        return "Updated"
+    return "Auto-corrected"
+
+
 def _import_employee_rows(
     session: Session,
     rows: list[tuple | list],
@@ -4013,11 +4031,16 @@ def _import_employee_rows(
                 ("Technical Due", existing.technical_due, technical_due_target),
                 ("Transportation Due", existing.transportation_due, transportation_due_target),
             ]
-            changed_fields = [
-                f"{label}: {_format_sync_value(old_value)} -> {_format_sync_value(new_value)}"
+            changed_field_entries = [
+                (label, old_value, new_value)
                 for label, old_value, new_value in field_updates
                 if old_value != new_value
             ]
+            changed_fields = [
+                f"{label}: {_format_sync_value(old_value)} -> {_format_sync_value(new_value)}"
+                for label, old_value, new_value in changed_field_entries
+            ]
+            change_kind = _google_sync_change_label([label for label, _, _ in changed_field_entries])
 
             existing.name = str(name).strip()
             existing.role = role
@@ -4043,7 +4066,7 @@ def _import_employee_rows(
             if changed_fields:
                 updated += 1
                 if sync_details is not None:
-                    sync_details.append(f"Updated {row_hint}: {'; '.join(changed_fields)}")
+                    sync_details.append(f"{change_kind} {row_hint}: {'; '.join(changed_fields)}")
             elif sync_stats is not None:
                 sync_stats["unchanged"] = sync_stats.get("unchanged", 0) + 1
         else:
