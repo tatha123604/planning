@@ -2268,6 +2268,119 @@ def employees_page(
     )
 
 
+def _run_google_sheet_sync(session: Session, *, commit_changes: bool) -> dict[str, object]:
+    backup_label = ""
+    if commit_changes:
+        try:
+            backup_label = _create_employee_sync_backup()
+        except Exception:
+            backup_label = ""
+    sources, source_label = _fetch_google_employee_rows()
+    added = 0
+    updated = 0
+    warnings: list[str] = []
+    sync_details: list[str] = []
+    sync_stats: dict[str, int] = {"unchanged": 0}
+    global_pf_counts: Counter[str] = Counter()
+    global_hrms_counts: Counter[str] = Counter()
+
+    for rows, _, _ in sources:
+        if not rows:
+            continue
+        header_raw = next((r for r in rows if any(cell not in (None, "", " ") for cell in r)), None)
+        if header_raw is None:
+            continue
+        header_norm = [_employee_norm(h) for h in header_raw]
+        mapped_cols = [EMPLOYEE_ALIAS_MAP.get(h, "") for h in header_norm]
+        col_index: dict[str, int] = {}
+        for idx, canonical in enumerate(mapped_cols):
+            if canonical and canonical not in col_index:
+                col_index[canonical] = idx
+        for row in rows[rows.index(header_raw) + 1 :]:
+            if "pf_no" in col_index:
+                idx = col_index["pf_no"]
+                if idx < len(row) and row[idx] not in (None, ""):
+                    global_pf_counts[str(row[idx]).strip()] += 1
+            if "hrms" in col_index:
+                idx = col_index["hrms"]
+                if idx < len(row) and row[idx] not in (None, ""):
+                    global_hrms_counts[str(row[idx]).strip()] += 1
+
+    for rows, sheet_name, working_at in sources:
+        a, u = _import_employee_rows(
+            session,
+            rows,
+            source_label=f"Google Sheet ({sheet_name})",
+            working_at_override=working_at,
+            warnings=warnings,
+            sync_details=sync_details,
+            sync_stats=sync_stats,
+            global_pf_counts=global_pf_counts,
+            global_hrms_counts=global_hrms_counts,
+            commit_changes=commit_changes,
+        )
+        added += a
+        updated += u
+
+    if not commit_changes:
+        session.rollback()
+
+    unchanged = sync_stats.get("unchanged", 0)
+    skipped = sync_stats.get("skipped", 0)
+    if added == 0 and updated == 0 and skipped == 0:
+        message_text = "No change found"
+    else:
+        prefix = "Google Sheet sync complete" if commit_changes else "Preview ready"
+        message_text = f"{prefix}: {added} added, {updated} updated, {unchanged} unchanged, {skipped} skipped from {source_label}."
+    warning_text = ""
+    if warnings:
+        preview = "; ".join(warnings[:3])
+        if len(warnings) > 3:
+            preview += f"; and {len(warnings) - 3} more"
+        warning_text = f"Auto-corrected {len(warnings)} date value(s): {preview}"
+    backup_notice = ""
+    if commit_changes:
+        backup_notice = f"Backup saved: {backup_label}" if backup_label else "Backup failed to save."
+    added_details = [item for item in sync_details if item.startswith("Added ")]
+    updated_details = [item for item in sync_details if item.startswith("Updated ")]
+    deleted_details: list[str] = []
+    return {
+        "message": message_text,
+        "warning_message": warning_text,
+        "warning_details": warnings,
+        "sync_details": sync_details,
+        "added_details": added_details,
+        "updated_details": updated_details,
+        "deleted_details": deleted_details,
+        "backup_notice": backup_notice,
+        "has_changes": bool(added or updated or skipped),
+    }
+
+
+@app.post("/employees/sync-google-preview")
+def preview_google_sheet_sync(
+    request: Request,
+    action_password: str = Form(...),
+    session: Session = Depends(get_session),
+):
+    wants_json = request.headers.get("x-requested-with", "").lower() == "fetch"
+    try:
+        _validate_sensitive_action_password(action_password)
+        payload = _run_google_sheet_sync(session, commit_changes=False)
+        if wants_json:
+            return JSONResponse({"ok": True, **payload, "preview": True})
+        return RedirectResponse(url=f"/employees?sync_notice={quote(str(payload['message']))}#google-sync-card", status_code=303)
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "Google Sheet preview failed."
+        if wants_json:
+            return JSONResponse({"ok": False, "message": detail}, status_code=exc.status_code)
+        return RedirectResponse(url=f"/employees?sync_error={quote(detail)}#google-sync-card", status_code=303)
+    except Exception as exc:
+        if wants_json:
+            return JSONResponse({"ok": False, "message": str(exc)}, status_code=500)
+        return RedirectResponse(url=f"/employees?sync_error={quote(str(exc))}#google-sync-card", status_code=303)
+
+
 @app.post("/employees/sync-google")
 def sync_employees_from_google_sheet(
     request: Request,
@@ -2277,92 +2390,15 @@ def sync_employees_from_google_sheet(
     wants_json = request.headers.get("x-requested-with", "").lower() == "fetch"
     try:
         _validate_sensitive_action_password(action_password)
-        try:
-            backup_label = _create_employee_sync_backup()
-        except Exception as exc:
-            backup_label = ""
-        sources, source_label = _fetch_google_employee_rows()
-        added = 0
-        updated = 0
-        warnings: list[str] = []
-        sync_details: list[str] = []
-        sync_stats: dict[str, int] = {"unchanged": 0}
-        global_pf_counts: Counter[str] = Counter()
-        global_hrms_counts: Counter[str] = Counter()
-
-        for rows, _, _ in sources:
-            if not rows:
-                continue
-            header_raw = next((r for r in rows if any(cell not in (None, "", " ") for cell in r)), None)
-            if header_raw is None:
-                continue
-            header_norm = [_employee_norm(h) for h in header_raw]
-            mapped_cols = [EMPLOYEE_ALIAS_MAP.get(h, "") for h in header_norm]
-            col_index: dict[str, int] = {}
-            for idx, canonical in enumerate(mapped_cols):
-                if canonical and canonical not in col_index:
-                    col_index[canonical] = idx
-
-            for row in rows[rows.index(header_raw) + 1 :]:
-                if "pf_no" in col_index:
-                    idx = col_index["pf_no"]
-                    if idx < len(row) and row[idx] not in (None, ""):
-                        global_pf_counts[str(row[idx]).strip()] += 1
-                if "hrms" in col_index:
-                    idx = col_index["hrms"]
-                    if idx < len(row) and row[idx] not in (None, ""):
-                        global_hrms_counts[str(row[idx]).strip()] += 1
-
-        for rows, sheet_name, working_at in sources:
-            a, u = _import_employee_rows(
-                session,
-                rows,
-                source_label=f"Google Sheet ({sheet_name})",
-                working_at_override=working_at,
-                warnings=warnings,
-                sync_details=sync_details,
-                sync_stats=sync_stats,
-                global_pf_counts=global_pf_counts,
-                global_hrms_counts=global_hrms_counts,
-            )
-            added += a
-            updated += u
-        unchanged = sync_stats.get("unchanged", 0)
-        skipped = sync_stats.get("skipped", 0)
-        if added == 0 and updated == 0 and skipped == 0:
-            message_text = "No change found"
-        else:
-            message_text = f"Google Sheet sync complete: {added} added, {updated} updated, {unchanged} unchanged, {skipped} skipped from {source_label}."
-        warning_text = ""
-        if warnings:
-            preview = "; ".join(warnings[:3])
-            if len(warnings) > 3:
-                preview += f"; and {len(warnings) - 3} more"
-            warning_text = f"Auto-corrected {len(warnings)} date value(s): {preview}"
-        backup_notice = f"Backup saved: {backup_label}" if backup_label else "Backup failed to save."
-        added_details = [item for item in sync_details if item.startswith("Added ")]
-        updated_details = [item for item in sync_details if item.startswith("Updated ")]
-        deleted_details: list[str] = []
+        payload = _run_google_sheet_sync(session, commit_changes=True)
         if wants_json:
-            return JSONResponse(
-                {
-                    "ok": True,
-                    "message": message_text,
-                    "warning_message": warning_text,
-                    "warning_details": warnings,
-                    "sync_details": sync_details,
-                    "added_details": added_details,
-                    "updated_details": updated_details,
-                    "deleted_details": deleted_details,
-                    "backup_notice": backup_notice,
-                }
-            )
-        message = quote(message_text)
-        redirect_url = f"/employees?sync_notice={message}&sync_backup={quote(backup_notice)}#google-sync-card"
-        if warning_text:
+            return JSONResponse({"ok": True, **payload})
+        message = quote(str(payload["message"]))
+        redirect_url = f"/employees?sync_notice={message}&sync_backup={quote(str(payload['backup_notice']))}#google-sync-card"
+        if payload.get("warning_message"):
             redirect_url = (
-                f"/employees?sync_notice={message}&sync_warning={quote(warning_text)}"
-                f"&sync_backup={quote(backup_notice)}#google-sync-card"
+                f"/employees?sync_notice={message}&sync_warning={quote(str(payload['warning_message']))}"
+                f"&sync_backup={quote(str(payload['backup_notice']))}#google-sync-card"
             )
         return RedirectResponse(url=redirect_url, status_code=303)
     except HTTPException as exc:
@@ -3682,6 +3718,7 @@ def _import_employee_rows(
     sync_stats: Optional[dict[str, int]] = None,
     global_pf_counts: Optional[Counter[str]] = None,
     global_hrms_counts: Optional[Counter[str]] = None,
+    commit_changes: bool = True,
 ) -> tuple[int, int]:
     if not rows:
         raise HTTPException(status_code=400, detail=f"{source_label} is empty.")
@@ -4004,8 +4041,9 @@ def _import_employee_rows(
                     f"Added {row_hint}: Designation {_format_sync_value(role)}; Working At {_format_sync_value(working_at)}"
                 )
 
-    session.commit()
-    _normalize_employee_cli_names(session)
+    if commit_changes:
+        session.commit()
+        _normalize_employee_cli_names(session)
     unchanged = sync_stats.get("unchanged", 0) if sync_stats is not None else 0
     skipped = sync_stats.get("skipped", 0) if sync_stats is not None else 0
     if added == 0 and updated == 0 and unchanged == 0 and skipped == 0:

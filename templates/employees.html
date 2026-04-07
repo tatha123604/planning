@@ -80,6 +80,16 @@
             <ul class="sync-report-list" id="google-sync-deleted"></ul>
           </div>
         </div>
+        <div class="sync-report-card" id="google-sync-preview-actions" hidden>
+          <div class="sync-report-section">
+            <h4>Save these changes?</h4>
+            <p class="hint">Preview first, then choose Yes to write the Google Sheet changes into our database.</p>
+            <div class="actions">
+              <button type="button" id="google-sync-apply" class="secondary-action">Yes, save changes</button>
+              <button type="button" id="google-sync-cancel-preview" class="ghost">No, discard preview</button>
+            </div>
+          </div>
+        </div>
         <div id="google-sync-details-wrap" hidden>
           <div class="sync-list-header">
             <p class="hint success-text"><strong>Last sync changed records</strong></p>
@@ -94,12 +104,12 @@
         <p class="hint">One-way sync only: changes made in Google Sheet will update this project, but edits made here will not push back to Google Sheet.</p>
         {% if google_sync_ready %}
         <p class="hint">Configured source: <strong>{{ google_sync_range }}</strong></p>
-        <form method="post" action="/employees/sync-google" class="inline sensitive-inline-form" data-google-sync-form data-password-gated-form data-password-gated-code="11111">
+        <form method="post" action="/employees/sync-google-preview" class="inline sensitive-inline-form" data-google-sync-form data-password-gated-form data-password-gated-code="11111">
           <label class="site-password-label compact-site-password">Action Code
             <input class="site-password-input compact-site-password-input" type="password" name="action_password" autocomplete="current-password" required data-password-gated-input />
           </label>
           <div class="actions">
-            <button type="submit" data-sync-button data-password-gated-button disabled>Sync from Google Sheet</button>
+            <button type="submit" data-sync-button data-password-gated-button disabled>Preview Google Sheet Sync</button>
           </div>
         </form>
         <form method="post" action="/employees/restore-backup" class="inline sensitive-inline-form" data-password-gated-form data-password-gated-code="11111">
@@ -504,15 +514,23 @@
       const syncAdded = document.getElementById('google-sync-added');
       const syncUpdated = document.getElementById('google-sync-updated');
       const syncDeleted = document.getElementById('google-sync-deleted');
+      const syncPreviewActions = document.getElementById('google-sync-preview-actions');
+      const syncApplyButton = document.getElementById('google-sync-apply');
+      const syncCancelPreviewButton = document.getElementById('google-sync-cancel-preview');
       const syncDetailsWrap = document.getElementById('google-sync-details-wrap');
       const syncDetailsList = document.getElementById('google-sync-details-list');
       const syncDetailsToggle = document.getElementById('google-sync-details-toggle');
       const syncWarningWrap = document.getElementById('google-sync-warning-wrap');
       const syncWarningList = document.getElementById('google-sync-warning-list');
       const syncButton = document.querySelector('[data-sync-button]');
-      if (syncForm && syncLive && syncWarning && syncBackup && syncReport && syncAdded && syncUpdated && syncDeleted && syncDetailsWrap && syncDetailsList && syncDetailsToggle && syncWarningWrap && syncWarningList && syncButton) {
+      if (syncForm && syncLive && syncWarning && syncBackup && syncReport && syncAdded && syncUpdated && syncDeleted && syncPreviewActions && syncApplyButton && syncCancelPreviewButton && syncDetailsWrap && syncDetailsList && syncDetailsToggle && syncWarningWrap && syncWarningList && syncButton) {
         let syncDetailsExpanded = false;
         let currentSyncDetails = [];
+        let pendingSyncReady = false;
+        const resetPreviewActions = () => {
+          pendingSyncReady = false;
+          syncPreviewActions.hidden = true;
+        };
         const renderSyncDetails = () => {
           syncDetailsList.innerHTML = '';
           if (!currentSyncDetails.length) {
@@ -543,17 +561,18 @@
         });
         syncForm.addEventListener('submit', async (event) => {
           event.preventDefault();
-          if (!window.confirm('Sync employee data from Google Sheet now?')) {
+          if (!window.confirm('Preview Google Sheet changes before saving?')) {
             return;
           }
           syncButton.disabled = true;
           const originalText = syncButton.textContent;
-          syncButton.textContent = 'Syncing...';
+          syncButton.textContent = 'Previewing...';
           syncLive.className = 'hint';
-          syncLive.textContent = 'Sync started...';
+          syncLive.textContent = 'Preview started...';
           syncWarning.textContent = '';
           syncBackup.textContent = '';
           syncReport.hidden = true;
+          resetPreviewActions();
           syncAdded.innerHTML = '';
           syncUpdated.innerHTML = '';
           syncDeleted.innerHTML = '';
@@ -570,11 +589,17 @@
               body: formData,
             });
             const data = await response.json();
-            syncLive.textContent = data.message || (response.ok ? 'Sync complete.' : 'Sync failed.');
+            syncLive.textContent = data.message || (response.ok ? 'Preview complete.' : 'Sync failed.');
             syncLive.className = response.ok ? 'hint success-text' : 'error-text';
             syncWarning.textContent = data.warning_message || '';
             syncWarning.className = data.warning_message ? 'hint warning-text' : 'hint warning-text';
             syncBackup.textContent = data.backup_notice || '';
+            if (response.ok && data.preview && data.has_changes) {
+              pendingSyncReady = true;
+              syncPreviewActions.hidden = false;
+            } else {
+              resetPreviewActions();
+            }
             const addedItems = Array.isArray(data.added_details) ? data.added_details : [];
             const updatedItems = Array.isArray(data.updated_details) ? data.updated_details : [];
             const deletedItems = Array.isArray(data.deleted_details) ? data.deleted_details : [];
@@ -611,11 +636,12 @@
               });
             }
           } catch (error) {
-            syncLive.textContent = 'Sync failed. Please try again.';
+            syncLive.textContent = 'Preview failed. Please try again.';
             syncLive.className = 'error-text';
             syncWarning.textContent = '';
             syncBackup.textContent = '';
             syncReport.hidden = true;
+            resetPreviewActions();
             syncAdded.innerHTML = '';
             syncUpdated.innerHTML = '';
             syncDeleted.innerHTML = '';
@@ -631,6 +657,84 @@
             syncButton.textContent = originalText;
             window.location.hash = 'google-sync-card';
           }
+        });
+        syncApplyButton.addEventListener('click', async () => {
+          if (!pendingSyncReady) return;
+          if (!window.confirm('Save the previewed Google Sheet changes to the employee database now?')) {
+            return;
+          }
+          syncApplyButton.disabled = true;
+          syncCancelPreviewButton.disabled = true;
+          syncButton.disabled = true;
+          const originalApplyText = syncApplyButton.textContent;
+          syncApplyButton.textContent = 'Saving...';
+          try {
+            const formData = new FormData(syncForm);
+            const response = await fetch('/employees/sync-google', {
+              method: 'POST',
+              headers: { 'X-Requested-With': 'fetch' },
+              body: formData,
+            });
+            const data = await response.json();
+            syncLive.textContent = data.message || (response.ok ? 'Sync complete.' : 'Sync failed.');
+            syncLive.className = response.ok ? 'hint success-text' : 'error-text';
+            syncWarning.textContent = data.warning_message || '';
+            syncBackup.textContent = data.backup_notice || '';
+            const addedItems = Array.isArray(data.added_details) ? data.added_details : [];
+            const updatedItems = Array.isArray(data.updated_details) ? data.updated_details : [];
+            const deletedItems = Array.isArray(data.deleted_details) ? data.deleted_details : [];
+            const renderReportList = (listEl, items) => {
+              listEl.innerHTML = '';
+              if (!items.length) {
+                const li = document.createElement('li');
+                li.textContent = 'No changes';
+                listEl.appendChild(li);
+                return;
+              }
+              items.forEach((item) => {
+                const li = document.createElement('li');
+                li.textContent = item;
+                listEl.appendChild(li);
+              });
+            };
+            renderReportList(syncAdded, addedItems);
+            renderReportList(syncUpdated, updatedItems);
+            renderReportList(syncDeleted, deletedItems);
+            syncReport.hidden = !(addedItems.length || updatedItems.length || deletedItems.length);
+            currentSyncDetails = Array.isArray(data.sync_details) ? data.sync_details : [];
+            syncDetailsExpanded = false;
+            renderSyncDetails();
+            const warningDetails = Array.isArray(data.warning_details) ? data.warning_details : [];
+            if (warningDetails.length) {
+              syncWarningWrap.hidden = false;
+              syncWarningList.innerHTML = '';
+              warningDetails.forEach((item) => {
+                const li = document.createElement('li');
+                li.textContent = item;
+                syncWarningList.appendChild(li);
+              });
+            } else {
+              syncWarningWrap.hidden = true;
+              syncWarningList.innerHTML = '';
+            }
+            resetPreviewActions();
+          } catch (error) {
+            syncLive.textContent = 'Saving sync changes failed. Please try again.';
+            syncLive.className = 'error-text';
+          } finally {
+            const requiredCode = syncForm.dataset.passwordGatedCode || '11111';
+            const passwordInput = syncForm.querySelector('[data-password-gated-input]');
+            syncButton.disabled = !passwordInput || passwordInput.value.trim() !== requiredCode;
+            syncApplyButton.disabled = false;
+            syncCancelPreviewButton.disabled = false;
+            syncApplyButton.textContent = originalApplyText;
+            window.location.hash = 'google-sync-card';
+          }
+        });
+        syncCancelPreviewButton.addEventListener('click', () => {
+          resetPreviewActions();
+          syncLive.textContent = 'Preview discarded. No changes were saved.';
+          syncLive.className = 'hint';
         });
       }
     })();
