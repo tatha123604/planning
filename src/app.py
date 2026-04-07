@@ -2343,6 +2343,7 @@ def _run_google_sheet_sync(session: Session, *, commit_changes: bool) -> dict[st
         backup_notice = f"Backup saved: {backup_label}" if backup_label else "Backup failed to save."
     added_details = [item for item in sync_details if item.startswith("Added ")]
     updated_details = [item for item in sync_details if item.startswith("Updated ")]
+    auto_corrected_details = [item for item in sync_details if item.startswith("Auto-corrected ")]
     deleted_details: list[str] = []
     return {
         "message": message_text,
@@ -2351,6 +2352,7 @@ def _run_google_sheet_sync(session: Session, *, commit_changes: bool) -> dict[st
         "sync_details": sync_details,
         "added_details": added_details,
         "updated_details": updated_details,
+        "auto_corrected_details": auto_corrected_details,
         "deleted_details": deleted_details,
         "backup_notice": backup_notice,
         "has_changes": bool(added or updated or skipped),

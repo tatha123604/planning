@@ -82,8 +82,12 @@
             <ul class="sync-report-list" id="google-sync-added"></ul>
           </div>
           <div class="sync-report-section">
-            <h4>Updated</h4>
+            <h4>Updated (Operational)</h4>
             <ul class="sync-report-list" id="google-sync-updated"></ul>
+          </div>
+          <div class="sync-report-section">
+            <h4>Auto-corrected</h4>
+            <ul class="sync-report-list" id="google-sync-autocorrected"></ul>
           </div>
           <div class="sync-report-section">
             <h4>Deleted</h4>
@@ -92,7 +96,7 @@
         </div>
         <div id="google-sync-details-wrap" hidden>
           <div class="sync-list-header">
-            <p class="hint success-text"><strong>Last sync changed records</strong></p>
+            <p class="hint success-text"><strong>Last sync updates / auto-corrections</strong></p>
             <button type="button" class="ghost small sync-list-toggle" id="google-sync-details-toggle" hidden aria-expanded="false">Show more</button>
           </div>
           <ul class="sync-warning-list" id="google-sync-details-list"></ul>
@@ -516,6 +520,7 @@
       const syncAdded = document.getElementById('google-sync-added');
       const syncUpdated = document.getElementById('google-sync-updated');
       const syncDeleted = document.getElementById('google-sync-deleted');
+      const syncAutoCorrected = document.getElementById('google-sync-autocorrected');
       const syncPreviewActions = document.getElementById('google-sync-preview-actions');
       const syncApplyButton = document.getElementById('google-sync-apply');
       const syncCancelPreviewButton = document.getElementById('google-sync-cancel-preview');
@@ -525,7 +530,7 @@
       const syncWarningWrap = document.getElementById('google-sync-warning-wrap');
       const syncWarningList = document.getElementById('google-sync-warning-list');
       const syncButton = document.querySelector('[data-sync-button]');
-      if (syncForm && syncLive && syncWarning && syncBackup && syncReport && syncAdded && syncUpdated && syncDeleted && syncPreviewActions && syncApplyButton && syncCancelPreviewButton && syncDetailsWrap && syncDetailsList && syncDetailsToggle && syncWarningWrap && syncWarningList && syncButton) {
+      if (syncForm && syncLive && syncWarning && syncBackup && syncReport && syncAdded && syncUpdated && syncDeleted && syncAutoCorrected && syncPreviewActions && syncApplyButton && syncCancelPreviewButton && syncDetailsWrap && syncDetailsList && syncDetailsToggle && syncWarningWrap && syncWarningList && syncButton) {
         let syncDetailsExpanded = false;
         let currentSyncDetails = [];
         let pendingSyncReady = false;
@@ -540,6 +545,7 @@
           syncAdded.innerHTML = '';
           syncUpdated.innerHTML = '';
           syncDeleted.innerHTML = '';
+          syncAutoCorrected.innerHTML = '';
           currentSyncDetails = [];
           syncDetailsExpanded = false;
           renderSyncDetails();
@@ -595,6 +601,7 @@
           syncAdded.innerHTML = '';
           syncUpdated.innerHTML = '';
           syncDeleted.innerHTML = '';
+          syncAutoCorrected.innerHTML = '';
           currentSyncDetails = [];
           syncDetailsExpanded = false;
           renderSyncDetails();
@@ -622,6 +629,7 @@
             const addedItems = Array.isArray(data.added_details) ? data.added_details : [];
             const updatedItems = Array.isArray(data.updated_details) ? data.updated_details : [];
             const deletedItems = Array.isArray(data.deleted_details) ? data.deleted_details : [];
+            const autoCorrectedItems = Array.isArray(data.auto_corrected_details) ? data.auto_corrected_details : [];
             const renderReportList = (listEl, items) => {
               listEl.innerHTML = '';
               if (!items.length) {
@@ -638,8 +646,9 @@
             };
             renderReportList(syncAdded, addedItems);
             renderReportList(syncUpdated, updatedItems);
+            renderReportList(syncAutoCorrected, autoCorrectedItems);
             renderReportList(syncDeleted, deletedItems);
-            setCardVisible(syncReport, !!(addedItems.length || updatedItems.length || deletedItems.length));
+            setCardVisible(syncReport, !!(addedItems.length || updatedItems.length || autoCorrectedItems.length || deletedItems.length));
 
             currentSyncDetails = Array.isArray(data.sync_details) ? data.sync_details : [];
             syncDetailsExpanded = false;
@@ -664,6 +673,7 @@
             syncAdded.innerHTML = '';
             syncUpdated.innerHTML = '';
             syncDeleted.innerHTML = '';
+          syncAutoCorrected.innerHTML = '';
             currentSyncDetails = [];
             syncDetailsExpanded = false;
             renderSyncDetails();
@@ -702,6 +712,7 @@
             const addedItems = Array.isArray(data.added_details) ? data.added_details : [];
             const updatedItems = Array.isArray(data.updated_details) ? data.updated_details : [];
             const deletedItems = Array.isArray(data.deleted_details) ? data.deleted_details : [];
+            const autoCorrectedItems = Array.isArray(data.auto_corrected_details) ? data.auto_corrected_details : [];
             const renderReportList = (listEl, items) => {
               listEl.innerHTML = '';
               if (!items.length) {
@@ -718,8 +729,9 @@
             };
             renderReportList(syncAdded, addedItems);
             renderReportList(syncUpdated, updatedItems);
+            renderReportList(syncAutoCorrected, autoCorrectedItems);
             renderReportList(syncDeleted, deletedItems);
-            setCardVisible(syncReport, !!(addedItems.length || updatedItems.length || deletedItems.length));
+            setCardVisible(syncReport, !!(addedItems.length || updatedItems.length || autoCorrectedItems.length || deletedItems.length));
             currentSyncDetails = Array.isArray(data.sync_details) ? data.sync_details : [];
             syncDetailsExpanded = false;
             renderSyncDetails();
