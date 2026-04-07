@@ -919,9 +919,6 @@ def build_cli_distribution(employees: list[Employee]) -> list[dict[str, int | st
     canonical_by_id, alias_map, id_by_name = _build_cli_name_maps((employee.cli, employee.cli_id) for employee in employees)
     dist: dict[str, dict[str, int | str]] = {}
     for e in employees:
-        role = normalize_role(e.role)
-        if role not in CLI_DISTRIBUTION_ROLE_ORDER:
-            continue
         cli_name, cli_id = _canonicalize_cli_name(
             e.cli,
             e.cli_id,
@@ -931,8 +928,6 @@ def build_cli_distribution(employees: list[Employee]) -> list[dict[str, int | st
         )
         cli_key = _cli_name_key(cli_name) or (cli_id or "").lower() or "unassigned"
         label = cli_name or "Unassigned"
-        grad = (e.gradation or "").strip().upper()
-        grad_key = grad[0] if grad else ""
         if cli_key not in dist:
             dist[cli_key] = {
                 "cli": label,
@@ -943,6 +938,7 @@ def build_cli_distribution(employees: list[Employee]) -> list[dict[str, int | st
                 "B": 0,
                 "C": 0,
                 "total": 0,
+                "total_staff": 0,
             }
         if not dist[cli_key]["cli"] and cli_name:
             dist[cli_key]["cli"] = cli_name
@@ -950,6 +946,13 @@ def build_cli_distribution(employees: list[Employee]) -> list[dict[str, int | st
             dist[cli_key]["cli_name"] = cli_name
         if not dist[cli_key]["cli_id"] and cli_id:
             dist[cli_key]["cli_id"] = cli_id
+        dist[cli_key]["total_staff"] += 1  # type: ignore[index]
+
+        role = normalize_role(e.role)
+        if role not in CLI_DISTRIBUTION_ROLE_ORDER:
+            continue
+        grad = (e.gradation or "").strip().upper()
+        grad_key = grad[0] if grad else ""
         if grad_key in ("A", "B", "C"):
             dist[cli_key][grad_key] += 1  # type: ignore[index]
             dist[cli_key]["total"] += 1  # type: ignore[index]
@@ -963,6 +966,7 @@ def build_cli_distribution(employees: list[Employee]) -> list[dict[str, int | st
             "B": counts["B"],
             "C": counts["C"],
             "total": counts["total"],
+            "total_staff": counts["total_staff"],
         }
         for _, counts in sorted(dist.items(), key=lambda item: item[0])
     ]
@@ -1477,6 +1481,7 @@ def _cli_page_context(
         "B": sum(int(row.get("B", 0)) for row in cli_distribution),
         "C": sum(int(row.get("C", 0)) for row in cli_distribution),
         "total": sum(int(row.get("total", 0)) for row in cli_distribution),
+        "total_staff": sum(int(row.get("total_staff", 0)) for row in cli_distribution),
     }
     for row in cli_distribution:
         cli_key = str(row["key"])
@@ -5264,9 +5269,9 @@ def download_cli_distribution(session: Session = Depends(get_session)):
     wb = Workbook()
     ws = wb.active
     ws.title = "CLI Distribution"
-    ws.append(["CLI", "Gradation A", "Gradation B", "Gradation C", "Total"])
+    ws.append(["CLI", "Gradation A", "Gradation B", "Gradation C", "Total/Gradation", "Total staff under CLI"])
     for row in cli_distribution:
-        ws.append([row["cli"], row["A"], row["B"], row["C"], row["total"]])
+        ws.append([row["cli"], row["A"], row["B"], row["C"], row["total"], row.get("total_staff", 0)])
 
     stream = BytesIO()
     wb.save(stream)

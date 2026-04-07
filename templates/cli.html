@@ -127,7 +127,8 @@
                   <th>Gradation A</th>
                   <th>Gradation B</th>
                   <th>Gradation C</th>
-                  <th>Total</th>
+                  <th>Total/Gradation</th>
+                  <th>Total staff under CLI</th>
                 </tr>
               </thead>
               <tbody>
@@ -139,6 +140,7 @@
                   <td>{{ row.B }}</td>
                   <td>{{ row.C }}</td>
                   <td>{{ row.total }}</td>
+                  <td>{{ row.total_staff or 0 }}</td>
                 </tr>
                 {% endfor %}
                 <tr class="total-highlight">
@@ -148,6 +150,7 @@
                   <td>{{ cli_distribution_totals_all.get('B', 0) }}</td>
                   <td>{{ cli_distribution_totals_all.get('C', 0) }}</td>
                   <td>{{ cli_distribution_totals_all.get('total', 0) }}</td>
+                  <td>{{ cli_distribution_totals_all.get('total_staff', 0) }}</td>
                 </tr>
               </tbody>
             </table>
