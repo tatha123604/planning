@@ -1476,10 +1476,10 @@ ul { padding-left: 18px; margin: 6px 0; }
   font-size: 1.14rem;
 }
 .top-performer-rankline {
-  display: grid;
-  grid-template-columns: 1fr 44px;
+  display: flex;
   align-items: center;
-  column-gap: 8px;
+  justify-content: space-between;
+  gap: 8px;
   color: #ffe179;
   font-weight: 800;
   font-size: 1.18rem;
@@ -1489,7 +1489,6 @@ ul { padding-left: 18px; margin: 6px 0; }
   height: 44px;
   flex: 0 0 44px;
   filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.35));
-  justify-self: center;
 }
 .top-performer-poster-foot {
   margin-top: 16px;
