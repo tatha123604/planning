@@ -79,7 +79,7 @@ EMPLOYEE_MASTER_EXTRA_REVIEW_KEEP_FILE = DB_PATH.parent / "employee_master_extra
 EMPLOYEE_MASTER_CLEANUP_LOG_FILE = DB_PATH.parent / "employee_master_cleanup_log.json"
 LI_GRADING_METADATA_FILE = DB_PATH.parent / "li_grading_metadata.json"
 TOP_PERFORMER_STATE_FILE = DB_PATH.parent / "top_performer_state.json"
-TOP_PERFORMER_PHOTO_DIR = BASE_PATH / "static" / "top_performer_photos"
+TOP_PERFORMER_PHOTO_DIR = DB_PATH.parent / "top_performer_photos"
 EMPLOYEE_SYNC_BACKUP_DIR = DB_PATH.parent / "employee_sync_backups"
 GOOGLE_SHEETS_READONLY_SCOPE = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 NON_CONTINUOUS_VARIANTS = {
@@ -837,6 +837,15 @@ def _parse_date_cookie(request: Request, key: str, param: Optional[str]) -> date
 
 app = FastAPI(title="HR Planner")
 app.mount("/static", StaticFiles(directory=str(BASE_PATH / "static")), name="static")
+
+
+@app.get("/top-performer/photos/{filename}")
+def top_performer_photo_file(filename: str):
+    safe_name = Path(filename).name
+    photo_path = TOP_PERFORMER_PHOTO_DIR / safe_name
+    if safe_name != filename or not photo_path.is_file():
+        raise HTTPException(status_code=404, detail="Photo not found")
+    return FileResponse(photo_path)
 app.add_middleware(AuthMiddleware)
 
 # Always serve fresh pages (avoid browser caching dashboards/reports)
@@ -3159,7 +3168,7 @@ def _save_top_performer_photos(
         if not content:
             continue
         target_path.write_bytes(content)
-        photo_map[crew_key] = f"/static/top_performer_photos/{target_name}"
+        photo_map[crew_key] = f"/top-performer/photos/{target_name}"
     return photo_map
 
 
@@ -3183,7 +3192,7 @@ def _save_single_top_performer_photo(
     if not content:
         return photo_map
     target_path.write_bytes(content)
-    photo_map[crew_key] = f"/static/top_performer_photos/{target_name}"
+    photo_map[crew_key] = f"/top-performer/photos/{target_name}"
     return photo_map
 
 
@@ -3211,7 +3220,7 @@ def _discover_top_performer_photo_map(results: list[dict[str, object]]) -> dict[
         return {}
     discovered: dict[str, str] = {}
     available_files = {
-        _normalize_top_performer_name(path.stem): f"/static/top_performer_photos/{path.name}"
+        _normalize_top_performer_name(path.stem): f"/top-performer/photos/{path.name}"
         for path in TOP_PERFORMER_PHOTO_DIR.iterdir()
         if path.is_file()
     }
