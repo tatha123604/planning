@@ -3161,6 +3161,14 @@ def _top_performer_poster_title(filename: str, report_date_label: str) -> str:
     return "BEST PERFORMERS"
 
 
+def _monthly_comparison_poster_title(filename: str, report_date_label: str) -> str:
+    top_title = _top_performer_poster_title(filename, report_date_label)
+    if ' - ' in top_title:
+        _, suffix = top_title.split(' - ', 1)
+        return f"MONTHLY COMPARISON - {suffix}"
+    return "MONTHLY COMPARISON"
+
+
 def _ensure_top_performer_photo_dir() -> Path:
     TOP_PERFORMER_PHOTO_DIR.mkdir(parents=True, exist_ok=True)
     return TOP_PERFORMER_PHOTO_DIR
@@ -3423,7 +3431,7 @@ def _build_top_performer_comparison(
         "current_filename": current_filename,
         "previous_report_date": previous_report_date,
         "current_report_date": current_report_date,
-        "poster_title": _top_performer_poster_title(current_filename, current_report_date).replace("BEST PERFORMERS", "MONTHLY COMPARISON"),
+        "poster_title": _monthly_comparison_poster_title(current_filename, current_report_date),
         "rows": [dict(row, rank=index + 1) for index, row in enumerate(comparison_rows)],
         "matched_count": sum(1 for row in comparison_rows if row["status"] == "Matched"),
         "previous_eligible_count": len(previous_eligible),

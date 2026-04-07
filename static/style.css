@@ -1895,3 +1895,11 @@ ul { padding-left: 18px; margin: 6px 0; }
 .comparison-performer-poster .top-performer-medal-image {
   filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.35)) drop-shadow(0 0 10px rgba(255, 228, 120, 0.38));
 }
+
+
+.comparison-performer-poster .top-performer-title-star {
+  display: inline-block;
+  opacity: 1;
+  color: #ffd96b;
+  text-shadow: 0 0 16px rgba(255, 217, 107, 0.9);
+}
