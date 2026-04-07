@@ -1393,10 +1393,17 @@ ul { padding-left: 18px; margin: 6px 0; }
   text-shadow: 0 2px 12px rgba(0,0,0,0.4);
 }
 .top-performer-title-star {
-  color: #ffd86b;
-  text-shadow: 0 0 12px rgba(255, 216, 107, 0.75);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1em;
   margin: 0 8px;
   font-size: 1.15em;
+}
+.top-performer-title-star::before {
+  content: "?";
+  color: #ffd86b;
+  text-shadow: 0 0 12px rgba(255, 216, 107, 0.75);
 }
 .top-performer-poster-head p {
   margin: 0;
@@ -1898,8 +1905,9 @@ ul { padding-left: 18px; margin: 6px 0; }
 
 
 .comparison-performer-poster .top-performer-title-star {
-  display: inline-block;
   opacity: 1;
+}
+.comparison-performer-poster .top-performer-title-star::before {
   color: #ffd96b;
   text-shadow: 0 0 16px rgba(255, 217, 107, 0.9);
 }

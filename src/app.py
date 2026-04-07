@@ -1704,7 +1704,9 @@ def top_performer_page(request: Request):
     state = _load_top_performer_state()
     photo_map = state.get("photo_map") if isinstance(state.get("photo_map"), dict) else {}
     state_results = state.get("results") if isinstance(state.get("results"), list) else []
-    state_comparison = state.get("comparison") if isinstance(state.get("comparison"), dict) else {}
+    state_comparison = _normalize_top_performer_comparison(
+        state.get("comparison") if isinstance(state.get("comparison"), dict) else {}
+    )
     if not photo_map:
         photo_map = _discover_top_performer_photo_map(state_results, state_comparison)
     results = _attach_top_performer_photos(
@@ -1790,9 +1792,11 @@ async def generate_top_performer(
         "results": results,
         "warnings": warnings,
         "summary": summary,
-        "comparison": _attach_top_performer_comparison_photos(
-            current_state.get("comparison") if isinstance(current_state.get("comparison"), dict) else {},
-            photo_map,
+        "comparison": _normalize_top_performer_comparison(
+            _attach_top_performer_comparison_photos(
+                current_state.get("comparison") if isinstance(current_state.get("comparison"), dict) else {},
+                photo_map,
+            )
         ),
         "photo_map": photo_map,
         "saved_at": datetime.now().isoformat(timespec="seconds"),
@@ -1869,7 +1873,9 @@ async def compare_top_performer_months(
     )
     current_state = _load_top_performer_state()
     photo_map = current_state.get("photo_map") if isinstance(current_state.get("photo_map"), dict) else {}
-    comparison = _attach_top_performer_comparison_photos(comparison, photo_map)
+    comparison = _normalize_top_performer_comparison(
+        _attach_top_performer_comparison_photos(comparison, photo_map)
+    )
     payload = {
         "minimum_runs": minimum_runs,
         "results": current_state.get("results") or [],
@@ -1916,9 +1922,11 @@ async def upload_top_performer_photo(
         "results": results,
         "warnings": current_state.get("warnings") if isinstance(current_state.get("warnings"), list) else [],
         "summary": current_state.get("summary") if isinstance(current_state.get("summary"), dict) else {},
-        "comparison": _attach_top_performer_comparison_photos(
-            current_state.get("comparison") if isinstance(current_state.get("comparison"), dict) else {},
-            photo_map,
+        "comparison": _normalize_top_performer_comparison(
+            _attach_top_performer_comparison_photos(
+                current_state.get("comparison") if isinstance(current_state.get("comparison"), dict) else {},
+                photo_map,
+            )
         ),
         "photo_map": photo_map,
         "saved_at": datetime.now().isoformat(timespec="seconds"),
@@ -3291,6 +3299,21 @@ def _attach_top_performer_comparison_photos(
         photo_map,
     )
     return comparison_data
+
+def _normalize_top_performer_comparison(comparison: dict[str, object] | None) -> dict[str, object]:
+    comparison_data = dict(comparison or {})
+    current_filename = str(comparison_data.get("current_filename") or "")
+    current_report_date = str(comparison_data.get("current_report_date") or "")
+    comparison_data["poster_title"] = _monthly_comparison_poster_title(current_filename, current_report_date)
+    normalized_rows: list[dict[str, object]] = []
+    for index, row in enumerate(list(comparison_data.get("rows") or []), start=1):
+        row_data = dict(row)
+        row_data["rank"] = int(row_data.get("rank") or index)
+        normalized_rows.append(row_data)
+    comparison_data["rows"] = normalized_rows
+    return comparison_data
+
+
 
 
 def _discover_top_performer_photo_map(
