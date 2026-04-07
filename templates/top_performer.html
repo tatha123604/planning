@@ -63,10 +63,7 @@
             <label>Upload ranking files
               <input type="file" name="files" accept=".xlsx,.csv" multiple required />
             </label>
-            <label>Attach employee photos
-              <input type="file" name="photo_files" accept=".png,.jpg,.jpeg,.webp" multiple />
-              <small class="hint">Photo filename should match crew name for auto-attach.</small>
-            </label>
+            
             <label>Minimum Runs
               <input type="number" name="minimum_runs" min="0" step="1" value="{{ minimum_runs or 3 }}" required />
             </label>
