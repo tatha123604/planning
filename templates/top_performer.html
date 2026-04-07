@@ -136,7 +136,7 @@
           </div>
           <div class="top-performer-poster-head">
             <h3><span class="top-performer-title-star">★</span> {{ result.poster_title or 'BEST PERFORMERS' }} <span class="top-performer-title-star">★</span></h3>
-            <p>Top Ten Ranked Crew</p>
+            <p>Top Ten Comparison Crew</p>
           </div>
           <div class="top-performer-poster-grid">
             {% for row in result.top_rows %}
@@ -283,7 +283,7 @@
           </div>
         </div>
         {% if comparison.get('rows') %}
-        <section class="top-performer-poster" id="top-performer-comparison-poster">
+        <section class="top-performer-poster comparison-performer-poster" id="top-performer-comparison-poster">
           <div class="top-performer-poster-stars" aria-hidden="true"></div>
           <div class="top-performer-poster-stars top-performer-poster-stars-secondary" aria-hidden="true"></div>
           <div class="top-performer-poster-particles" aria-hidden="true">

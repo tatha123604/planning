@@ -1840,3 +1840,58 @@ ul { padding-left: 18px; margin: 6px 0; }
   letter-spacing: 0.01em;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
+
+
+.comparison-performer-poster {
+  color: #ffefb0;
+  background:
+    radial-gradient(circle at 12% 18%, rgba(255,255,255,0.18), transparent 16%),
+    radial-gradient(circle at 88% 16%, rgba(255,255,255,0.18), transparent 16%),
+    radial-gradient(circle at 50% 0%, rgba(64, 228, 255, 0.24), transparent 30%),
+    radial-gradient(circle at 50% 100%, rgba(152, 102, 255, 0.18), transparent 26%),
+    linear-gradient(135deg, #183d97 0%, #0f5d8b 42%, #27327c 72%, #4b206c 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255,255,255,0.12),
+    0 18px 42px rgba(5, 15, 42, 0.34),
+    0 0 38px rgba(96, 193, 255, 0.16);
+}
+.comparison-performer-poster::before {
+  border-color: rgba(116, 236, 255, 0.18);
+}
+.comparison-performer-poster .top-performer-poster-head h3,
+.comparison-performer-poster .top-performer-title-star {
+  color: #ffd96b;
+  text-shadow: 0 0 14px rgba(255, 217, 107, 0.82);
+}
+.comparison-performer-poster .top-performer-poster-head::before,
+.comparison-performer-poster .top-performer-poster-head::after {
+  background: linear-gradient(90deg, transparent, rgba(118, 241, 255, 0.95), transparent);
+  box-shadow: 0 0 18px rgba(118, 241, 255, 0.48);
+}
+.comparison-performer-poster .top-performer-poster-head p {
+  color: #eefcff;
+  background: linear-gradient(180deg, rgba(39, 91, 170, 0.96), rgba(21, 58, 135, 0.92));
+  border: 1px solid rgba(130, 242, 255, 0.38);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 0 20px rgba(118, 241, 255, 0.14);
+}
+.comparison-performer-poster .top-performer-item {
+  background:
+    radial-gradient(circle at 88% 50%, rgba(255,255,255,0.16), transparent 20%),
+    radial-gradient(circle at 95% 16%, rgba(145, 235, 255, 0.20), transparent 12%),
+    linear-gradient(180deg, rgba(28,70,170,0.84), rgba(62,29,111,0.84));
+  border-color: rgba(122, 230, 255, 0.45);
+  box-shadow:
+    inset 0 0 0 1px rgba(255,255,255,0.08),
+    0 10px 24px rgba(11, 22, 53, 0.22);
+}
+.comparison-performer-poster .top-performer-copy strong {
+  color: #fff1a3;
+}
+.comparison-performer-poster .top-performer-rankline,
+.comparison-performer-poster .top-performer-copy span,
+.comparison-performer-poster .top-performer-poster-foot {
+  color: #ecf6ff;
+}
+.comparison-performer-poster .top-performer-medal-image {
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.35)) drop-shadow(0 0 10px rgba(255, 228, 120, 0.38));
+}
