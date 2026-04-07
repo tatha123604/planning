@@ -106,10 +106,13 @@
     const pageableRows = rows.filter((row) => !isTotalRow(row));
     if (!pageableRows.length) return;
 
-    let pageSize = DEFAULT_PAGE_SIZE;
+    let pageSize = table.id === "cli-distribution-table" ? 0 : DEFAULT_PAGE_SIZE;
     let page = 0;
 
     const topPager = createPagerBar({ showRowsSelector: true });
+    if (table.id === "cli-distribution-table" && topPager.select) {
+      topPager.select.value = "0";
+    }
     const bottomPager = createPagerBar();
     const infos = [topPager.info, bottomPager.info];
     const prevButtons = [topPager.prev, bottomPager.prev];
