@@ -7,8 +7,8 @@ body {
 }
 .layout { display: flex; min-height: 100vh; min-width: 0; }
 .sidebar {
-  flex: 0 0 240px;
-  width: 240px;
+  flex: 0 0 280px;
+  width: 280px;
   background: linear-gradient(195deg, #0f1b2f 0%, #0a1224 60%, #060b14 100%);
   border-right: 1px solid rgba(255,255,255,0.08);
   box-shadow: 12px 0 30px rgba(0,0,0,0.35);
@@ -46,6 +46,7 @@ body {
 .brand span { display: block; }
 .side-links { display: flex; flex-direction: column; gap: 10px; }
 .side-links a {
+  display: block;
   color: #c5cada;
   text-decoration: none;
   padding: 11px 12px;
@@ -53,6 +54,9 @@ body {
   font-weight: 700;
   border: 1px solid transparent;
   transition: all 0.18s ease;
+  white-space: normal;
+  line-height: 1.25;
+  word-break: break-word;
 }
 .side-links a.active {
   background: linear-gradient(135deg, #ffe45c, #66e1b6);
@@ -78,6 +82,8 @@ body {
   font-weight: 800;
   color: #d7def2;
   user-select: none;
+  white-space: normal;
+  line-height: 1.25;
 }
 .side-group summary::-webkit-details-marker { display: none; }
 .side-group summary::after {
