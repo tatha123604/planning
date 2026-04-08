@@ -158,13 +158,13 @@
                   </div>
                 </div>
               </div>
-              <form method="post" action="/uploads/employee-master-mismatch-merge" class="inline" onsubmit="return confirm('Merge these rows and keep both?');">
+              <form method="post" action="/uploads/employee-master-mismatch-merge" class="inline sensitive-inline-form" data-password-gated-form data-password-gated-code="11111" onsubmit="return confirm('Merge these rows and keep both?');">
                 <input type="hidden" name="existing_id" value="{{ item.existing_id }}" />
                 <input type="hidden" name="incoming_payload" value='{{ item.incoming_json | e }}' />
                 <label>Action Code
-                  <input type="password" name="action_password" autocomplete="current-password" required />
+                  <input type="password" name="action_password" autocomplete="current-password" required data-password-gated-input />
                 </label>
-                <button type="submit">Merge (keep both)</button>
+                <button type="submit" data-password-gated-button disabled>Merge (keep both)</button>
               </form>
               <form method="post" action="/uploads/employee-master-mismatch-delete" class="inline" onsubmit="return confirm('Delete the selected row?');">
                 <input type="hidden" name="existing_id" value="{{ item.existing_id }}" />
