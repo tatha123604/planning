@@ -1195,6 +1195,19 @@ ul { padding-left: 18px; margin: 6px 0; }
   flex-direction: column;
   gap: 12px;
 }
+.sync-report-card > details,
+.sync-report-card > .sync-report-section,
+.sync-report-card > .sync-log-collapse,
+.sync-report-card > .conflict-group {
+  display: block;
+  width: 100%;
+}
+.sync-report-card > details + details,
+.sync-report-card > .sync-report-section + .sync-report-section,
+.sync-report-card > .sync-log-collapse + .sync-log-collapse,
+.sync-report-card > .conflict-group + .conflict-group {
+  margin-top: 12px;
+}
 .sync-report-section,
 .sync-log-collapse,
 .conflict-group {
@@ -1244,6 +1257,10 @@ ul { padding-left: 18px; margin: 6px 0; }
 }
 .sync-log-collapse .sync-warning-list {
   max-height: 220px;
+}
+.sync-log-collapse .sync-warning-list,
+.sync-report-section .sync-report-list {
+  width: 100%;
 }
 .conflict-group-body {
   display: grid;
