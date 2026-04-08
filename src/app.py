@@ -2313,6 +2313,7 @@ def _run_google_sheet_sync(session: Session, *, commit_changes: bool) -> dict[st
             rows,
             source_label=f"Google Sheet ({sheet_name})",
             working_at_override=working_at,
+            source_priority=1,
             warnings=warnings,
             sync_details=sync_details,
             sync_stats=sync_stats,
@@ -3739,11 +3740,45 @@ def _google_sync_change_label(changed_labels: list[str]) -> str:
     return "Auto-corrected"
 
 
+EMPLOYEE_AUTHORITY_FIELDS = {
+    "name",
+    "role",
+    "hire_date",
+    "retirement_date",
+    "promotion_role",
+    "promotion_ready_date",
+    "category",
+    "pf_no",
+    "hrms",
+    "crew_id",
+    "dob",
+    "doa",
+    "do_report",
+    "status",
+    "working_at",
+    "gradation",
+    "cli",
+    "cli_id",
+    "pme_due",
+    "technical_due",
+    "transportation_due",
+}
+
+
+def _field_allows_overwrite(existing_value: object, incoming_value: object, *, source_priority: int) -> bool:
+    if source_priority >= 2:
+        return True
+    if existing_value in (None, ""):
+        return True
+    return False
+
+
 def _import_employee_rows(
     session: Session,
     rows: list[tuple | list],
     source_label: str = "sheet",
     working_at_override: Optional[str] = None,
+    source_priority: int = 1,
     warnings: Optional[list[str]] = None,
     sync_details: Optional[list[str]] = None,
     sync_stats: Optional[dict[str, int]] = None,
@@ -4047,7 +4082,7 @@ def _import_employee_rows(
             changed_field_entries = [
                 (label, old_value, new_value)
                 for label, old_value, new_value in field_updates
-                if old_value != new_value
+                if old_value != new_value and _field_allows_overwrite(old_value, new_value, source_priority=source_priority)
             ]
             changed_fields = [
                 f"{label}: {_format_sync_value(old_value)} -> {_format_sync_value(new_value)}"
@@ -4055,27 +4090,48 @@ def _import_employee_rows(
             ]
             change_kind = _google_sync_change_label([label for label, _, _ in changed_field_entries])
 
-            existing.name = str(name).strip()
-            existing.role = role
-            existing.hire_date = hire_date
-            existing.retirement_date = retirement_target
-            existing.promotion_role = promo_role_target
-            existing.promotion_ready_date = promo_ready_target
-            existing.category = category_target
-            existing.pf_no = pf_no_target
-            existing.hrms = hrms_target
-            existing.crew_id = crew_id_target
-            existing.cli_id = cli_id_target
-            existing.dob = dob_target
-            existing.doa = doa_target
-            existing.do_report = do_report_target
-            existing.status = status_target
-            existing.working_at = working_at_target
-            existing.gradation = new_gradation
-            existing.cli = new_cli
-            existing.pme_due = pme_due_target
-            existing.technical_due = technical_due_target
-            existing.transportation_due = transportation_due_target
+            if _field_allows_overwrite(existing.name, str(name).strip(), source_priority=source_priority):
+                existing.name = str(name).strip()
+            if _field_allows_overwrite(existing.role, role, source_priority=source_priority):
+                existing.role = role
+            if _field_allows_overwrite(existing.hire_date, hire_date, source_priority=source_priority):
+                existing.hire_date = hire_date
+            if _field_allows_overwrite(existing.retirement_date, retirement_target, source_priority=source_priority):
+                existing.retirement_date = retirement_target
+            if _field_allows_overwrite(existing.promotion_role, promo_role_target, source_priority=source_priority):
+                existing.promotion_role = promo_role_target
+            if _field_allows_overwrite(existing.promotion_ready_date, promo_ready_target, source_priority=source_priority):
+                existing.promotion_ready_date = promo_ready_target
+            if _field_allows_overwrite(existing.category, category_target, source_priority=source_priority):
+                existing.category = category_target
+            if _field_allows_overwrite(existing.pf_no, pf_no_target, source_priority=source_priority):
+                existing.pf_no = pf_no_target
+            if _field_allows_overwrite(existing.hrms, hrms_target, source_priority=source_priority):
+                existing.hrms = hrms_target
+            if _field_allows_overwrite(existing.crew_id, crew_id_target, source_priority=source_priority):
+                existing.crew_id = crew_id_target
+            if _field_allows_overwrite(existing.cli_id, cli_id_target, source_priority=source_priority):
+                existing.cli_id = cli_id_target
+            if _field_allows_overwrite(existing.dob, dob_target, source_priority=source_priority):
+                existing.dob = dob_target
+            if _field_allows_overwrite(existing.doa, doa_target, source_priority=source_priority):
+                existing.doa = doa_target
+            if _field_allows_overwrite(existing.do_report, do_report_target, source_priority=source_priority):
+                existing.do_report = do_report_target
+            if _field_allows_overwrite(existing.status, status_target, source_priority=source_priority):
+                existing.status = status_target
+            if _field_allows_overwrite(existing.working_at, working_at_target, source_priority=source_priority):
+                existing.working_at = working_at_target
+            if _field_allows_overwrite(existing.gradation, new_gradation, source_priority=source_priority):
+                existing.gradation = new_gradation
+            if _field_allows_overwrite(existing.cli, new_cli, source_priority=source_priority):
+                existing.cli = new_cli
+            if _field_allows_overwrite(existing.pme_due, pme_due_target, source_priority=source_priority):
+                existing.pme_due = pme_due_target
+            if _field_allows_overwrite(existing.technical_due, technical_due_target, source_priority=source_priority):
+                existing.technical_due = technical_due_target
+            if _field_allows_overwrite(existing.transportation_due, transportation_due_target, source_priority=source_priority):
+                existing.transportation_due = transportation_due_target
             if changed_fields:
                 updated += 1
                 if sync_details is not None:
@@ -7550,6 +7606,8 @@ def _upsert_employee_master_records(
                     continue
                 old_value = getattr(existing, field_name)
                 new_value = record_values[field_name]
+                if not _field_allows_overwrite(old_value, new_value, source_priority=source_priority):
+                    continue
                 if old_value != new_value:
                     changed_fields.append(
                         f"{label}: {_format_sync_value(old_value)} -> {_format_sync_value(new_value)}"
@@ -8386,7 +8444,7 @@ async def upload_employees(
     wb = load_workbook(filename=BytesIO(content), data_only=True)
     ws = wb.active
     rows = list(ws.iter_rows(values_only=True))
-    _import_employee_rows(session, rows, source_label="uploaded workbook")
+    _import_employee_rows(session, rows, source_label="uploaded workbook", source_priority=2)
     return RedirectResponse("/", status_code=303)
 
 
