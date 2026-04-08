@@ -66,9 +66,16 @@ body {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  width: 100%;
 }
 .side-links a.long-nav-label span {
   display: block;
+}
+.side-links a.long-nav-label.active {
+  min-height: 52px;
+}
+.side-links a.long-nav-label:not(.active) span:last-child {
+  display: none;
 }
 .side-links a.active {
   background: linear-gradient(135deg, #ffe45c, #66e1b6);
