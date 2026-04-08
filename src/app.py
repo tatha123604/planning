@@ -7701,6 +7701,58 @@ def _build_employee_master_update_response(
     )
 
 
+def _render_employee_master_preview_from_saved(
+    request: Request,
+    session: Session,
+    *,
+    notice: str,
+    preview_password: str,
+):
+    if not EMPLOYEE_MASTER_UPDATE_PREVIEW_FILE.exists():
+        return templates.TemplateResponse(
+            "uploads.html",
+            _uploads_context(request, update_notice=notice),
+        )
+    raw = json.loads(EMPLOYEE_MASTER_UPDATE_PREVIEW_FILE.read_text(encoding="utf-8"))
+    records = _deserialize_employee_master_preview_records(raw.get("records") or [])
+    if not records:
+        _clear_employee_master_update_preview()
+        return templates.TemplateResponse(
+            "uploads.html",
+            _uploads_context(request, update_notice=notice),
+        )
+
+    warnings: list[str] = []
+    sync_details: list[str] = []
+    added, updated, unchanged, skipped, deduplicated, mismatch_actions = _upsert_employee_master_records(
+        session,
+        records,
+        warnings,
+        sync_details,
+        commit_changes=False,
+    )
+    session.rollback()
+
+    if added == 0 and updated == 0 and skipped == 0 and deduplicated == 0 and not mismatch_actions:
+        _clear_employee_master_update_preview()
+        return templates.TemplateResponse(
+            "uploads.html",
+            _uploads_context(request, update_notice=notice),
+        )
+
+    warning_text = f"Mismatch / auto-fixed records: {len(warnings)}" if warnings else ""
+    return _build_employee_master_update_response(
+        request,
+        notice=notice,
+        warning_text=warning_text,
+        sync_details=sync_details,
+        warnings=warnings,
+        mismatch_actions=mismatch_actions,
+        preview_ready=True,
+        preview_password=preview_password,
+    )
+
+
 @app.post("/uploads/employee-master-sync")
 async def upload_employee_master_sync(
     request: Request,
@@ -7901,9 +7953,11 @@ async def upload_employee_master_mismatch_merge(
         session.add(employee)
         session.commit()
         notice = "Mismatch merge complete: incoming row added alongside existing."
-        return templates.TemplateResponse(
-            "uploads.html",
-            _uploads_context(request, update_notice=notice),
+        return _render_employee_master_preview_from_saved(
+            request,
+            session,
+            notice=notice,
+            preview_password=action_password,
         )
     except HTTPException as exc:
         detail = exc.detail if isinstance(exc.detail, str) else "Merge failed."
@@ -7943,9 +7997,11 @@ async def upload_employee_master_mismatch_delete(
             notice = "Delete complete: existing row removed, incoming row kept."
         else:
             notice = "Delete complete: incoming row ignored, existing row kept."
-        return templates.TemplateResponse(
-            "uploads.html",
-            _uploads_context(request, update_notice=notice),
+        return _render_employee_master_preview_from_saved(
+            request,
+            session,
+            notice=notice,
+            preview_password=action_password,
         )
     except HTTPException as exc:
         detail = exc.detail if isinstance(exc.detail, str) else "Delete failed."
