@@ -1191,8 +1191,8 @@ ul { padding-left: 18px; margin: 6px 0; }
   background: rgba(10, 16, 28, 0.82);
   max-width: 720px;
   width: 100%;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: 12px;
 }
 .sync-report-section,
