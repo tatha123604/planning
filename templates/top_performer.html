@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Top Performer | SDAH Crew Planner</title>
+  <title>Top Performer (Based On SSTS) | SDAH Crew Planner</title>
   <link rel="stylesheet" href="/static/style.css" />
   <link rel="icon" type="image/svg+xml" href="/static/indian-railways-mark.svg" />
 </head>
@@ -20,7 +20,7 @@
         <a class="{{ 'active' if active_page == 'uploads' else '' }}" href="/uploads">Uploads</a>
         <a class="{{ 'active' if active_page == 'cli' else '' }}" href="/cli">CLI</a>
         <a class="{{ 'active' if active_page == 'cli_distribution_planner' else '' }}" href="/cli-distribution-planner">CLI Distribution Planner (Experimental)</a>
-        <a class="{{ 'active' if active_page == 'top_performer' else '' }}" href="/top-performer">Top Performer</a>
+        <a class="{{ 'active' if active_page == 'top_performer' else '' }}" href="/top-performer">Top Performer (Based On SSTS)</a>
         <details class="side-group" {% if active_page in ['cli_matrix', 'non_continuous_duty', 'sub_non_continuous_duty'] %}open{% endif %}>
           <summary>CMS REPORTS</summary>
           <div class="side-sub-links">
@@ -38,7 +38,7 @@
     <main class="content">
       <header>
         <div>
-          <h1>Top Performer</h1>
+          <h1>Top Performer (Based On SSTS)</h1>
           <p>Upload ranking files, set minimum runs, and generate top 10 performer tables.</p>
         </div>
       </header>
