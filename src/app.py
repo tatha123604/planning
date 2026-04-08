@@ -7669,6 +7669,43 @@ def _clear_employee_master_update_preview() -> None:
         pass
 
 
+def _employee_master_preview_signature(item: dict[str, object]) -> tuple[str, str, str, str, str, str, str, str, str, str]:
+    def _text(value: object | None) -> str:
+        return _clean_import_text(value) or ""
+
+    def _date(value: object | None) -> str:
+        return _clean_import_text(value) or ""
+
+    return (
+        _text(item.get("name")),
+        normalize_role(_text(item.get("role"))),
+        _date(item.get("hire_date")),
+        _date(item.get("doa")),
+        _date(item.get("retirement_date")),
+        _date(item.get("promotion_ready_date")),
+        _text(item.get("category")),
+        _text(item.get("crew_id")),
+        _date(item.get("dob")),
+        _date(item.get("pme_due")),
+    )
+
+
+def _remove_employee_master_update_preview_record(payload: dict[str, object]) -> bool:
+    if not EMPLOYEE_MASTER_UPDATE_PREVIEW_FILE.exists():
+        return False
+    raw = json.loads(EMPLOYEE_MASTER_UPDATE_PREVIEW_FILE.read_text(encoding="utf-8"))
+    records = raw.get("records") or []
+    if not isinstance(records, list) or not records:
+        return False
+    target_signature = _employee_master_preview_signature(payload)
+    filtered_records = [record for record in records if _employee_master_preview_signature(record) != target_signature]
+    if len(filtered_records) == len(records):
+        return False
+    raw["records"] = filtered_records
+    _save_employee_master_update_preview(raw)
+    return True
+
+
 def _build_employee_master_update_response(
     request: Request,
     *,
@@ -7951,8 +7988,18 @@ async def upload_employee_master_mismatch_merge(
             raise HTTPException(status_code=404, detail="Existing row not found.")
         employee = _create_employee_from_payload(incoming_data)
         session.add(employee)
-        session.commit()
-        notice = "Mismatch merge complete: incoming row added alongside existing."
+        session.flush()
+        merged = _merge_employee_rows(
+            session,
+            reason="Mismatch merge",
+            keep_id=existing.id,
+            remove_ids=[employee.id],
+            details=[],
+        )
+        if not merged:
+            raise HTTPException(status_code=500, detail="Merge failed to resolve the duplicate row.")
+        _remove_employee_master_update_preview_record(incoming_data)
+        notice = "Mismatch merge complete: duplicate row merged into the existing row and removed."
         return _render_employee_master_preview_from_saved(
             request,
             session,
@@ -7993,10 +8040,25 @@ async def upload_employee_master_mismatch_delete(
             session.delete(existing)
             employee = _create_employee_from_payload(incoming_data)
             session.add(employee)
-            session.commit()
             notice = "Delete complete: existing row removed, incoming row kept."
+            _remove_employee_master_update_preview_record(
+                {
+                    "name": existing.name,
+                    "role": existing.role,
+                    "hire_date": existing.hire_date,
+                    "doa": existing.doa,
+                    "retirement_date": existing.retirement_date,
+                    "promotion_ready_date": existing.promotion_ready_date,
+                    "category": existing.category,
+                    "crew_id": existing.crew_id,
+                    "dob": existing.dob,
+                    "pme_due": existing.pme_due,
+                }
+            )
         else:
             notice = "Delete complete: incoming row ignored, existing row kept."
+            _remove_employee_master_update_preview_record(incoming_data)
+        session.commit()
         return _render_employee_master_preview_from_saved(
             request,
             session,
