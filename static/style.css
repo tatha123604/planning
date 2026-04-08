@@ -1375,10 +1375,104 @@ ul { padding-left: 18px; margin: 6px 0; }
     0 0 28px rgba(255,255,255,0.5);
 }
 .top-performer-poster.export-capture {
+  width: min(920px, 100%);
+  max-width: 920px;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 14px 16px 12px;
   box-shadow:
     inset 0 0 0 1px rgba(255,255,255,0.1),
     0 18px 40px rgba(0, 0, 0, 0.28),
     0 0 36px rgba(255, 255, 255, 0.08);
+}
+.top-performer-poster.export-capture .top-performer-poster-head h3 {
+  font-size: 1.9rem;
+}
+.top-performer-poster.export-capture .top-performer-poster-head p {
+  min-width: 220px;
+  font-size: 1.05rem;
+  padding: 6px 12px;
+}
+.top-performer-poster.export-capture .top-performer-poster-grid {
+  gap: 9px 10px;
+}
+.top-performer-poster.export-capture .top-performer-item {
+  padding: 10px 12px;
+  gap: 10px;
+}
+.top-performer-poster.export-capture .top-performer-avatar-wrap,
+.top-performer-poster.export-capture .top-performer-avatar,
+.top-performer-poster.export-capture .top-performer-photo {
+  width: 72px;
+  height: 72px;
+}
+.top-performer-poster.export-capture .top-performer-copy strong {
+  font-size: 1.08rem;
+}
+.top-performer-poster.export-capture .top-performer-copy span {
+  font-size: 0.98rem;
+}
+.top-performer-poster.export-capture .top-performer-rankline {
+  font-size: 1.02rem;
+}
+.top-performer-poster.export-capture .top-performer-rankline > span:first-child {
+  min-width: 120px;
+}
+.top-performer-poster.export-capture .top-performer-medal-image {
+  width: 34px;
+  height: 34px;
+}
+.top-performer-poster.export-capture .top-performer-poster-foot {
+  margin-top: 12px;
+  font-size: 0.95rem;
+}
+.comparison-performer-poster.export-capture {
+  width: min(920px, 100%);
+  max-width: 920px;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 14px 16px 12px;
+}
+.comparison-performer-poster.export-capture .top-performer-poster-head h3 {
+  font-size: 1.9rem;
+}
+.comparison-performer-poster.export-capture .top-performer-poster-head p {
+  min-width: 220px;
+  font-size: 1.05rem;
+  padding: 6px 12px;
+}
+.comparison-performer-poster.export-capture .top-performer-poster-grid {
+  gap: 9px 10px;
+}
+.comparison-performer-poster.export-capture .top-performer-item {
+  padding: 10px 12px;
+  gap: 10px;
+}
+.comparison-performer-poster.export-capture .top-performer-avatar-wrap,
+.comparison-performer-poster.export-capture .top-performer-avatar,
+.comparison-performer-poster.export-capture .top-performer-photo {
+  width: 72px;
+  height: 72px;
+}
+.comparison-performer-poster.export-capture .top-performer-copy strong {
+  font-size: 1.08rem;
+}
+.comparison-performer-poster.export-capture .top-performer-copy span {
+  font-size: 0.98rem;
+}
+.comparison-performer-poster.export-capture .top-performer-rankline {
+  font-size: 1.02rem;
+}
+.comparison-performer-poster.export-capture .top-performer-rankline > span:first-child {
+  min-width: 120px;
+}
+.comparison-performer-poster.export-capture .top-performer-medal-image {
+  width: 34px;
+  height: 34px;
+}
+.comparison-performer-poster.export-capture .top-performer-poster-foot {
+  margin-top: 12px;
+  font-size: 0.95rem;
 }
 .top-performer-poster-head::before,
 .top-performer-poster-head::after {
