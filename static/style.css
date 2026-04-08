@@ -58,6 +58,12 @@ body {
   line-height: 1.25;
   word-break: break-word;
 }
+.side-links a.long-nav-label {
+  font-size: 12.5px;
+  line-height: 1.15;
+  padding-top: 9px;
+  padding-bottom: 9px;
+}
 .side-links a.active {
   background: linear-gradient(135deg, #ffe45c, #66e1b6);
   color: #07111f;
