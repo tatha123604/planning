@@ -78,9 +78,9 @@
           </div>
           {% endif %}
           {% if update_added_details or update_updated_details or update_deduplicated_details %}
-          <div class="sync-report-card" style="margin-bottom: 12px;">
-            <div class="sync-report-section">
-              <h4>Inserted</h4>
+          <div class="sync-report-card log-toggle-card" style="margin-bottom: 12px;">
+            <details class="sync-report-section log-toggle-section" {% if (update_added_details|length or 0) <= 4 %}open{% endif %}>
+              <summary><span class="sync-list-title">Inserted</span><span class="log-toggle-state" aria-hidden="true"></span></summary>
               <ul class="sync-report-list">
                 {% if update_added_details %}
                   {% for item in update_added_details %}<li>{{ item }}</li>{% endfor %}
@@ -88,9 +88,9 @@
                   <li>No changes</li>
                 {% endif %}
               </ul>
-            </div>
-            <div class="sync-report-section">
-              <h4>Updated</h4>
+            </details>
+            <details class="sync-report-section log-toggle-section" {% if (update_updated_details|length or 0) <= 4 %}open{% endif %}>
+              <summary><span class="sync-list-title">Updated</span><span class="log-toggle-state" aria-hidden="true"></span></summary>
               <ul class="sync-report-list">
                 {% if update_updated_details %}
                   {% for item in update_updated_details %}<li>{{ item }}</li>{% endfor %}
@@ -98,9 +98,9 @@
                   <li>No changes</li>
                 {% endif %}
               </ul>
-            </div>
-            <div class="sync-report-section">
-              <h4>Deduplicated</h4>
+            </details>
+            <details class="sync-report-section log-toggle-section" {% if (update_deduplicated_details|length or 0) <= 4 %}open{% endif %}>
+              <summary><span class="sync-list-title">Deduplicated</span><span class="log-toggle-state" aria-hidden="true"></span></summary>
               <ul class="sync-report-list">
                 {% if update_deduplicated_details %}
                   {% for item in update_deduplicated_details %}<li>{{ item }}</li>{% endfor %}
@@ -108,33 +108,36 @@
                   <li>No changes</li>
                 {% endif %}
               </ul>
-            </div>
+            </details>
           </div>
           {% endif %}
-{% if update_details %}
-          <div class="sync-list-header">
-            <p class="hint success-text"><strong>Last update records</strong></p>
-          </div>
-          <ul class="sync-warning-list">
-            {% for item in update_details %}
-            <li>{{ item }}</li>
-            {% endfor %}
-          </ul>
+          {% if update_details %}
+          <details class="sync-log-collapse" {% if (update_details|length or 0) <= 8 %}open{% endif %}>
+            <summary><span class="sync-list-title hint success-text"><strong>Last update records</strong></span><span class="log-toggle-state" aria-hidden="true"></span></summary>
+            <ul class="sync-warning-list">
+              {% for item in update_details %}
+              <li>{{ item }}</li>
+              {% endfor %}
+            </ul>
+          </details>
           {% endif %}
           {% if warning_details %}
-          <p class="hint warning-text"><strong>Mismatch / Auto-fixed records</strong></p>
-          <ul class="sync-warning-list">
-            {% for item in warning_details %}
-            <li>{{ item }}</li>
-            {% endfor %}
-          </ul>
+          <details class="sync-log-collapse" {% if (warning_details|length or 0) <= 8 %}open{% endif %}>
+            <summary><span class="sync-list-title hint warning-text"><strong>Mismatch / Auto-fixed records</strong></span><span class="log-toggle-state" aria-hidden="true"></span></summary>
+            <ul class="sync-warning-list">
+              {% for item in warning_details %}
+              <li>{{ item }}</li>
+              {% endfor %}
+            </ul>
+          </details>
           {% endif %}
           {% if update_mismatch_actions %}
-          <div class="conflict-group">
-            <p class="hint warning-text"><strong>Mismatch actions</strong></p>
+          <details class="conflict-group sync-log-collapse" {% if (update_mismatch_actions|length or 0) <= 2 %}open{% endif %}>
+            <summary><span class="sync-list-title hint warning-text"><strong>Mismatch actions</strong></span><span class="log-toggle-state" aria-hidden="true"></span></summary>
+            <div class="conflict-group-body">
             {% for item in update_mismatch_actions %}
             <div class="conflict-card">
-              <p><strong>{{ item.reason }}</strong> — {{ item.row_hint }}</p>
+              <p><strong>{{ item.reason }}</strong> - {{ item.row_hint }}</p>
               <div class="conflict-split">
                 <div>
                   <p class="hint">Existing row</p>
@@ -182,9 +185,10 @@
               </form>
             </div>
             {% endfor %}
-          </div>
+            </div>
+          </details>
           {% endif %}
-          <form method="post" action="/uploads/employee-master-sync" enctype="multipart/form-data" class="inline sensitive-inline-form" data-password-gated-form data-password-gated-code="11111">
+<form method="post" action="/uploads/employee-master-sync" enctype="multipart/form-data" class="inline sensitive-inline-form" data-password-gated-form data-password-gated-code="11111">
             <label>Service Particulars (.xlsx)
               <input type="file" name="service_file" accept=".xlsx,.xlsm" required />
             </label>
@@ -713,6 +717,19 @@
           render();
         });
       });
+
+      const refreshLogToggleLabels = () => {
+        document.querySelectorAll('details.log-toggle-section, details.sync-log-collapse').forEach((details) => {
+          const label = details.querySelector('.log-toggle-state');
+          if (!label) return;
+          label.textContent = details.open ? 'Show less' : 'Show more';
+        });
+      };
+
+      document.querySelectorAll('details.log-toggle-section, details.sync-log-collapse').forEach((details) => {
+        details.addEventListener('toggle', refreshLogToggleLabels);
+      });
+      refreshLogToggleLabels();
     })();
   </script>
   <script src="/static/sidebar-toggle.js"></script>
@@ -720,6 +737,8 @@
   <script src="/static/button-confirm.js"></script>
 </body>
 </html>
+
+
 
 
 
