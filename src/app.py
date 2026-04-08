@@ -75,6 +75,7 @@ CLI_MATRIX_2026_03_24_CLEANUP_SENTINEL = DB_PATH.parent / ".cli_matrix_cleanup_2
 EMPLOYEE_MASTER_SMART_CLEANUP_SENTINEL = DB_PATH.parent / ".employee_master_smart_cleanup_2026_03_27.done"
 EMPLOYEE_MASTER_KEEP_BOTH_FILE = DB_PATH.parent / "employee_master_keep_both.json"
 EMPLOYEE_MASTER_SOURCE_SNAPSHOT_FILE = DB_PATH.parent / "employee_master_source_snapshot.json"
+EMPLOYEE_MASTER_UPDATE_PREVIEW_FILE = DB_PATH.parent / "employee_master_update_preview.json"
 EMPLOYEE_MASTER_EXTRA_REVIEW_KEEP_FILE = DB_PATH.parent / "employee_master_extra_review_keep.json"
 EMPLOYEE_MASTER_CLEANUP_LOG_FILE = DB_PATH.parent / "employee_master_cleanup_log.json"
 LI_GRADING_METADATA_FILE = DB_PATH.parent / "li_grading_metadata.json"
@@ -2534,6 +2535,11 @@ def _uploads_context(
     update_details: Optional[list[str]] = None,
     warning_details: Optional[list[str]] = None,
     update_mismatch_actions: Optional[list[dict[str, object]]] = None,
+    update_added_details: Optional[list[str]] = None,
+    update_updated_details: Optional[list[str]] = None,
+    update_deduplicated_details: Optional[list[str]] = None,
+    update_preview_ready: bool = False,
+    update_preview_password: str = "",
     grading_update_error: Optional[str] = None,
     grading_update_notice: str = "",
     grading_update_warning: str = "",
@@ -2574,6 +2580,11 @@ def _uploads_context(
         "update_details": update_details or [],
         "warning_details": warning_details or [],
         "update_mismatch_actions": update_mismatch_actions or [],
+        "update_added_details": update_added_details or [],
+        "update_updated_details": update_updated_details or [],
+        "update_deduplicated_details": update_deduplicated_details or [],
+        "update_preview_ready": update_preview_ready,
+        "update_preview_password": update_preview_password,
         "grading_update_error": grading_update_error,
         "grading_update_notice": grading_update_notice,
         "grading_update_warning": grading_update_warning,
@@ -7225,23 +7236,44 @@ def _build_service_particular_records(
     return records, crew_to_emp
 
 
+def _iter_cms_other_bio_rows(content: bytes, source_name: str) -> list[dict[str, object]]:
+    lower_name = source_name.lower()
+    if lower_name.endswith((".xlsx", ".xlsm")):
+        workbook = load_workbook(filename=BytesIO(content), data_only=True)
+        worksheet = workbook.active
+        rows = list(worksheet.iter_rows(values_only=True))
+        if not rows:
+            return []
+        header = [str(cell).strip() if cell is not None else "" for cell in rows[0]]
+        data_rows: list[dict[str, object]] = []
+        for row in rows[1:]:
+            if not any(cell not in (None, "", " ") for cell in row):
+                continue
+            data_rows.append({header[idx]: row[idx] if idx < len(row) else None for idx in range(len(header)) if header[idx]})
+        return data_rows
+
+    text = _decode_uploaded_text(content)
+    reader = csv.DictReader(StringIO(text))
+    return list(reader)
+
+
 def _merge_cms_other_bio(
     records: dict[str, dict[str, object]],
     crew_to_emp: dict[str, str],
     content: bytes,
     warnings: list[str],
+    source_name: str = "cms.csv",
 ) -> None:
-    text = _decode_uploaded_text(content)
-    reader = csv.DictReader(StringIO(text))
-    if not reader.fieldnames:
+    rows = _iter_cms_other_bio_rows(content, source_name)
+    if not rows:
         raise HTTPException(status_code=400, detail="CMS other bio data file has no header row.")
 
-    normalized_header = {_employee_norm(name): name for name in reader.fieldnames if name}
+    normalized_header = {_employee_norm(name): name for name in rows[0].keys() if name}
     if "crewid" not in normalized_header:
         raise HTTPException(status_code=400, detail="CMS other bio data is missing column: CREWID")
 
     seen_hrms: set[str] = set()
-    for row in reader:
+    for row in rows:
         hrms_key = normalized_header["crewid"]
         hrms = _clean_import_text(row.get(hrms_key))
         row_hint = _clean_import_text(row.get(normalized_header.get("crewname", hrms_key))) or hrms or "Unknown row"
@@ -7386,6 +7418,8 @@ def _upsert_employee_master_records(
     records: dict[str, dict[str, object]],
     warnings: list[str],
     sync_details: list[str],
+    *,
+    commit_changes: bool = True,
 ) -> tuple[int, int, int, int, int, list[dict[str, object]]]:
     added = 0
     updated = 0
@@ -7571,8 +7605,100 @@ def _upsert_employee_master_records(
             rebuild_exact_indexes()
 
     deduplicated += _dedupe_uploaded_employee_rows(session, sync_details)
-    session.commit()
+    if commit_changes:
+        session.commit()
     return added, updated, unchanged, skipped, deduplicated, mismatch_actions
+
+
+def _serialize_employee_master_preview_records(records: dict[str, dict[str, object]]) -> list[dict[str, object]]:
+    payload: list[dict[str, object]] = []
+    for emp_no, record in sorted(records.items()):
+        payload.append({
+            "emp_no": emp_no,
+            "row_hint": str(record.get("row_hint") or ""),
+            "name": _clean_import_text(record.get("name")) or "",
+            "role": _clean_import_text(record.get("role")) or "",
+            "hire_date": record.get("hire_date").isoformat() if isinstance(record.get("hire_date"), date) else None,
+            "doa": record.get("doa").isoformat() if isinstance(record.get("doa"), date) else None,
+            "retirement_date": record.get("retirement_date").isoformat() if isinstance(record.get("retirement_date"), date) else None,
+            "promotion_ready_date": record.get("promotion_ready_date").isoformat() if isinstance(record.get("promotion_ready_date"), date) else None,
+            "category": _clean_import_text(record.get("category"), blank_na=True),
+            "crew_id": _clean_import_text(record.get("crew_id")),
+            "dob": record.get("dob").isoformat() if isinstance(record.get("dob"), date) else None,
+            "pme_due": record.get("pme_due").isoformat() if isinstance(record.get("pme_due"), date) else None,
+            "present_fields": sorted(str(value) for value in (record.get("present_fields") or set())),
+        })
+    return payload
+
+
+def _deserialize_employee_master_preview_records(payload: list[dict[str, object]]) -> dict[str, dict[str, object]]:
+    records: dict[str, dict[str, object]] = {}
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        emp_no = _clean_import_text(item.get("emp_no"))
+        hire_date = date.fromisoformat(item["hire_date"]) if isinstance(item.get("hire_date"), str) and item.get("hire_date") else None
+        if not emp_no or not isinstance(hire_date, date):
+            continue
+        record = {
+            "row_hint": _clean_import_text(item.get("row_hint")) or emp_no,
+            "name": _clean_import_text(item.get("name")) or "",
+            "role": _clean_import_text(item.get("role")) or "",
+            "hire_date": hire_date,
+            "doa": date.fromisoformat(item["doa"]) if isinstance(item.get("doa"), str) and item.get("doa") else None,
+            "retirement_date": date.fromisoformat(item["retirement_date"]) if isinstance(item.get("retirement_date"), str) and item.get("retirement_date") else None,
+            "promotion_ready_date": date.fromisoformat(item["promotion_ready_date"]) if isinstance(item.get("promotion_ready_date"), str) and item.get("promotion_ready_date") else None,
+            "category": _clean_import_text(item.get("category"), blank_na=True),
+            "crew_id": _clean_import_text(item.get("crew_id")),
+            "dob": date.fromisoformat(item["dob"]) if isinstance(item.get("dob"), str) and item.get("dob") else None,
+            "pme_due": date.fromisoformat(item["pme_due"]) if isinstance(item.get("pme_due"), str) and item.get("pme_due") else None,
+            "present_fields": set(item.get("present_fields") or []),
+        }
+        records[emp_no] = record
+    return records
+
+
+def _save_employee_master_update_preview(payload: dict[str, object]) -> None:
+    EMPLOYEE_MASTER_UPDATE_PREVIEW_FILE.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")
+
+
+def _clear_employee_master_update_preview() -> None:
+    try:
+        EMPLOYEE_MASTER_UPDATE_PREVIEW_FILE.unlink()
+    except FileNotFoundError:
+        pass
+
+
+def _build_employee_master_update_response(
+    request: Request,
+    *,
+    notice: str,
+    warning_text: str,
+    sync_details: list[str],
+    warnings: list[str],
+    mismatch_actions: list[dict[str, object]],
+    preview_ready: bool = False,
+    preview_password: str = "",
+):
+    added_details = [item for item in sync_details if item.startswith("Added ")]
+    updated_details = [item for item in sync_details if item.startswith("Updated ")]
+    deduplicated_details = [item for item in sync_details if item.startswith("Deduplicated ")]
+    return templates.TemplateResponse(
+        "uploads.html",
+        _uploads_context(
+            request,
+            update_notice=notice,
+            update_warning=warning_text,
+            update_details=sync_details,
+            warning_details=warnings,
+            update_mismatch_actions=mismatch_actions,
+            update_added_details=added_details,
+            update_updated_details=updated_details,
+            update_deduplicated_details=deduplicated_details,
+            update_preview_ready=preview_ready,
+            update_preview_password=preview_password,
+        ),
+    )
 
 
 @app.post("/uploads/employee-master-sync")
@@ -7589,8 +7715,8 @@ async def upload_employee_master_sync(
         cms_name = cms_file.filename or ""
         if not service_name.lower().endswith((".xlsx", ".xlsm")):
             raise HTTPException(status_code=400, detail="Service Particulars file must be an .xlsx workbook.")
-        if not cms_name.lower().endswith(".csv"):
-            raise HTTPException(status_code=400, detail="CMS other bio data file must be a .csv file.")
+        if not cms_name.lower().endswith((".csv", ".xlsx", ".xlsm")):
+            raise HTTPException(status_code=400, detail="CMS other bio data file must be a .csv or .xlsx file.")
 
         service_content = await service_file.read()
         cms_content = await cms_file.read()
@@ -7598,15 +7724,84 @@ async def upload_employee_master_sync(
         sync_details: list[str] = []
 
         records, hrms_to_emp = _build_service_particular_records(service_content, warnings)
-        _merge_cms_other_bio(records, hrms_to_emp, cms_content, warnings)
+        _merge_cms_other_bio(records, hrms_to_emp, cms_content, warnings, cms_name)
+        preview_records = _serialize_employee_master_preview_records(records)
+        added, updated, unchanged, skipped, deduplicated, mismatch_actions = _upsert_employee_master_records(
+            session,
+            records,
+            warnings,
+            sync_details,
+            commit_changes=False,
+        )
+        session.rollback()
+
+        _save_employee_master_update_preview(
+            {
+                "records": preview_records,
+                "service_name": service_name,
+                "cms_name": cms_name,
+                "action_password": action_password,
+            }
+        )
+
+        if added == 0 and updated == 0 and skipped == 0 and deduplicated == 0:
+            notice = "No change found"
+        else:
+            notice = (
+                "Employee table preview ready: "
+                f"{added} added, {updated} updated, {unchanged} unchanged, {skipped} skipped, {deduplicated} deduplicated."
+            )
+        warning_text = f"Mismatch / auto-fixed records: {len(warnings)}" if warnings else ""
+        return _build_employee_master_update_response(
+            request,
+            notice=notice,
+            warning_text=warning_text,
+            sync_details=sync_details,
+            warnings=warnings,
+            mismatch_actions=mismatch_actions,
+            preview_ready=True,
+            preview_password=action_password,
+        )
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "Employee table update failed."
+        return templates.TemplateResponse(
+            "uploads.html",
+            _uploads_context(request, update_error=detail),
+            status_code=exc.status_code,
+        )
+    except Exception as exc:
+        return templates.TemplateResponse(
+            "uploads.html",
+            _uploads_context(request, update_error=str(exc)),
+            status_code=500,
+        )
+
+
+@app.post("/uploads/employee-master-sync-apply")
+def apply_employee_master_sync_preview(
+    request: Request,
+    action_password: str = Form(...),
+    session: Session = Depends(get_session),
+):
+    try:
+        _validate_sensitive_action_password(action_password)
+        if not EMPLOYEE_MASTER_UPDATE_PREVIEW_FILE.exists():
+            raise HTTPException(status_code=400, detail="No employee update preview found. Please preview first.")
+        raw = json.loads(EMPLOYEE_MASTER_UPDATE_PREVIEW_FILE.read_text(encoding="utf-8"))
+        records = _deserialize_employee_master_preview_records(raw.get("records") or [])
+        if not records:
+            raise HTTPException(status_code=400, detail="Preview data is empty. Please preview again.")
+        warnings: list[str] = []
+        sync_details: list[str] = []
         _save_employee_master_source_snapshot(records)
         added, updated, unchanged, skipped, deduplicated, mismatch_actions = _upsert_employee_master_records(
             session,
             records,
             warnings,
             sync_details,
+            commit_changes=True,
         )
-
+        _clear_employee_master_update_preview()
         if added == 0 and updated == 0 and skipped == 0 and deduplicated == 0:
             notice = "No change found"
         else:
@@ -7614,23 +7809,44 @@ async def upload_employee_master_sync(
                 "Employee table update complete: "
                 f"{added} added, {updated} updated, {unchanged} unchanged, {skipped} skipped, {deduplicated} deduplicated."
             )
-        warning_text = ""
-        if warnings:
-            warning_text = f"Mismatch / auto-fixed records: {len(warnings)}"
-
-        return templates.TemplateResponse(
-            "uploads.html",
-            _uploads_context(
-                request,
-                update_notice=notice,
-                update_warning=warning_text,
-                update_details=sync_details,
-                warning_details=warnings,
-                update_mismatch_actions=mismatch_actions,
-            ),
+        warning_text = f"Mismatch / auto-fixed records: {len(warnings)}" if warnings else ""
+        return _build_employee_master_update_response(
+            request,
+            notice=notice,
+            warning_text=warning_text,
+            sync_details=sync_details,
+            warnings=warnings,
+            mismatch_actions=mismatch_actions,
         )
     except HTTPException as exc:
         detail = exc.detail if isinstance(exc.detail, str) else "Employee table update failed."
+        return templates.TemplateResponse(
+            "uploads.html",
+            _uploads_context(request, update_error=detail),
+            status_code=exc.status_code,
+        )
+    except Exception as exc:
+        return templates.TemplateResponse(
+            "uploads.html",
+            _uploads_context(request, update_error=str(exc)),
+            status_code=500,
+        )
+
+
+@app.post("/uploads/employee-master-sync-discard")
+def discard_employee_master_sync_preview(
+    request: Request,
+    action_password: str = Form(...),
+):
+    try:
+        _validate_sensitive_action_password(action_password)
+        _clear_employee_master_update_preview()
+        return templates.TemplateResponse(
+            "uploads.html",
+            _uploads_context(request, update_notice="Preview discarded."),
+        )
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "Discard failed."
         return templates.TemplateResponse(
             "uploads.html",
             _uploads_context(request, update_error=detail),

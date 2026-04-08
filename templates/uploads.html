@@ -59,7 +59,59 @@
           {% if update_warning %}
           <p class="hint warning-text" role="status">{{ update_warning }}</p>
           {% endif %}
-          {% if update_details %}
+                    {% if update_preview_ready %}
+          <div class="sync-report-card" style="margin-bottom: 12px;">
+            <div class="sync-report-section">
+              <h4>Save these changes?</h4>
+              <p class="hint">Preview first, then choose Yes to write these Service Particulars + CMS changes into our database.</p>
+              <div class="actions">
+                <form method="post" action="/uploads/employee-master-sync-apply" class="inline">
+                  <input type="hidden" name="action_password" value="{{ update_preview_password }}" />
+                  <button type="submit" class="secondary-action cleanup-keep-button">Yes, save changes</button>
+                </form>
+                <form method="post" action="/uploads/employee-master-sync-discard" class="inline">
+                  <input type="hidden" name="action_password" value="{{ update_preview_password }}" />
+                  <button type="submit" class="secondary-action cleanup-delete-button">No, discard preview</button>
+                </form>
+              </div>
+            </div>
+          </div>
+          {% endif %}
+          {% if update_added_details or update_updated_details or update_deduplicated_details %}
+          <div class="sync-report-card" style="margin-bottom: 12px;">
+            <div class="sync-report-section">
+              <h4>Inserted</h4>
+              <ul class="sync-report-list">
+                {% if update_added_details %}
+                  {% for item in update_added_details %}<li>{{ item }}</li>{% endfor %}
+                {% else %}
+                  <li>No changes</li>
+                {% endif %}
+              </ul>
+            </div>
+            <div class="sync-report-section">
+              <h4>Updated</h4>
+              <ul class="sync-report-list">
+                {% if update_updated_details %}
+                  {% for item in update_updated_details %}<li>{{ item }}</li>{% endfor %}
+                {% else %}
+                  <li>No changes</li>
+                {% endif %}
+              </ul>
+            </div>
+            <div class="sync-report-section">
+              <h4>Deduplicated</h4>
+              <ul class="sync-report-list">
+                {% if update_deduplicated_details %}
+                  {% for item in update_deduplicated_details %}<li>{{ item }}</li>{% endfor %}
+                {% else %}
+                  <li>No changes</li>
+                {% endif %}
+              </ul>
+            </div>
+          </div>
+          {% endif %}
+{% if update_details %}
           <div class="sync-list-header">
             <p class="hint success-text"><strong>Last update records</strong></p>
           </div>
@@ -136,8 +188,8 @@
             <label>Service Particulars (.xlsx)
               <input type="file" name="service_file" accept=".xlsx,.xlsm" required />
             </label>
-            <label>CMS other bio data (.csv)
-              <input type="file" name="cms_file" accept=".csv" required />
+            <label>CMS other bio data (.csv / .xlsx)
+              <input type="file" name="cms_file" accept=".csv,.xlsx,.xlsm" required />
             </label>
             <label>Action Code
               <input type="password" name="action_password" autocomplete="current-password" required />
