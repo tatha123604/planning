@@ -7475,6 +7475,7 @@ def _upsert_employee_master_records(
     warnings: list[str],
     sync_details: list[str],
     *,
+    source_priority: int,
     commit_changes: bool = True,
 ) -> tuple[int, int, int, int, int, list[dict[str, object]]]:
     added = 0
@@ -7824,6 +7825,7 @@ def _render_employee_master_preview_from_saved(
         records,
         warnings,
         sync_details,
+        source_priority=2,
         commit_changes=False,
     )
     session.rollback()
@@ -7878,6 +7880,7 @@ async def upload_employee_master_sync(
             records,
             warnings,
             sync_details,
+            source_priority=2,
             commit_changes=False,
         )
         session.rollback()
@@ -7946,6 +7949,7 @@ def apply_employee_master_sync_preview(
             records,
             warnings,
             sync_details,
+            source_priority=2,
             commit_changes=True,
         )
         _clear_employee_master_update_preview()
