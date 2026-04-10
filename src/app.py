@@ -3281,6 +3281,9 @@ def _save_top_performer_photos(
         suffix = Path(filename).suffix.lower()
         if suffix not in allowed:
             continue
+        content_type = (upload.content_type or "").lower()
+        if content_type and not content_type.startswith("image/"):
+            continue
         crew_key = _normalize_top_performer_name(Path(filename).stem)
         if not crew_key:
             continue
@@ -3288,7 +3291,7 @@ def _save_top_performer_photos(
         target_name = f"{safe_stem}{suffix}"
         target_path = photo_dir / target_name
         content = upload.file.read()
-        if not content:
+        if not content or len(content) < 32:
             continue
         target_path.write_bytes(content)
         photo_map[crew_key] = f"/top-performer/photos/{target_name}"
@@ -3305,6 +3308,9 @@ def _save_single_top_performer_photo(
     suffix = Path(filename).suffix.lower()
     if suffix not in {".png", ".jpg", ".jpeg", ".webp"}:
         return photo_map
+    content_type = (photo_upload.content_type or "").lower()
+    if content_type and not content_type.startswith("image/"):
+        return photo_map
     crew_key = _normalize_top_performer_name(crew_name)
     if not crew_key:
         return photo_map
@@ -3312,7 +3318,7 @@ def _save_single_top_performer_photo(
     target_name = f"{safe_stem}{suffix}"
     target_path = _ensure_top_performer_photo_dir() / target_name
     content = photo_upload.file.read()
-    if not content:
+    if not content or len(content) < 32:
         return photo_map
     target_path.write_bytes(content)
     photo_map[crew_key] = f"/top-performer/photos/{target_name}"
