@@ -9,6 +9,7 @@ from typing import BinaryIO
 
 import pandas as pd
 from openpyxl import load_workbook
+from openpyxl.utils import get_column_letter
 
 
 def _read_bytes(file_obj) -> bytes:
@@ -94,6 +95,13 @@ def format_report_date(value) -> str | None:
     if not report_date:
         return None
     return report_date.strftime("%d.%m.%Y")
+
+
+def format_sheet_title_date(value) -> str | None:
+    report_date = coerce_report_date(value)
+    if not report_date:
+        return None
+    return report_date.strftime("%d.%m.%y")
 
 
 def report_date_iso(value) -> str:
@@ -189,6 +197,22 @@ def build_summary_df(source_file) -> pd.DataFrame:
             "Alloted Desig.",
             "FP Over Due",
             "Oldest FP OverDue Date",
+        ]
+    ].reset_index(drop=True)
+    summary.insert(0, "S.No.", range(1, len(summary) + 1))
+    return summary
+
+
+def build_counselling_summary_df(source_file) -> pd.DataFrame:
+    aggregated = _aggregate_source(_load_source_dataframe(source_file))
+    summary = aggregated[aggregated["Counsel Over Due"] > 0].copy()
+    summary = summary[
+        [
+            "CLI ID",
+            "CLI Name",
+            "Alloted Desig.",
+            "Counsel Over Due",
+            "Oldest Counsel OverDue Date",
         ]
     ].reset_index(drop=True)
     summary.insert(0, "S.No.", range(1, len(summary) + 1))
@@ -327,29 +351,50 @@ def _update_sheet_headers(ws, report_date: str | None) -> None:
                 part.text = _replace_date_string(part.text, report_date)
 
 
-def _write_sheet1(ws, df: pd.DataFrame) -> None:
+def _write_summary_sheet(
+    ws,
+    df: pd.DataFrame,
+    end_col: int,
+    total_label: str,
+    total_col_index: int,
+) -> None:
     data_start = 3
     total_template_row = _find_total_row(ws, data_start)
     _clear_merges(ws, data_start)
-    _clear_range(ws, data_start, max(ws.max_row, data_start + len(df) + 2), 6)
+    _clear_range(ws, data_start, max(ws.max_row, data_start + len(df) + 2), end_col)
 
     for offset in range(len(df)):
-        _apply_row_style(ws, 3, data_start + offset, 6)
+        _apply_row_style(ws, 3, data_start + offset, end_col)
 
     _write_dataframe(ws, df, data_start)
     _merge_same_cli(ws, data_start, len(df), 2, 3)
 
     total_row = data_start + len(df)
-    _apply_row_style(ws, total_template_row, total_row, 6)
-    ws.cell(total_row, 1).value = "TOTAL FP DUE"
-    ws.cell(total_row, 5).value = f"=SUM(E{data_start}:E{total_row - 1})"
+    _apply_row_style(ws, total_template_row, total_row, end_col)
+    ws.cell(total_row, 1).value = total_label
+    total_col_letter = get_column_letter(total_col_index)
+    ws.cell(total_row, total_col_index).value = f"=SUM({total_col_letter}{data_start}:{total_col_letter}{total_row - 1})"
     ws.cell(total_row, 2).value = None
     ws.cell(total_row, 3).value = None
     ws.cell(total_row, 4).value = None
-    ws.cell(total_row, 6).value = None
+    for col in range(total_col_index + 1, end_col + 1):
+        ws.cell(total_row, col).value = None
     ws.merge_cells(start_row=total_row, end_row=total_row, start_column=1, end_column=4)
-    ws.merge_cells(start_row=total_row, end_row=total_row, start_column=5, end_column=6)
-    _trim_trailing_empty_rows(ws, data_start, 6)
+    ws.merge_cells(
+        start_row=total_row,
+        end_row=total_row,
+        start_column=total_col_index,
+        end_column=end_col,
+    )
+    _trim_trailing_empty_rows(ws, data_start, end_col)
+
+
+def _write_sheet1(ws, df: pd.DataFrame) -> None:
+    _write_summary_sheet(ws, df, 6, "TOTAL FP DUE", 5)
+
+
+def _write_counselling_sheet(ws, df: pd.DataFrame) -> None:
+    _write_summary_sheet(ws, df, 6, "TOTAL COUNSELLING DUE", 5)
 
 
 def _write_sheet2(ws, df: pd.DataFrame) -> None:
@@ -366,6 +411,19 @@ def _write_sheet2(ws, df: pd.DataFrame) -> None:
     _trim_trailing_empty_rows(ws, data_start, end_col)
 
 
+def _get_sheet_by_name_or_pattern(workbook, preferred_names, pattern=None):
+    for name in preferred_names:
+        if name in workbook.sheetnames:
+            return workbook[name]
+    if pattern:
+        for ws in workbook.worksheets:
+            if re.fullmatch(pattern, ws.title):
+                return ws
+    raise ValueError(
+        "Template workbook is missing one of the required report sheets."
+    )
+
+
 def build_output_workbook(
     source_file,
     template_file,
@@ -373,24 +431,40 @@ def build_output_workbook(
     report_date_value=None,
 ) -> BytesIO:
     summary_df = build_summary_df(source_file)
+    counselling_df = build_counselling_summary_df(source_file)
     sheet2_df = build_sheet2_df(source_file)
     report_date = format_report_date(report_date_value) or format_report_date(
         infer_report_date(source_filename)
     )
+    sheet_title_date = format_sheet_title_date(infer_report_date(source_filename)) or format_sheet_title_date(
+        report_date_value
+    )
 
     workbook = load_workbook(_as_stream(template_file))
-    if len(workbook.sheetnames) < 2:
-        raise ValueError("Template workbook must have at least 2 sheets")
-
-    sheet1 = workbook[workbook.sheetnames[0]]
-    sheet2 = workbook[workbook.sheetnames[1]]
+    sheet1 = _get_sheet_by_name_or_pattern(
+        workbook,
+        ["Summary position of FP OVERDUE"],
+        r"\d{2}[.\-_]\d{2}[.\-_]\d{2,4}",
+    )
+    sheet2 = _get_sheet_by_name_or_pattern(
+        workbook,
+        ["COUNSELLING DUE SUMMARY"],
+        r"COUNSELLING DUE SUMMARY",
+    )
+    sheet3 = _get_sheet_by_name_or_pattern(
+        workbook,
+        ["13.04.26"],
+        r"\d{2}[.\-_]\d{2}[.\-_]\d{2}",
+    )
 
     _write_sheet1(sheet1, summary_df)
-    _write_sheet2(sheet2, sheet2_df)
+    _write_counselling_sheet(sheet2, counselling_df)
+    _write_sheet2(sheet3, sheet2_df)
     _update_sheet_headers(sheet1, report_date)
     _update_sheet_headers(sheet2, report_date)
-    if report_date and re.search(r"\d{2}[.\-_]\d{2}[.\-_]\d{4}", sheet2.title):
-        sheet2.title = _replace_date_string(sheet2.title, report_date)
+    _update_sheet_headers(sheet3, report_date)
+    if sheet_title_date:
+        sheet3.title = sheet_title_date
     workbook.calculation.fullCalcOnLoad = True
 
     output = BytesIO()

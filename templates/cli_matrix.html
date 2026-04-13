@@ -39,7 +39,7 @@
       <header>
         <div>
           <h1>CLI Matrix</h1>
-          <p>Update Sheet 1 and Sheet 2 from the latest CLI Matrix export while keeping the template workbook format and remaining sheets.</p>
+          <p>Update <strong>Summary position of FP OVERDUE</strong>, <strong>COUNSELLING DUE SUMMARY</strong>, and the dated combined sheet from the latest CLI Matrix export while keeping the template workbook format and remaining sheets.</p>
         </div>
         <div class="header-actions">
           <a class="ghost small" href="/logout">Logout</a>
@@ -69,15 +69,14 @@
             </label>
             <p class="hint">
               Source file: latest export with columns like <code>CLI ID</code>, <code>CLI Name</code>, <code>AllotedDesig.</code>, and <code>FPOverDue</code>.
-              Template file: workbook with the 5 sheets whose formatting should be preserved.
+              Template file: existing workbook whose report-sheet formatting should be preserved.
             </p>
             <p class="hint">The report date is auto-detected from the input filename when possible, and you can still adjust it manually.</p>
             {% if cached_template_name %}
             <p class="hint">Saved template ready: <strong>{{ cached_template_name }}</strong>. Upload a new template only when you want to replace the current format.</p>
             {% endif %}
             <p class="hint">
-              Output: Sheet 1 keeps FP overdue rows only, merges repeated CLI names, preserves template style, and writes the total in the FP Over Due column.
-              Sheet 2 refreshes all overdue values by CLI and designation.
+              Output: Summary sheet keeps FP overdue rows only, counselling summary keeps counselling overdue rows only, and the dated combined sheet refreshes all overdue values by CLI and designation.
             </p>
             <div class="actions">
               <button type="submit" class="ghost" id="preview-cli-matrix" formaction="/cli-matrix/preview" formmethod="post">Preview tables</button>

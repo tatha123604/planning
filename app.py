@@ -12,7 +12,7 @@ st.set_page_config(page_title="CLI Matrix Updater", layout="wide")
 st.title("CLI Matrix Updater")
 st.write(
     "Upload the latest CLI Matrix file and the previous workbook. "
-    "The app rebuilds Sheet 1 and Sheet 2, keeps the remaining sheets from the template, "
+    "The app rebuilds Summary position of FP OVERDUE, COUNSELLING DUE SUMMARY, and the dated combined sheet, keeps the remaining sheets from the template, "
     "and gives you a downloadable Excel file."
 )
 
