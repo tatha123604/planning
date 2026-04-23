@@ -106,6 +106,43 @@
         <p class="hint">Uses the CLI Crew Grading template columns: <code>CLI ID</code>, <code>CREW ID</code>, <code>CREW NAME</code>, <code>GRADE</code>, and <code>GRADING DATE</code>. Upload <code>CLI bio data (.xlsx)</code> as the reference map for CLI ID to CLI name. Here, <code>LI ID</code> and <code>CLI ID</code> are the same. Any CLI bio row without a grading match will keep gradation <code>0</code>.</p>
       </section>
 
+      <section class="card collapsible" id="cli-bio-reference">
+        <details open>
+          <summary>CLI Bio Reference</summary>
+          <p class="hint">Saved from the uploaded CLI bio data file. Rows without a grading match stay at gradation <strong>0</strong>.</p>
+          <div class="table-wrap">
+            <table class="paged">
+              <thead>
+                <tr class="table-report-date">
+                  <th colspan="4">Total rows: {{ cli_bio_reference_rows|length if cli_bio_reference_rows else 0 }}</th>
+                </tr>
+                <tr>
+                  <th>CLI ID</th>
+                  <th>CLI Name</th>
+                  <th>Gradation</th>
+                  <th>Source File</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in cli_bio_reference_rows %}
+                <tr>
+                  <td>{{ row.cli_id }}</td>
+                  <td>{{ row.cli_name }}</td>
+                  <td>{{ row.gradation or '0' }}</td>
+                  <td>{{ row.source_file or '' }}</td>
+                </tr>
+                {% endfor %}
+                {% if not cli_bio_reference_rows %}
+                <tr>
+                  <td colspan="4" class="empty-state">No CLI bio reference rows saved yet.</td>
+                </tr>
+                {% endif %}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      </section>
+
       <section class="card collapsible">
         <details open>
           <summary>CLI Distribution by Gradation</summary>

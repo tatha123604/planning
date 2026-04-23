@@ -22,7 +22,7 @@ from openpyxl import load_workbook, Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 import pandas as pd
-from sqlmodel import Session, select
+from sqlmodel import Session, select, delete
 from sqlalchemy import func, case, text
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -44,6 +44,7 @@ from .models import (
     CliDistributionAssignment,
     CliDistributionPlan,
     CliDistributionTarget,
+    CliBioReference,
     CliMatrixOverdueSnapshot,
     CliMatrixSummarySnapshot,
     Employee,
@@ -899,6 +900,31 @@ def _normalize_employee_cli_names(session: Session) -> int:
     return changed
 
 
+def _sync_cli_bio_reference_rows(
+    session: Session,
+    entries: list[dict[str, str]],
+    *,
+    source_file: str = "",
+) -> dict[str, CliBioReference]:
+    session.exec(delete(CliBioReference))
+    refs: dict[str, CliBioReference] = {}
+    for entry in entries:
+        cli_id = _clean_cli_id(entry.get("cli_id"))
+        cli_name = _clean_cli_name(entry.get("cli_name"))
+        if not cli_id or not cli_name:
+            continue
+        ref = CliBioReference(
+            cli_id=cli_id,
+            cli_name=cli_name,
+            gradation="0",
+            source_file=source_file or None,
+            updated_at=datetime.utcnow(),
+        )
+        session.add(ref)
+        refs[cli_id] = ref
+    return refs
+
+
 def build_simple_recruit_plan(retiring: dict[str, list[Employee]], lead_days: int = 30) -> dict[str, list[str]]:
     """Create backfill steps 1 month before each retirement."""
     plan: dict[str, list[str]] = {}
@@ -1493,6 +1519,9 @@ def _cli_page_context(
         employees_all,
         selected_distribution_cli,
     )
+    cli_bio_reference_rows = session.exec(
+        select(CliBioReference).order_by(CliBioReference.cli_name, CliBioReference.cli_id)
+    ).all()
     grading_meta = _load_li_grading_metadata()
     grading_report_date = coerce_report_date(grading_meta.get("report_date"))
     grading_report_date_iso = grading_report_date.isoformat() if grading_report_date else ""
@@ -1629,6 +1658,7 @@ def _cli_page_context(
         "cli_distribution_detail_label": detail_cli_label,
         "cli_distribution_breakdown": cli_distribution_breakdown,
         "cli_distribution_totals": cli_distribution_totals or {},
+        "cli_bio_reference_rows": cli_bio_reference_rows,
         "cli_plan_notice": cli_plan_notice,
         "cli_plan_error": cli_plan_error,
         "cli_plan_summary": plan_summary,
@@ -8357,6 +8387,7 @@ async def upload_li_grading(
                 continue
             bio_by_id[cli_id] = cli_name
             canonical_by_id.setdefault(cli_id, cli_name)
+        bio_reference_rows = _sync_cli_bio_reference_rows(session, bio_entries, source_file=bio_filename)
 
         by_crew: dict[str, list[Employee]] = {}
         by_crew_name: dict[tuple[str, str], list[Employee]] = {}
@@ -8500,6 +8531,11 @@ async def upload_li_grading(
 
             target.gradation = new_grade
             target.grading_due = new_due
+            if cli_id and cli_id in bio_reference_rows:
+                bio_reference_rows[cli_id].gradation = new_grade
+                bio_reference_rows[cli_id].updated_at = datetime.utcnow()
+                if cli_name:
+                    bio_reference_rows[cli_id].cli_name = cli_name
             if cli_name:
                 normalized_cli, normalized_cli_id = _canonicalize_cli_name(
                     cli_name,
@@ -8557,6 +8593,9 @@ async def upload_li_grading(
             target.cli_id = cli_id
             if target.id not in touched_ids:
                 target.gradation = "0"
+            if cli_id in bio_reference_rows:
+                bio_reference_rows[cli_id].cli_name = bio_cli_name
+                bio_reference_rows[cli_id].updated_at = datetime.utcnow()
 
         session.commit()
         _normalize_employee_cli_names(session)
@@ -8572,6 +8611,8 @@ async def upload_li_grading(
             if not notice_parts:
                 notice_parts.append("No change found")
             notice = "CLI grading update complete: " + ", ".join(notice_parts) + "."
+            if bio_reference_rows:
+                notice += f" CLI bio reference rows stored: {len(bio_reference_rows)}."
         warning_message = f"Mismatch / auto-fixed records: {len(warnings)}" if warnings else ""
         return templates.TemplateResponse(
             "cli.html",

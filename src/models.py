@@ -143,6 +143,14 @@ class CliDistributionTarget(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class CliBioReference(SQLModel, table=True):
+    cli_id: str = Field(primary_key=True)
+    cli_name: str
+    gradation: str = Field(default="0")
+    source_file: str | None = None
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class CliDistributionPlan(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
