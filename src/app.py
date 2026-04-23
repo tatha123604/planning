@@ -8229,7 +8229,7 @@ def _parse_li_grading_workbook(content: bytes) -> tuple[list[dict[str, object]],
                 return None
             return row[column_index]
 
-        cli_id = _clean_import_text(get(cli_id_idx))
+        cli_id = _clean_cli_id(get(cli_id_idx))
         crew_id = _clean_import_text(get(crew_idx))
         name = _clean_import_text(get(name_idx))
         current_grade = _clean_import_text(get(current_grade_idx))
@@ -8276,10 +8276,50 @@ def _parse_li_grading_workbook(content: bytes) -> tuple[list[dict[str, object]],
     return records, warnings
 
 
+def _parse_cli_bio_workbook(content: bytes) -> dict[str, str]:
+    workbook = load_workbook(filename=BytesIO(content), data_only=True)
+    worksheet = workbook.active
+    rows = list(worksheet.iter_rows(values_only=True))
+    if not rows:
+        raise HTTPException(status_code=400, detail="CLI bio data workbook is empty.")
+
+    header_row_index: int | None = None
+    li_id_idx: int | None = None
+    name_idx: int | None = None
+
+    for idx, row in enumerate(rows):
+        normalized = [_normalize_li_grading_header(cell) for cell in row]
+        if {"LIID", "NAME"}.issubset(set(normalized)) or {"CLIID", "NAME"}.issubset(set(normalized)):
+            li_id_idx = next((i for i, value in enumerate(normalized) if value in {"LIID", "CLIID"}), None)
+            name_idx = normalized.index("NAME") if "NAME" in normalized else None
+            if li_id_idx is not None and name_idx is not None:
+                header_row_index = idx
+                break
+
+    if header_row_index is None or li_id_idx is None or name_idx is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Could not find the CLI bio data columns. Required columns: LI ID (or CLI ID) and NAME.",
+        )
+
+    names_by_id: dict[str, set[str]] = {}
+    for row in rows[header_row_index + 1 :]:
+        li_id = _clean_cli_id(row[li_id_idx] if li_id_idx < len(row) else None)
+        name = _clean_cli_name(row[name_idx] if name_idx < len(row) else None)
+        if li_id and name:
+            names_by_id.setdefault(li_id, set()).add(name)
+
+    if not names_by_id:
+        raise HTTPException(status_code=400, detail="CLI bio data workbook did not produce any usable rows.")
+
+    return {li_id: max(names, key=_cli_name_score) for li_id, names in names_by_id.items()}
+
+
 @app.post("/upload-li-grading")
 async def upload_li_grading(
     request: Request,
     file: UploadFile = File(...),
+    bio_data_file: UploadFile = File(...),
     action_password: str = Form(...),
     session: Session = Depends(get_session),
 ):
@@ -8288,10 +8328,16 @@ async def upload_li_grading(
         filename = file.filename or ""
         if not filename.lower().endswith((".xlsx", ".xlsm")):
             raise HTTPException(status_code=400, detail="Upload the CLI Grading .xlsx workbook.")
+        bio_filename = bio_data_file.filename or ""
+        if not bio_filename.lower().endswith((".xlsx", ".xlsm")):
+            raise HTTPException(status_code=400, detail="Upload the CLI bio data .xlsx workbook.")
 
         records, warnings = _parse_li_grading_workbook(await file.read())
+        bio_canonical_by_id = _parse_cli_bio_workbook(await bio_data_file.read())
         employees = session.exec(select(Employee)).all()
         canonical_by_id, alias_map, id_by_name = _build_cli_name_maps((employee.cli, employee.cli_id) for employee in employees)
+        for cli_id, cli_name in bio_canonical_by_id.items():
+            canonical_by_id.setdefault(cli_id, cli_name)
 
         by_crew: dict[str, list[Employee]] = {}
         by_crew_name: dict[tuple[str, str], list[Employee]] = {}
@@ -8316,16 +8362,15 @@ async def upload_li_grading(
         for record in records:
             row_hint = str(record["row_hint"])
             cli_name = _clean_import_text(record.get("cli_name"))
-            cli_id = _clean_import_text(record.get("cli_id"))
+            cli_id = _clean_cli_id(record.get("cli_id"))
             parser_mode = str(record.get("parser_mode") or "legacy")
-            if parser_mode == "legacy":
-                cli_name, cli_id = _canonicalize_cli_name(
-                    cli_name,
-                    cli_id,
-                    canonical_by_id=canonical_by_id,
-                    alias_map=alias_map,
-                    id_by_name=id_by_name,
-                )
+            cli_name, cli_id = _canonicalize_cli_name(
+                cli_name,
+                cli_id,
+                canonical_by_id=canonical_by_id,
+                alias_map=alias_map,
+                id_by_name=id_by_name,
+            )
             crew_key = str(record.get("crew_id") or "").upper()
             name_key = _normalize_import_name(record.get("name"))
             role_key = str(record.get("role") or "")

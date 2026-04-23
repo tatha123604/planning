@@ -95,12 +95,15 @@
           <label>Excel file
             <input type="file" name="file" accept=".xlsx,.xlsm" required />
           </label>
+          <label>CLI bio data (.xlsx)
+            <input type="file" name="bio_data_file" accept=".xlsx,.xlsm" required />
+          </label>
           <label class="site-password-label compact-site-password">Action Code
             <input class="site-password-input compact-site-password-input" type="password" name="action_password" autocomplete="current-password" required data-password-gated-input />
           </label>
           <button type="submit" data-password-gated-button disabled>Gradation Update</button>
         </form>
-        <p class="hint">Uses the CLI Crew Grading template columns: <code>CLI ID</code>, <code>CREW ID</code>, <code>CREW NAME</code>, <code>GRADE</code>, and <code>GRADING DATE</code>. It updates the CLI Roster gradation and grading date fields.</p>
+        <p class="hint">Uses the CLI Crew Grading template columns: <code>CLI ID</code>, <code>CREW ID</code>, <code>CREW NAME</code>, <code>GRADE</code>, and <code>GRADING DATE</code>. Upload <code>CLI bio data (.xlsx)</code> as the reference map for CLI ID to CLI name. Here, <code>LI ID</code> and <code>CLI ID</code> are the same.</p>
       </section>
 
       <section class="card collapsible">
