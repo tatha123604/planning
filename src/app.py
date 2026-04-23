@@ -71,6 +71,9 @@ from processor import (
 BASE_PATH = Path(__file__).resolve().parent.parent
 GOOGLE_EMPLOYEE_STATION_TABS = ["North", "South", "KOAA", "DDJ", "RHA", "NH", "BT"]
 CLI_DISTRIBUTION_ROLE_ORDER = ["Motorman", "LPG", "LPM", "LPS/SHT", "LPP", "ALP", "SALP", "SSHT"]
+CLI_BIO_REFERENCE_EXCLUDE = {
+    "J S BASAK",
+}
 TEMPLATE_STORE_DIR = DB_PATH.parent / "saved_templates"
 CLI_MATRIX_2026_03_24_CLEANUP_SENTINEL = DB_PATH.parent / ".cli_matrix_cleanup_2026_03_24.done"
 EMPLOYEE_MASTER_SMART_CLEANUP_SENTINEL = DB_PATH.parent / ".employee_master_smart_cleanup_2026_03_27.done"
@@ -912,6 +915,8 @@ def _sync_cli_bio_reference_rows(
         cli_id = _clean_cli_id(entry.get("cli_id"))
         cli_name = _clean_cli_name(entry.get("cli_name"))
         if not cli_id or not cli_name:
+            continue
+        if cli_name.upper() in CLI_BIO_REFERENCE_EXCLUDE or cli_id.upper() in {"SDAH0049"}:
             continue
         ref = CliBioReference(
             cli_id=cli_id,

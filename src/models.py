@@ -144,6 +144,7 @@ class CliDistributionTarget(SQLModel, table=True):
 
 
 class CliBioReference(SQLModel, table=True):
+    __tablename__ = "cli_bio_reference"
     cli_id: str = Field(primary_key=True)
     cli_name: str
     gradation: str = Field(default="0")

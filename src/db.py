@@ -79,6 +79,19 @@ def init_db() -> None:
                 {"needed": int(req_total)},
             )
         conn.execute(text("UPDATE employee SET status = 'ACTIVE' WHERE status IS NULL OR TRIM(status) = '';"))
+        bio_table_exists = conn.execute(
+            text("SELECT 1 FROM sqlite_master WHERE type='table' AND name='cli_bio_reference';")
+        ).fetchone()
+        if bio_table_exists:
+            conn.execute(
+                text(
+                    """
+                    DELETE FROM cli_bio_reference
+                    WHERE UPPER(TRIM(cli_name)) = 'J S BASAK'
+                       OR UPPER(TRIM(cli_id)) = 'SDAH0049';
+                    """
+                )
+            )
         # If retirement_date is NOT NULL, rebuild table to allow NULL and normalize placeholder date
         retirement_col = next((c for c in cols if c[1] == "retirement_date"), None)
         retirement_notnull = retirement_col and retirement_col[3] == 1
