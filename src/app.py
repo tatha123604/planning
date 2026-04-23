@@ -8164,38 +8164,61 @@ def _parse_li_grading_workbook(content: bytes) -> tuple[list[dict[str, object]],
 
     header_row_index: int | None = None
     cli_id_idx: int | None = None
-    cli_name_idx: int | None = None
     crew_idx: int | None = None
     name_idx: int | None = None
-    role_idx: int | None = None
     current_grade_idx: int | None = None
     due_date_idx: int | None = None
+    role_idx: int | None = None
+    cli_name_idx: int | None = None
+    parser_mode = "legacy"
 
     for idx, row in enumerate(rows):
         normalized = [_normalize_li_grading_header(cell) for cell in row]
-        if "CLIID" not in normalized or "CLINAME" not in normalized or "CREWID" not in normalized or "NAME" not in normalized or "CURRENTGRADE" not in normalized:
-            continue
-        role_idx = next((i for i, value in enumerate(normalized) if value in {"DESIG", "DESIGNATION", "ROLE"}), None)
-        if role_idx is None:
-            continue
-        current_grade_idx = normalized.index("CURRENTGRADE")
-        due_date_idx = next((i for i in range(current_grade_idx + 1, len(normalized)) if normalized[i] == "DUEDATE"), None)
-        if due_date_idx is None:
-            due_date_idx = next((i for i, value in enumerate(normalized) if value == "DUEDATE"), None)
-        if due_date_idx is None:
-            continue
-        cli_id_idx = normalized.index("CLIID")
-        cli_name_idx = normalized.index("CLINAME")
-        crew_idx = normalized.index("CREWID")
-        name_idx = normalized.index("NAME")
-        header_row_index = idx
-        break
+        legacy_required = {"CLIID", "CLINAME", "CREWID", "NAME", "CURRENTGRADE"}
+        template_required = {"CLIID", "CREWID", "CREWNAME", "GRADE", "GRADINGDATE"}
 
-    if header_row_index is None or None in {cli_id_idx, cli_name_idx, crew_idx, name_idx, role_idx, current_grade_idx, due_date_idx}:
-        raise HTTPException(
-            status_code=400,
-            detail="Could not find the CLI Grading columns. Required columns: CLI ID, CLI NAME, CREW ID, NAME, DESIG., CURRENT GRADE, DUE DATE.",
-        )
+        if legacy_required.issubset(set(normalized)):
+            parser_mode = "legacy"
+            role_idx = next((i for i, value in enumerate(normalized) if value in {"DESIG", "DESIGNATION", "ROLE"}), None)
+            if role_idx is None:
+                continue
+            current_grade_idx = normalized.index("CURRENTGRADE")
+            due_date_idx = next((i for i in range(current_grade_idx + 1, len(normalized)) if normalized[i] == "DUEDATE"), None)
+            if due_date_idx is None:
+                due_date_idx = next((i for i, value in enumerate(normalized) if value == "DUEDATE"), None)
+            if due_date_idx is None:
+                continue
+            cli_id_idx = normalized.index("CLIID")
+            cli_name_idx = normalized.index("CLINAME")
+            crew_idx = normalized.index("CREWID")
+            name_idx = normalized.index("NAME")
+            header_row_index = idx
+            break
+
+        if template_required.issubset(set(normalized)):
+            parser_mode = "template"
+            cli_id_idx = normalized.index("CLIID")
+            crew_idx = normalized.index("CREWID")
+            name_idx = normalized.index("CREWNAME")
+            current_grade_idx = normalized.index("GRADE")
+            due_date_idx = normalized.index("GRADINGDATE")
+            header_row_index = idx
+            break
+
+    if parser_mode == "legacy":
+        required_values = {cli_id_idx, cli_name_idx, crew_idx, name_idx, role_idx, current_grade_idx, due_date_idx}
+        if header_row_index is None or None in required_values:
+            raise HTTPException(
+                status_code=400,
+                detail="Could not find the CLI Grading columns. Required columns: CLI ID, CLI NAME, CREW ID, NAME, DESIG., CURRENT GRADE, DUE DATE.",
+            )
+    else:
+        required_values = {cli_id_idx, crew_idx, name_idx, current_grade_idx, due_date_idx}
+        if header_row_index is None or None in required_values:
+            raise HTTPException(
+                status_code=400,
+                detail="Could not find the CLI Grading template columns. Required columns: CLI ID, CREW ID, CREW NAME, GRADE, GRADING DATE.",
+            )
 
     warnings: list[str] = []
     records: list[dict[str, object]] = []
@@ -8207,25 +8230,22 @@ def _parse_li_grading_workbook(content: bytes) -> tuple[list[dict[str, object]],
             return row[column_index]
 
         cli_id = _clean_import_text(get(cli_id_idx))
-        cli_name = _clean_import_text(get(cli_name_idx))
         crew_id = _clean_import_text(get(crew_idx))
         name = _clean_import_text(get(name_idx))
-        role_raw = _clean_import_text(get(role_idx))
         current_grade = _clean_import_text(get(current_grade_idx))
         due_raw = get(due_date_idx)
+        cli_name = _clean_import_text(get(cli_name_idx)) if cli_name_idx is not None else None
+        role_raw = _clean_import_text(get(role_idx)) if role_idx is not None else None
 
         if not any([cli_id, cli_name, crew_id, name, role_raw, current_grade, due_raw]):
             continue
 
         row_hint = name or crew_id or f"row {row_number}"
-        if not cli_name:
+        if parser_mode == "legacy" and not cli_name:
             warnings.append(f"CLI Grading {row_hint}: skipped because CLI NAME is blank.")
             continue
         if not name:
             warnings.append(f"CLI Grading row {row_number}: skipped because NAME is blank.")
-            continue
-        if not role_raw:
-            warnings.append(f"CLI Grading {row_hint}: skipped because DESIG. is blank.")
             continue
         if not current_grade:
             warnings.append(f"CLI Grading {row_hint}: skipped because CURRENT GRADE is blank.")
@@ -8243,10 +8263,11 @@ def _parse_li_grading_workbook(content: bytes) -> tuple[list[dict[str, object]],
                 "cli_name": cli_name,
                 "crew_id": crew_id,
                 "name": name,
-                "role": normalize_role(role_raw),
+                "role": normalize_role(role_raw) if role_raw else "",
                 "gradation": current_grade.upper(),
                 "grading_due": due_date,
                 "row_hint": row_hint,
+                "parser_mode": parser_mode,
             }
         )
 
@@ -8296,7 +8317,15 @@ async def upload_li_grading(
             row_hint = str(record["row_hint"])
             cli_name = _clean_import_text(record.get("cli_name"))
             cli_id = _clean_import_text(record.get("cli_id"))
-            cli_name, cli_id = _canonicalize_cli_name(cli_name, cli_id, canonical_by_id=canonical_by_id, alias_map=alias_map, id_by_name=id_by_name)
+            parser_mode = str(record.get("parser_mode") or "legacy")
+            if parser_mode == "legacy":
+                cli_name, cli_id = _canonicalize_cli_name(
+                    cli_name,
+                    cli_id,
+                    canonical_by_id=canonical_by_id,
+                    alias_map=alias_map,
+                    id_by_name=id_by_name,
+                )
             crew_key = str(record.get("crew_id") or "").upper()
             name_key = _normalize_import_name(record.get("name"))
             role_key = str(record.get("role") or "")
@@ -8307,13 +8336,18 @@ async def upload_li_grading(
                 if len(crew_name_matches) == 1:
                     target = crew_name_matches[0]
                 elif len(crew_name_matches) > 1:
-                    filtered_matches = [
-                        employee
-                        for employee in crew_name_matches
-                        if normalize_role(employee.role) == role_key
-                    ]
-                    if len(filtered_matches) == 1:
-                        target = filtered_matches[0]
+                    if parser_mode == "legacy" and role_key:
+                        filtered_matches = [
+                            employee
+                            for employee in crew_name_matches
+                            if normalize_role(employee.role) == role_key
+                        ]
+                        if len(filtered_matches) == 1:
+                            target = filtered_matches[0]
+                        else:
+                            warnings.append(f"CLI Grading {row_hint}: skipped because CREW ID + NAME matched multiple roster rows.")
+                            skipped += 1
+                            continue
                     else:
                         warnings.append(f"CLI Grading {row_hint}: skipped because CREW ID + NAME matched multiple roster rows.")
                         skipped += 1
@@ -8324,7 +8358,7 @@ async def upload_li_grading(
                 filtered_matches = [
                     employee
                     for employee in crew_matches
-                    if _normalize_import_name(employee.name) == name_key and normalize_role(employee.role) == role_key
+                    if _normalize_import_name(employee.name) == name_key and (not role_key or normalize_role(employee.role) == role_key)
                 ]
                 if len(filtered_matches) == 1:
                     target = filtered_matches[0]
@@ -8332,21 +8366,33 @@ async def upload_li_grading(
                     warnings.append(f"CLI Grading {row_hint}: skipped because CREW ID, NAME, and DESIGNATION matched multiple roster rows.")
                     skipped += 1
                     continue
-                elif crew_matches:
+                elif crew_matches and (parser_mode == "legacy" or name_key):
                     warnings.append(f"CLI Grading {row_hint}: skipped because CREW ID {crew_key} matched the roster but NAME / DESIGNATION did not match.")
                     skipped += 1
                     continue
 
             if target is None:
-                if not name_key or not role_key:
+                if not name_key:
                     warnings.append(f"CLI Grading {row_hint}: no matching CLI Roster row found.")
                     skipped += 1
                     continue
-                fallback_matches = by_name_role.get((name_key, role_key), [])
-                if len(fallback_matches) == 1:
-                    target = fallback_matches[0]
-                elif len(fallback_matches) > 1:
-                    warnings.append(f"CLI Grading {row_hint}: skipped because NAME + DESIGNATION matched multiple CLI Roster rows.")
+                if parser_mode == "legacy" and role_key:
+                    fallback_matches = by_name_role.get((name_key, role_key), [])
+                    if len(fallback_matches) == 1:
+                        target = fallback_matches[0]
+                    elif len(fallback_matches) > 1:
+                        warnings.append(f"CLI Grading {row_hint}: skipped because NAME + DESIGNATION matched multiple CLI Roster rows.")
+                        skipped += 1
+                        continue
+                    else:
+                        warnings.append(f"CLI Grading {row_hint}: no matching CLI Roster row found.")
+                        skipped += 1
+                        continue
+                name_matches = [employee for employee in employees if _normalize_import_name(employee.name) == name_key]
+                if len(name_matches) == 1:
+                    target = name_matches[0]
+                elif len(name_matches) > 1:
+                    warnings.append(f"CLI Grading {row_hint}: skipped because NAME matched multiple CLI Roster rows.")
                     skipped += 1
                     continue
                 else:
@@ -8364,9 +8410,13 @@ async def upload_li_grading(
             old_grade = _clean_import_text(target.gradation)
             old_due = target.grading_due
             old_cli, old_cli_id = _canonicalize_cli_name(
-                target.cli, target.cli_id, canonical_by_id=canonical_by_id, alias_map=alias_map, id_by_name=id_by_name
+                target.cli,
+                target.cli_id,
+                canonical_by_id=canonical_by_id,
+                alias_map=alias_map,
+                id_by_name=id_by_name,
             )
-            cli_equivalent = _cli_names_equivalent(old_cli, cli_name)
+            cli_equivalent = True if parser_mode == "template" and not cli_name else _cli_names_equivalent(old_cli, cli_name)
 
             if old_grade == new_grade and old_due == new_due and cli_equivalent and old_cli_id == cli_id:
                 unchanged += 1
@@ -8378,20 +8428,34 @@ async def upload_li_grading(
             if old_grade != new_grade:
                 changes.append(f"Gradation: {_format_sync_value(old_grade)} -> {_format_sync_value(new_grade)}")
             if old_due != new_due:
-                changes.append(f"Grading Due: {_format_sync_value(old_due)} -> {_format_sync_value(new_due)}")
-            if not cli_equivalent:
+                changes.append(f"Grading Date: {_format_sync_value(old_due)} -> {_format_sync_value(new_due)}")
+            if cli_name and not cli_equivalent:
                 changes.append(f"CLI: {_format_sync_value(old_cli)} -> {_format_sync_value(cli_name)}")
             if old_cli_id != cli_id:
                 changes.append(f"CLI ID: {_format_sync_value(old_cli_id)} -> {_format_sync_value(cli_id)}")
 
             target.gradation = new_grade
             target.grading_due = new_due
-            normalized_cli, normalized_cli_id = _canonicalize_cli_name(
-                cli_name, cli_id, canonical_by_id=canonical_by_id, alias_map=alias_map, id_by_name=id_by_name
-            )
-            if _cli_names_equivalent(old_cli, normalized_cli) and old_cli:
-                normalized_cli = old_cli
-            target.cli, target.cli_id = normalized_cli, normalized_cli_id
+            if cli_name:
+                normalized_cli, normalized_cli_id = _canonicalize_cli_name(
+                    cli_name,
+                    cli_id,
+                    canonical_by_id=canonical_by_id,
+                    alias_map=alias_map,
+                    id_by_name=id_by_name,
+                )
+                if _cli_names_equivalent(old_cli, normalized_cli) and old_cli:
+                    normalized_cli = old_cli
+                target.cli, target.cli_id = normalized_cli, normalized_cli_id
+            elif cli_id:
+                _, normalized_cli_id = _canonicalize_cli_name(
+                    target.cli,
+                    cli_id,
+                    canonical_by_id=canonical_by_id,
+                    alias_map=alias_map,
+                    id_by_name=id_by_name,
+                )
+                target.cli_id = normalized_cli_id
             updated += 1
             if target.id is not None:
                 touched_ids.add(target.id)
