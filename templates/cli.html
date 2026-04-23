@@ -114,13 +114,11 @@
             <table class="paged">
               <thead>
                 <tr class="table-report-date">
-                  <th colspan="4">Total rows: {{ cli_bio_reference_rows|length if cli_bio_reference_rows else 0 }}</th>
+                  <th colspan="2">Total rows: {{ cli_bio_reference_rows|length if cli_bio_reference_rows else 0 }}</th>
                 </tr>
                 <tr>
                   <th>CLI ID</th>
                   <th>CLI Name</th>
-                  <th>Gradation</th>
-                  <th>Source File</th>
                 </tr>
               </thead>
               <tbody>
@@ -128,13 +126,11 @@
                 <tr>
                   <td>{{ row.cli_id }}</td>
                   <td>{{ row.cli_name }}</td>
-                  <td>{{ row.gradation or '0' }}</td>
-                  <td>{{ row.source_file or '' }}</td>
                 </tr>
                 {% endfor %}
                 {% if not cli_bio_reference_rows %}
                 <tr>
-                  <td colspan="4" class="empty-state">No CLI bio reference rows saved yet.</td>
+                  <td colspan="2" class="empty-state">No CLI bio reference rows saved yet.</td>
                 </tr>
                 {% endif %}
               </tbody>
@@ -302,9 +298,15 @@
               <tbody>
                 {% for e in cli_roster %}
                 <tr>
-                  <td>{{ e.cli | cli_label(e.cli_id) }}</td>
+                  <td>{{ e.cli_label or (e.cli | cli_label(e.cli_id)) }}</td>
                   <td>{{ e.cli_id or '' }}</td>
-                  <td><a class="cli-roster-link" href="/employees/{{ e.id }}">{{ e.name }}</a></td>
+                  <td>
+                    {% if e.id %}
+                      <a class="cli-roster-link" href="/employees/{{ e.id }}">{{ e.name }}</a>
+                    {% else %}
+                      {{ e.name }}
+                    {% endif %}
+                  </td>
                   <td>{{ e.hrms or '' }}</td>
                   <td>{{ e.crew_id or '' }}</td>
                   <td>{{ e.role }}</td>

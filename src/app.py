@@ -941,7 +941,10 @@ def build_simple_recruit_plan(retiring: dict[str, list[Employee]], lead_days: in
     return plan
 
 
-def build_cli_distribution(employees: list[Employee]) -> list[dict[str, int | str]]:
+def build_cli_distribution(
+    employees: list[Employee],
+    extra_cli_entries: list[tuple[str, str]] | None = None,
+) -> list[dict[str, int | str]]:
     """Aggregate gradation counts per CLI (case-insensitive)."""
     canonical_by_id, alias_map, id_by_name = _build_cli_name_maps((employee.cli, employee.cli_id) for employee in employees)
     dist: dict[str, dict[str, int | str]] = {}
@@ -983,6 +986,23 @@ def build_cli_distribution(employees: list[Employee]) -> list[dict[str, int | st
         if grad_key in ("A", "B", "C"):
             dist[cli_key][grad_key] += 1  # type: ignore[index]
             dist[cli_key]["total"] += 1  # type: ignore[index]
+
+    for cli_name, cli_id in extra_cli_entries or []:
+        cli_name, cli_id = _canonicalize_cli_name(cli_name, cli_id)
+        cli_key = _cli_name_key(cli_name) or (cli_id or "").lower() or "unassigned"
+        if cli_key in dist:
+            continue
+        dist[cli_key] = {
+            "cli": cli_name or "Unassigned",
+            "cli_name": cli_name or "",
+            "cli_id": cli_id or "",
+            "key": cli_key,
+            "A": 0,
+            "B": 0,
+            "C": 0,
+            "total": 0,
+            "total_staff": 0,
+        }
     return [
         {
             "cli": counts["cli"],
@@ -1500,10 +1520,27 @@ def _cli_page_context(
     grading_warning_details: Optional[list[str]] = None,
     cli_plan_notice: str = "",
     cli_plan_error: str = "",
-) -> dict[str, object]:
+    ) -> dict[str, object]:
     employees_all = session.exec(select(Employee)).all()
     selected_distribution_cli = (distribution_cli or "").strip()
-    cli_distribution = build_cli_distribution(employees_all)
+    detail_cli_label, cli_distribution_breakdown, cli_distribution_totals = build_cli_distribution_role_breakdown(
+        employees_all,
+        selected_distribution_cli,
+    )
+    cli_bio_reference_rows = session.exec(
+        select(CliBioReference).order_by(CliBioReference.cli_name, CliBioReference.cli_id)
+    ).all()
+    bio_reference_entries = [
+        (_clean_cli_name(row.cli_name), _clean_cli_id(row.cli_id))
+        for row in cli_bio_reference_rows
+        if _clean_cli_name(row.cli_name) and _clean_cli_id(row.cli_id)
+    ]
+    bio_reference_map = {
+        _clean_cli_id(row.cli_id): _clean_cli_name(row.cli_name)
+        for row in cli_bio_reference_rows
+        if _clean_cli_id(row.cli_id) and _clean_cli_name(row.cli_name)
+    }
+    cli_distribution = build_cli_distribution(employees_all, extra_cli_entries=bio_reference_entries)
     cli_distribution_totals_all = {
         "A": sum(int(row.get("A", 0)) for row in cli_distribution),
         "B": sum(int(row.get("B", 0)) for row in cli_distribution),
@@ -1515,13 +1552,6 @@ def _cli_page_context(
         cli_key = str(row["key"])
         row["detail_href"] = f"/cli?distribution_cli={quote(cli_key, safe='')}#cli-distribution-detail"
         row["selected"] = bool(selected_distribution_cli) and cli_key == selected_distribution_cli.lower()
-    detail_cli_label, cli_distribution_breakdown, cli_distribution_totals = build_cli_distribution_role_breakdown(
-        employees_all,
-        selected_distribution_cli,
-    )
-    cli_bio_reference_rows = session.exec(
-        select(CliBioReference).order_by(CliBioReference.cli_name, CliBioReference.cli_id)
-    ).all()
     grading_meta = _load_li_grading_metadata()
     grading_report_date = coerce_report_date(grading_meta.get("report_date"))
     grading_report_date_iso = grading_report_date.isoformat() if grading_report_date else ""
@@ -1534,12 +1564,19 @@ def _cli_page_context(
             grading_saved_at = saved_at_raw
     cli_opts_map: dict[str, str] = {}
     for employee in employees_all:
-        val = _employee_cli_label(employee)
+        val = _employee_cli_label(employee) or bio_reference_map.get(_clean_cli_id(employee.cli_id), "")
         if not val:
             continue
         key = val.strip().lower()
         if key not in cli_opts_map:
             cli_opts_map[key] = val.strip()
+    for cli_name, cli_id in bio_reference_entries:
+        label = format_cli_label(cli_name, cli_id).strip()
+        if not label:
+            continue
+        key = label.lower()
+        if key not in cli_opts_map:
+            cli_opts_map[key] = label
     cli_opts = [v for _, v in sorted(cli_opts_map.items(), key=lambda item: item[0])]
     gradation_opts = sorted({e.gradation for e in employees_all if e.gradation})
     role_opts = sorted(
@@ -1548,25 +1585,69 @@ def _cli_page_context(
     )
 
     roster_filter_active = any([roster_name, roster_cli, roster_role, roster_gradation, roster_cli_status])
-    cli_roster = list(employees_all)
-    if roster_cli_status == "assigned":
-        cli_roster = [e for e in cli_roster if _employee_cli_label(e)]
-    elif roster_cli_status == "unassigned":
-        cli_roster = [e for e in cli_roster if not _employee_cli_label(e)]
-    else:
-        cli_roster = [e for e in cli_roster if e.cli]
-    if roster_name:
-        name_lower = roster_name.lower()
-        cli_roster = [e for e in cli_roster if name_lower in e.name.lower()]
-    if roster_cli:
-        roster_cli_lower = roster_cli.strip().lower()
-        cli_roster = [e for e in cli_roster if roster_cli_lower in _employee_cli_label(e).lower()]
-    if roster_role:
-        cli_roster = [e for e in cli_roster if normalize_role(e.role) == roster_role]
-    if roster_gradation:
-        grad_lower = roster_gradation.lower()
-        cli_roster = [e for e in cli_roster if e.gradation and grad_lower in e.gradation.lower()]
-    cli_roster = sorted(cli_roster, key=lambda e: (_employee_cli_key(e), e.name))
+    cli_roster_rows: list[dict[str, object]] = []
+    matched_bio_ids: set[str] = set()
+    for employee in employees_all:
+        employee_cli_name, employee_cli_id = _canonicalize_cli_name(employee.cli, employee.cli_id)
+        bio_cli_name = bio_reference_map.get(_clean_cli_id(employee_cli_id), "")
+        display_cli_name = employee_cli_name or bio_cli_name
+        cli_label = format_cli_label(display_cli_name, employee_cli_id).strip()
+        row = {
+            "id": employee.id,
+            "cli": display_cli_name or "",
+            "cli_id": employee_cli_id or "",
+            "name": employee.name,
+            "hrms": employee.hrms or "",
+            "crew_id": employee.crew_id or "",
+            "role": employee.role or "",
+            "gradation": employee.gradation or "",
+            "grading_due": employee.grading_due,
+            "reference_only": False,
+            "cli_label": cli_label or (display_cli_name or "Unassigned"),
+        }
+        if employee_cli_id:
+            matched_bio_ids.add(employee_cli_id)
+        cli_roster_rows.append(row)
+
+    for cli_name, cli_id in bio_reference_entries:
+        if cli_id in matched_bio_ids:
+            continue
+        cli_roster_rows.append(
+            {
+                "id": None,
+                "cli": cli_name,
+                "cli_id": cli_id,
+                "name": cli_name,
+                "hrms": "",
+                "crew_id": "",
+                "role": "Reference only",
+                "gradation": "0",
+                "grading_due": None,
+                "reference_only": True,
+                "cli_label": format_cli_label(cli_name, cli_id).strip() or cli_name,
+            }
+        )
+
+    def roster_visible(row: dict[str, object]) -> bool:
+        if roster_name and roster_name.lower() not in str(row.get("name", "")).lower():
+            return False
+        if roster_cli and roster_cli.strip().lower() not in str(row.get("cli_label", "")).lower():
+            return False
+        if roster_role:
+            if normalize_role(str(row.get("role", ""))) != roster_role:
+                return False
+        if roster_gradation:
+            grad_lower = roster_gradation.lower()
+            if grad_lower not in str(row.get("gradation", "")).lower():
+                return False
+        if roster_cli_status == "assigned":
+            return bool(str(row.get("cli_label", "")).strip())
+        if roster_cli_status == "unassigned":
+            return not bool(str(row.get("cli_label", "")).strip())
+        return bool(str(row.get("cli_label", "")).strip())
+
+    cli_roster_rows = [row for row in cli_roster_rows if roster_visible(row)]
+    cli_roster_rows.sort(key=lambda row: (str(row.get("cli_label", "")).lower(), str(row.get("name", "")).lower()))
 
     manual_targets = session.exec(select(CliDistributionTarget).order_by(CliDistributionTarget.created_at)).all()
     latest_plan = session.exec(
@@ -1644,7 +1725,7 @@ def _cli_page_context(
         "active_page": active_page,
         "cli_distribution": cli_distribution,
         "cli_distribution_totals_all": cli_distribution_totals_all,
-        "cli_roster": cli_roster,
+        "cli_roster": cli_roster_rows,
         "cli_opts": cli_opts,
         "role_opts": role_opts,
         "gradation_opts": gradation_opts,
