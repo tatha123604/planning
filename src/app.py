@@ -5811,11 +5811,17 @@ def _excel_to_date(val: object) -> date | None:
         s = val.strip()
         if not s or set(s) <= set(".-/"):
             return None
-        for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%d/%m/%y", "%d-%m-%y", "%d.%m.%Y", "%d.%m.%y"):
-            try:
-                return datetime.strptime(s, fmt).date()
-            except ValueError:
-                continue
+        candidates = [s]
+        if " " in s:
+            candidates.append(s.split(" ", 1)[0])
+        if "T" in s:
+            candidates.append(s.split("T", 1)[0])
+        for candidate in candidates:
+            for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%d/%m/%y", "%d-%m-%y", "%d.%m.%Y", "%d.%m.%y"):
+                try:
+                    return datetime.strptime(candidate, fmt).date()
+                except ValueError:
+                    continue
         raise ValueError(f"Unrecognized date format: {val!r}")
     raise ValueError(f"Unsupported date value: {val!r}")
 
