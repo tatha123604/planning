@@ -8282,7 +8282,7 @@ def _parse_li_grading_workbook(content: bytes) -> tuple[list[dict[str, object]],
     return records, warnings
 
 
-def _parse_cli_bio_workbook(content: bytes) -> dict[str, str]:
+def _parse_cli_bio_workbook(content: bytes) -> list[dict[str, str]]:
     workbook = load_workbook(filename=BytesIO(content), data_only=True)
     worksheet = workbook.active
     rows = list(worksheet.iter_rows(values_only=True))
@@ -8308,17 +8308,24 @@ def _parse_cli_bio_workbook(content: bytes) -> dict[str, str]:
             detail="Could not find the CLI bio data columns. Required columns: LI ID (or CLI ID) and NAME.",
         )
 
-    names_by_id: dict[str, set[str]] = {}
+    entries: list[dict[str, str]] = []
     for row in rows[header_row_index + 1 :]:
         li_id = _clean_cli_id(row[li_id_idx] if li_id_idx < len(row) else None)
         name = _clean_cli_name(row[name_idx] if name_idx < len(row) else None)
         if li_id and name:
-            names_by_id.setdefault(li_id, set()).add(name)
+            entries.append({"cli_id": li_id, "cli_name": name})
 
-    if not names_by_id:
+    if not entries:
         raise HTTPException(status_code=400, detail="CLI bio data workbook did not produce any usable rows.")
 
-    return {li_id: max(names, key=_cli_name_score) for li_id, names in names_by_id.items()}
+    deduped: dict[str, dict[str, str]] = {}
+    for entry in entries:
+        cli_id = entry["cli_id"]
+        cli_name = entry["cli_name"]
+        if cli_id not in deduped or _cli_name_score(cli_name) > _cli_name_score(deduped[cli_id]["cli_name"]):
+            deduped[cli_id] = entry
+
+    return list(deduped.values())
 
 
 @app.post("/upload-li-grading")
@@ -8339,10 +8346,16 @@ async def upload_li_grading(
             raise HTTPException(status_code=400, detail="Upload the CLI bio data .xlsx workbook.")
 
         records, warnings = _parse_li_grading_workbook(await file.read())
-        bio_canonical_by_id = _parse_cli_bio_workbook(await bio_data_file.read())
+        bio_entries = _parse_cli_bio_workbook(await bio_data_file.read())
         employees = session.exec(select(Employee)).all()
         canonical_by_id, alias_map, id_by_name = _build_cli_name_maps((employee.cli, employee.cli_id) for employee in employees)
-        for cli_id, cli_name in bio_canonical_by_id.items():
+        bio_by_id: dict[str, str] = {}
+        for entry in bio_entries:
+            cli_id = _clean_cli_id(entry.get("cli_id"))
+            cli_name = _clean_cli_name(entry.get("cli_name"))
+            if not cli_id or not cli_name:
+                continue
+            bio_by_id[cli_id] = cli_name
             canonical_by_id.setdefault(cli_id, cli_name)
 
         by_crew: dict[str, list[Employee]] = {}
@@ -8513,6 +8526,37 @@ async def upload_li_grading(
             details.append(
                 f"Updated {target.name} ({target.crew_id or target.hrms or target.id}): " + "; ".join(changes)
             )
+
+        for entry in bio_entries:
+            cli_id = _clean_cli_id(entry.get("cli_id"))
+            cli_name = _clean_cli_name(entry.get("cli_name"))
+            if not cli_id or not cli_name:
+                continue
+            matching_employees = [
+                employee
+                for employee in employees
+                if _clean_cli_id(employee.cli_id) == cli_id
+                or _cli_name_key(employee.cli) == _cli_name_key(cli_name)
+                or _normalize_import_name(employee.name) == _normalize_import_name(cli_name)
+            ]
+            if not matching_employees:
+                warnings.append(f"CLI bio data {cli_name} ({cli_id}): no matching CLI Roster row found.")
+                continue
+            if len(matching_employees) > 1:
+                matching_employees = sorted(
+                    matching_employees,
+                    key=lambda employee: (
+                        0 if _clean_cli_id(employee.cli_id) == cli_id else 1,
+                        0 if _cli_name_key(employee.cli) == _cli_name_key(cli_name) else 1,
+                        employee.id or 0,
+                    ),
+                )
+            target = matching_employees[0]
+            bio_cli_name = bio_by_id.get(cli_id, cli_name)
+            target.cli = bio_cli_name
+            target.cli_id = cli_id
+            if target.id not in touched_ids:
+                target.gradation = "0"
 
         session.commit()
         _normalize_employee_cli_names(session)
