@@ -44,6 +44,17 @@ def init_db() -> None:
                 conn.execute(text(f"ALTER TABLE employee ADD COLUMN {col} {ddl};"))
         conn.execute(text(
             """
+            CREATE TABLE IF NOT EXISTS cli_bio_reference (
+                cli_id TEXT PRIMARY KEY,
+                cli_name TEXT NOT NULL,
+                gradation TEXT NOT NULL DEFAULT '0',
+                source_file TEXT,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            """
+        ))
+        conn.execute(text(
+            """
             UPDATE employee
             SET role = 'LPS/SHT'
             WHERE role IN ('LPS', 'SHT', 'SHUNTER', 'LPS(SHUNTER)');
