@@ -797,6 +797,7 @@ SSTS_RECENTLY_ONLINE_THRESHOLD_MINUTES = 5
 SSTS_PREVIOUSLY_OFFLINE_THRESHOLD_MINUTES = 300
 SSTS_RECENT_OFFLINE_MAX_MINUTES = 24 * 60
 SSTS_REFRESH_INTERVAL_MINUTES = 30
+IST = timezone(timedelta(hours=5, minutes=30))
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -1415,6 +1416,13 @@ def _ensure_utc(dt: datetime | None) -> datetime | None:
     return dt.astimezone(timezone.utc)
 
 
+def _format_ist(dt: datetime | None) -> str:
+    dt_utc = _ensure_utc(dt)
+    if dt_utc is None:
+        return "No signal"
+    return dt_utc.astimezone(IST).strftime("%d-%m-%Y %H:%M IST")
+
+
 def _parse_ssts_timestamp(value: str | None) -> datetime | None:
     if not value:
         return None
@@ -1452,9 +1460,7 @@ def _snapshot_to_row(snapshot: SstsDeviceSnapshot) -> dict[str, object]:
         "phone": snapshot.phone or "",
         "contact": snapshot.contact or "",
         "lastupdate": snapshot.lastupdate,
-        "lastupdate_label": _ensure_utc(snapshot.lastupdate).strftime("%d-%m-%Y %H:%M UTC")
-        if _ensure_utc(snapshot.lastupdate)
-        else "No signal",
+        "lastupdate_label": _format_ist(snapshot.lastupdate),
         "offline_minutes": snapshot.offline_minutes,
         "offline_hours": round((snapshot.offline_minutes or 0) / 60, 1) if snapshot.offline_minutes is not None else None,
     }
@@ -1510,7 +1516,7 @@ def refresh_ssts_snapshot(session: Session, force: bool = False) -> dict[str, ob
                 "status": "cached",
                 "observed_at": latest_run.observed_at,
                 "source_count": latest_run.source_count,
-                "message": f"Using last sync from {latest_run_time.strftime('%d-%m-%Y %H:%M UTC')}.",
+                "message": f"Using last sync from {_format_ist(latest_run_time)}.",
             }
     observed_at = now_utc.replace(second=0, microsecond=0)
     try:
@@ -1634,7 +1640,7 @@ def build_ssts_report_context(session: Session) -> dict[str, object]:
         daily_summary.append(
             {
                 "day": day.strftime("%d-%m-%Y"),
-                "observed_at": _ensure_utc(run.observed_at).strftime("%d-%m-%Y %H:%M UTC"),
+                "observed_at": _format_ist(run.observed_at),
                 "total_rakes": len(rows),
                 "offline_count": offline_count,
                 "recent_offline_count": recent_offline_count,
@@ -1664,7 +1670,7 @@ def build_ssts_report_context(session: Session) -> dict[str, object]:
         if (previous_row.offline_minutes or 0) > SSTS_PREVIOUSLY_OFFLINE_THRESHOLD_MINUTES:
             row = _snapshot_to_row(latest_row)
             row["previous_offline_hours"] = round((previous_row.offline_minutes or 0) / 60, 1)
-            row["previous_seen"] = _ensure_utc(previous_row.observed_at).strftime("%d-%m-%Y %H:%M UTC")
+            row["previous_seen"] = _format_ist(previous_row.observed_at)
             recently_online.append(row)
     recently_online.sort(key=lambda row: (-float(row.get("previous_offline_hours") or 0), str(row.get("name") or "").lower()))
 
@@ -5989,7 +5995,11 @@ def ssts_report_page(
             "ssts_web_url": SSTS_WEB_URL,
             "sync_state": sync_state,
             "latest_run": latest_run,
+            "latest_run_label": _format_ist(latest_run.observed_at) if latest_run else "",
             "latest_summary": latest_summary,
+            "previous_day_run_label": _format_ist(context["previous_day_run"].observed_at)
+            if context.get("previous_day_run")
+            else "",
             **context,
         },
     )
