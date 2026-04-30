@@ -56,21 +56,27 @@
           <strong class="metric-value">{{ latest_summary.total_rakes }}</strong>
           <p>Latest successfully stored snapshot.</p>
         </article>
-        <article class="card metric-card metric-card-online">
-          <span class="metric-label">Online Now</span>
-          <strong class="metric-value">{{ latest_summary.online_now_count }}</strong>
-          <p>Rakes currently active within your offline threshold.</p>
-        </article>
-        <article class="card metric-card metric-card-offline">
-          <span class="metric-label">Offline &gt; 2 Hours</span>
-          <strong class="metric-value">{{ latest_summary.offline_count }}</strong>
-          <p>Rakes currently considered offline by your rule.</p>
-        </article>
-        <article class="card metric-card metric-card-recovery">
-          <span class="metric-label">Recently Came Online</span>
-          <strong class="metric-value">{{ latest_summary.recently_online_count }}</strong>
-          <p>Was offline for more than 5 hours, now active in the latest snapshot.</p>
-        </article>
+        <a class="metric-card-link" href="#online-now-table">
+          <article class="card metric-card metric-card-online metric-card-clickable">
+            <span class="metric-label">Online Now</span>
+            <strong class="metric-value">{{ latest_summary.online_now_count }}</strong>
+            <p>Rakes currently active within your offline threshold.</p>
+          </article>
+        </a>
+        <a class="metric-card-link" href="#offline-now-table">
+          <article class="card metric-card metric-card-offline metric-card-clickable">
+            <span class="metric-label">Offline &gt; 2 Hours</span>
+            <strong class="metric-value">{{ latest_summary.offline_count }}</strong>
+            <p>Rakes currently considered offline by your rule.</p>
+          </article>
+        </a>
+        <a class="metric-card-link" href="#recently-online-table">
+          <article class="card metric-card metric-card-recovery metric-card-clickable">
+            <span class="metric-label">Recently Came Online</span>
+            <strong class="metric-value">{{ latest_summary.recently_online_count }}</strong>
+            <p>Was offline for more than 5 hours, now active in the latest snapshot.</p>
+          </article>
+        </a>
       </section>
 
       <section class="card">
@@ -110,7 +116,43 @@
         </div>
       </section>
 
-      <section class="card collapsible">
+      <section class="card collapsible" id="online-now-table">
+        <details open>
+          <summary>Online Now</summary>
+          <div class="table-wrap">
+            <table class="employee-table paged">
+              <thead>
+                <tr>
+                  <th>Rake No</th>
+                  <th>Device ID</th>
+                  <th>Mobile No</th>
+                  <th>Cars</th>
+                  <th>Last Update</th>
+                  <th>Status Age</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in online_now %}
+                <tr>
+                  <td>{{ row.name }}</td>
+                  <td>{{ row.uniqueid }}</td>
+                  <td>{{ row.phone }}</td>
+                  <td>{{ row.contact }}</td>
+                  <td>{{ row.lastupdate_label }}</td>
+                  <td>{{ row.offline_duration }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                  <td colspan="6">No online rakes found in the latest snapshot.</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      </section>
+
+      <section class="card collapsible" id="offline-now-table">
         <details open>
           <summary>Current Offline Rakes (Last Update &gt; 2 Hours)</summary>
           <div class="table-wrap">
@@ -178,7 +220,7 @@
         </details>
       </section>
 
-      <section class="card collapsible ssts-recovery-section">
+      <section class="card collapsible ssts-recovery-section" id="recently-online-table">
         <details open>
           <summary>Recently Came Online (Previously Offline &gt; 5 Hours)</summary>
           <div class="table-wrap">
