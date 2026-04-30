@@ -84,6 +84,18 @@ def init_db() -> None:
                 """
             ))
             conn.execute(text("DROP TABLE employee_old;"))
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_sstsdevicesnapshot_run_id_device_id "
+                "ON sstsdevicesnapshot (run_id, device_id);"
+            )
+        )
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_sstsdevicesnapshot_observed_day_offline "
+                "ON sstsdevicesnapshot (observed_day, offline_minutes);"
+            )
+        )
 
 
 def get_session() -> Session:
