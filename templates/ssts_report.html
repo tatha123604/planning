@@ -50,17 +50,20 @@
             {% endif %}
           </strong>
           <p>{{ sync_state.message }}</p>
+          <span class="metric-card-footer metric-card-footer-placeholder" aria-hidden="true"></span>
         </article>
-        <article class="card metric-card">
+        <article class="card metric-card metric-card-total">
           <span class="metric-label">Total Rakes</span>
           <strong class="metric-value">{{ latest_summary.total_rakes }}</strong>
           <p>Latest successfully stored snapshot.</p>
+          <span class="metric-card-footer metric-card-footer-placeholder" aria-hidden="true"></span>
         </article>
         <a class="metric-card-link" href="#online-now-table">
           <article class="card metric-card metric-card-online metric-card-clickable">
             <span class="metric-label">Online Now</span>
             <strong class="metric-value">{{ latest_summary.online_now_count }}</strong>
             <p>Rakes currently active within your offline threshold.</p>
+            <span class="metric-card-footer">Open table</span>
           </article>
         </a>
         <a class="metric-card-link" href="#offline-now-table">
@@ -68,6 +71,7 @@
             <span class="metric-label">Offline &gt; 2 Hours</span>
             <strong class="metric-value">{{ latest_summary.offline_count }}</strong>
             <p>Rakes currently considered offline by your rule.</p>
+            <span class="metric-card-footer">Open table</span>
           </article>
         </a>
         <a class="metric-card-link" href="#recently-online-table">
@@ -75,6 +79,7 @@
             <span class="metric-label">Recently Came Online</span>
             <strong class="metric-value">{{ latest_summary.recently_online_count }}</strong>
             <p>Was offline for more than 5 hours, now active in the latest snapshot.</p>
+            <span class="metric-card-footer">Open table</span>
           </article>
         </a>
       </section>
@@ -116,7 +121,7 @@
         </div>
       </section>
 
-      <section class="card collapsible" id="online-now-table">
+      <section class="card collapsible ssts-online-section" id="online-now-table">
         <details open>
           <summary>Online Now</summary>
           <div class="table-wrap">
@@ -128,7 +133,7 @@
                   <th>Mobile No</th>
                   <th>Cars</th>
                   <th>Last Update</th>
-                  <th>Status Age</th>
+                  <th>Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -152,7 +157,7 @@
         </details>
       </section>
 
-      <section class="card collapsible" id="offline-now-table">
+      <section class="card collapsible ssts-offline-section" id="offline-now-table">
         <details open>
           <summary>Current Offline Rakes (Last Update &gt; 2 Hours)</summary>
           <div class="table-wrap">
