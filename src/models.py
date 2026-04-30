@@ -173,3 +173,26 @@ class CliDistributionAssignment(SQLModel, table=True):
     current_cli_id: str | None = None
     proposed_cli: str
     proposed_cli_id: str | None = None
+
+
+class SstsSnapshotRun(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    observed_at: datetime = Field(index=True)
+    source_count: int = 0
+    fetch_status: str = "ok"
+    fetch_error: str | None = None
+
+
+class SstsDeviceSnapshot(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    run_id: int = Field(index=True)
+    observed_at: datetime = Field(index=True)
+    observed_day: date = Field(index=True)
+    device_id: int = Field(index=True)
+    name: str
+    uniqueid: str | None = None
+    phone: str | None = None
+    contact: str | None = None
+    lastupdate: datetime | None = Field(default=None, index=True)
+    offline_minutes: int | None = None
+    attributes: str | None = None

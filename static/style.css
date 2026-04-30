@@ -346,6 +346,24 @@ button:hover { filter: brightness(1.05); }
   box-shadow: 0 20px 50px rgba(0,0,0,0.35);
   min-width: 0;
 }
+.metric-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 150px;
+}
+.metric-label {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #7bd7ff;
+  font-weight: 800;
+}
+.metric-value {
+  font-size: 2rem;
+  color: #f5fbff;
+  line-height: 1.1;
+}
 .card + .card {
   margin-top: 18px;
 }
@@ -883,6 +901,8 @@ ul { padding-left: 18px; margin: 6px 0; }
 .employee-table .working-at-col { min-width: 120px; max-width: 160px; }
 .employee-table .actions-col { width: 140px; padding-left: 10px; padding-right: 10px; }
 .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+.actions-cell { white-space: nowrap; min-width: 116px; }
+.ghost.small, .danger.small { padding: 6px 10px; font-size: 12px; }
 .sensitive-inline-form {
   align-items: flex-end;
   gap: 12px;

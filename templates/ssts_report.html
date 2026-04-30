@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SSTS Report | SDAH Crew Planner</title>
+  <link rel="stylesheet" href="/static/style.css?v={{ asset_ver }}" />
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="dot"></div>
+        <span>SDAH Crew Planner</span>
+      </div>
+      <nav class="side-links">
+        <a class="{{ 'active' if active_page == 'dashboard' else '' }}" href="/">Dashboard</a>
+        <a class="{{ 'active' if active_page == 'employees' else '' }}" href="/employees">Employees</a>
+        <a class="{{ 'active' if active_page == 'uploads' else '' }}" href="/uploads">Uploads</a>
+        <a class="{{ 'active' if active_page == 'requirements' else '' }}" href="/requirements">Requirements</a>
+        <a class="{{ 'active' if active_page == 'reports' else '' }}" href="/reports">Reports</a>
+        <a class="{{ 'active' if active_page == 'ssts_report' else '' }}" href="/ssts-report">SSTS Report</a>
+      </nav>
+      <div class="hierarchy">Tracks rake health from the live SSTS dashboard and stores snapshots for trend reporting.</div>
+    </aside>
+
+    <main class="content">
+      <header>
+        <div>
+          <h1>SSTS Report</h1>
+          <p>Live rake health from <a href="{{ ssts_web_url }}" target="_blank" rel="noreferrer">SSTS Rakes</a>, with snapshot history for offline and recovery tracking.</p>
+        </div>
+        <div class="header-actions">
+          <form method="get" action="/ssts-report">
+            <input type="hidden" name="refresh" value="1" />
+            <button type="submit">Refresh SSTS Data</button>
+          </form>
+          <a class="ghost small" href="/logout">Logout</a>
+        </div>
+      </header>
+
+      <section class="grid">
+        <article class="card metric-card">
+          <span class="metric-label">Latest Snapshot</span>
+          <strong class="metric-value">
+            {% if latest_run %}
+              {{ latest_run.observed_at.strftime("%d-%m-%Y %H:%M") }} UTC
+            {% else %}
+              Not synced yet
+            {% endif %}
+          </strong>
+          <p>{{ sync_state.message }}</p>
+        </article>
+        <article class="card metric-card">
+          <span class="metric-label">Total Rakes</span>
+          <strong class="metric-value">{{ latest_summary.total_rakes }}</strong>
+          <p>Latest successfully stored snapshot.</p>
+        </article>
+        <article class="card metric-card">
+          <span class="metric-label">Offline &gt; 2 Hours</span>
+          <strong class="metric-value">{{ latest_summary.offline_count }}</strong>
+          <p>Rakes currently considered offline by your rule.</p>
+        </article>
+        <article class="card metric-card">
+          <span class="metric-label">Recently Came Online</span>
+          <strong class="metric-value">{{ latest_summary.recently_online_count }}</strong>
+          <p>Was offline for more than 5 hours, now active in the latest snapshot.</p>
+        </article>
+      </section>
+
+      <section class="card">
+        <div class="card-head-inline">
+          <div>
+            <h2>Daily Offline Summary</h2>
+            <p>One snapshot per day is taken from the latest sync available for that day.</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="paged">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Snapshot Time</th>
+                <th>Total Rakes</th>
+                <th>Offline &gt; 2h</th>
+                <th>Offline 2h to 1 Day</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in daily_summary %}
+              <tr>
+                <td>{{ row.day }}</td>
+                <td>{{ row.observed_at }}</td>
+                <td>{{ row.total_rakes }}</td>
+                <td>{{ row.offline_count }}</td>
+                <td>{{ row.recent_offline_count }}</td>
+              </tr>
+              {% else %}
+              <tr>
+                <td colspan="5">No SSTS snapshots available yet.</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card collapsible">
+        <details open>
+          <summary>Current Offline Rakes (Last Update &gt; 2 Hours)</summary>
+          <div class="table-wrap">
+            <table class="employee-table paged">
+              <thead>
+                <tr>
+                  <th>Rake No</th>
+                  <th>Device ID</th>
+                  <th>Mobile No</th>
+                  <th>Cars</th>
+                  <th>Last Update</th>
+                  <th>Offline Hours</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in current_offline %}
+                <tr>
+                  <td>{{ row.name }}</td>
+                  <td>{{ row.uniqueid }}</td>
+                  <td>{{ row.phone }}</td>
+                  <td>{{ row.contact }}</td>
+                  <td>{{ row.lastupdate_label }}</td>
+                  <td>{{ row.offline_hours }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                  <td colspan="6">No current offline rakes.</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      </section>
+
+      <section class="card collapsible">
+        <details open>
+          <summary>Last Day Offline Rakes (Previous-Day Snapshot, Last Update &gt; 2 Hours)</summary>
+          {% if previous_day_run %}
+          <p>Reference snapshot: {{ previous_day_run.observed_at.strftime("%d-%m-%Y %H:%M") }} UTC</p>
+          {% endif %}
+          <div class="table-wrap">
+            <table class="employee-table paged">
+              <thead>
+                <tr>
+                  <th>Rake No</th>
+                  <th>Device ID</th>
+                  <th>Last Update</th>
+                  <th>Offline Hours</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in previous_day_offline %}
+                <tr>
+                  <td>{{ row.name }}</td>
+                  <td>{{ row.uniqueid }}</td>
+                  <td>{{ row.lastupdate_label }}</td>
+                  <td>{{ row.offline_hours }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                  <td colspan="4">No previous-day offline snapshot available yet.</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      </section>
+
+      <section class="card collapsible">
+        <details open>
+          <summary>Last Day Recently Offline Rakes (2 Hours to 1 Day)</summary>
+          <div class="table-wrap">
+            <table class="employee-table paged">
+              <thead>
+                <tr>
+                  <th>Rake No</th>
+                  <th>Device ID</th>
+                  <th>Last Update</th>
+                  <th>Offline Hours</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in previous_day_recently_offline %}
+                <tr>
+                  <td>{{ row.name }}</td>
+                  <td>{{ row.uniqueid }}</td>
+                  <td>{{ row.lastupdate_label }}</td>
+                  <td>{{ row.offline_hours }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                  <td colspan="4">No previous-day recently offline rakes found.</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      </section>
+
+      <section class="card collapsible">
+        <details open>
+          <summary>Recently Came Online (Previously Offline &gt; 5 Hours)</summary>
+          <div class="table-wrap">
+            <table class="employee-table paged">
+              <thead>
+                <tr>
+                  <th>Rake No</th>
+                  <th>Device ID</th>
+                  <th>Current Last Update</th>
+                  <th>Current Offline Hours</th>
+                  <th>Previous Offline Hours</th>
+                  <th>Previous Snapshot</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in recently_online %}
+                <tr>
+                  <td>{{ row.name }}</td>
+                  <td>{{ row.uniqueid }}</td>
+                  <td>{{ row.lastupdate_label }}</td>
+                  <td>{{ row.offline_hours }}</td>
+                  <td>{{ row.previous_offline_hours }}</td>
+                  <td>{{ row.previous_seen }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                  <td colspan="6">No recent online recovery detected yet.</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      </section>
+    </main>
+  </div>
+  <script src="/static/table-pager.js?v={{ asset_ver }}"></script>
+  <script src="/static/sidebar-toggle.js?v={{ asset_ver }}"></script>
+</body>
+</html>
