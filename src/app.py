@@ -1426,11 +1426,17 @@ def _format_ist(dt: datetime | None) -> str:
 def _format_duration(minutes: int | None) -> str | None:
     if minutes is None:
         return None
-    total_seconds = max(0, minutes * 60)
-    days, rem = divmod(total_seconds, 86400)
-    hours, rem = divmod(rem, 3600)
-    mins, secs = divmod(rem, 60)
-    return f"{days}:{hours:02d}:{mins:02d}:{secs:02d}"
+    total_minutes = max(0, minutes)
+    if total_minutes >= 24 * 60:
+        days = total_minutes // (24 * 60)
+        hours = (total_minutes % (24 * 60)) // 60
+        mins = total_minutes % 60
+        return f"{days}d {hours}h {mins}m"
+    if total_minutes >= 60:
+        hours = total_minutes // 60
+        mins = total_minutes % 60
+        return f"{hours}h {mins}m"
+    return f"{total_minutes}m"
 
 
 def _parse_ssts_timestamp(value: str | None) -> datetime | None:
@@ -1621,6 +1627,11 @@ def build_ssts_report_context(session: Session) -> dict[str, object]:
     previous_day_snapshots = _snapshots_for_run(session, previous_day_run.id or 0) if previous_day_run else []
 
     current_offline = [_snapshot_to_row(row) for row in sorted(latest_snapshots, key=_ssts_sort_key) if _ssts_is_offline(row)]
+    online_now = [
+        _snapshot_to_row(row)
+        for row in sorted(latest_snapshots, key=lambda item: (item.name.lower(), item.device_id))
+        if not _ssts_is_offline(row)
+    ]
     current_recently_offline = [
         _snapshot_to_row(row)
         for row in sorted(latest_snapshots, key=_ssts_sort_key)
@@ -1690,6 +1701,7 @@ def build_ssts_report_context(session: Session) -> dict[str, object]:
     return {
         "latest_run": latest_run,
         "latest_rows": [_snapshot_to_row(row) for row in sorted(latest_snapshots, key=_ssts_sort_key)],
+        "online_now": online_now,
         "current_offline": current_offline,
         "current_recently_offline": current_recently_offline,
         "previous_day_run": previous_day_run,
