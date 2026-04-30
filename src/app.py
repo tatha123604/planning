@@ -963,6 +963,16 @@ def _format_ist(dt: datetime | None) -> str:
     return dt_utc.astimezone(IST).strftime("%d-%m-%Y %H:%M IST")
 
 
+def _format_duration(minutes: int | None) -> str | None:
+    if minutes is None:
+        return None
+    total_seconds = max(0, minutes * 60)
+    days, rem = divmod(total_seconds, 86400)
+    hours, rem = divmod(rem, 3600)
+    mins, secs = divmod(rem, 60)
+    return f"{days}:{hours:02d}:{mins:02d}:{secs:02d}"
+
+
 def _parse_ssts_timestamp(value: str | None) -> datetime | None:
     if not value:
         return None
@@ -1002,7 +1012,7 @@ def _snapshot_to_row(snapshot: SstsDeviceSnapshot) -> dict[str, object]:
         "lastupdate": snapshot.lastupdate,
         "lastupdate_label": _format_ist(snapshot.lastupdate),
         "offline_minutes": snapshot.offline_minutes,
-        "offline_hours": round((snapshot.offline_minutes or 0) / 60, 1) if snapshot.offline_minutes is not None else None,
+        "offline_duration": _format_duration(snapshot.offline_minutes),
     }
 
 
@@ -1209,10 +1219,13 @@ def build_ssts_report_context(session: Session) -> dict[str, object]:
         previous_row = history[-2]
         if (previous_row.offline_minutes or 0) > SSTS_PREVIOUSLY_OFFLINE_THRESHOLD_MINUTES:
             row = _snapshot_to_row(latest_row)
-            row["previous_offline_hours"] = round((previous_row.offline_minutes or 0) / 60, 1)
+            row["previous_offline_minutes"] = previous_row.offline_minutes or 0
+            row["previous_offline_duration"] = _format_duration(previous_row.offline_minutes)
             row["previous_seen"] = _format_ist(previous_row.observed_at)
             recently_online.append(row)
-    recently_online.sort(key=lambda row: (-float(row.get("previous_offline_hours") or 0), str(row.get("name") or "").lower()))
+    recently_online.sort(
+        key=lambda row: (-int(row.get("previous_offline_minutes") or 0), str(row.get("name") or "").lower())
+    )
 
     return {
         "latest_run": latest_run,
@@ -4088,6 +4101,7 @@ def ssts_report_page(
     latest_run = context.get("latest_run")
     latest_summary = {
         "total_rakes": len(context.get("latest_rows", [])),
+        "online_now_count": len(context.get("latest_rows", [])) - len(context.get("current_offline", [])),
         "offline_count": len(context.get("current_offline", [])),
         "recently_offline_count": len(context.get("current_recently_offline", [])),
         "recently_online_count": len(context.get("recently_online", [])),
