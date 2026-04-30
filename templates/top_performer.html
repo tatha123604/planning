@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Top Performer (Based On SSTS) | SDAH Crew Planner</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="icon" type="image/svg+xml" href="/static/indian-railways-mark.svg" />
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <img class="brand-mark" src="/static/indian-railways-mark.svg" alt="Indian Railways" />
+        <span>SDAH Crew Planner</span>
+      </div>
+      <nav class="side-links">
+        <a class="{{ 'active' if active_page == 'dashboard' else '' }}" href="/">Dashboard</a>
+        <a class="{{ 'active' if active_page == 'employees' else '' }}" href="/employees">Employees</a>
+        <a class="{{ 'active' if active_page == 'uploads' else '' }}" href="/uploads">Uploads</a>
+        <a class="{{ 'active' if active_page == 'cli' else '' }}" href="/cli">CLI</a>
+        <a class="{{ 'active' if active_page == 'cli_distribution_planner' else '' }}" href="/cli-distribution-planner">CLI Distribution Planner (Experimental)</a>
+        {% if active_page == 'top_performer' %}
+        <a class="active long-nav-label" href="/top-performer">
+          <span>Top Performer</span>
+          <span>(Based On SSTS)</span>
+        </a>
+        {% else %}
+        <a class="long-nav-label" href="/top-performer">Top Performer</a>
+        {% endif %}
+        <details class="side-group" {% if active_page in ['cli_matrix', 'non_continuous_duty', 'sub_non_continuous_duty'] %}open{% endif %}>
+          <summary>CMS REPORTS</summary>
+          <div class="side-sub-links">
+            <a class="{{ 'active' if active_page == 'cli_matrix' else '' }}" href="/cli-matrix">CLI Matrix</a>
+            <a class="{{ 'active' if active_page == 'non_continuous_duty' else '' }}" href="/non-continuous-duty">NON SUB NON CONT DUTY</a>
+            <a class="{{ 'active' if active_page == 'sub_non_continuous_duty' else '' }}" href="/sub-non-continuous-duty">SUB NON CONT DUTY</a>
+          </div>
+        </details>
+        <a class="{{ 'active' if active_page == 'requirements' else '' }}" href="/requirements">Requirements</a>
+        <a class="{{ 'active' if active_page == 'reports' else '' }}" href="/reports">Reports</a>
+        <a class="{{ 'active' if active_page == 'ssts_report' else '' }}" href="/ssts-report">SSTS Report</a>
+      </nav>
+      <div class="hierarchy">Hierarchy: LPM &gt; Motorman &gt; LPP &gt; LPG &gt; LPS/SHT &gt; ALP</div>
+    </aside>
+
+    <main class="content">
+      <header>
+        <div>
+          <h1>Top Performer (Based On SSTS)</h1>
+          <p>Upload ranking files, set minimum runs, and generate top 10 performer tables.</p>
+        </div>
+      </header>
+
+      <section class="card">
+        <h2>Generate Top Performer</h2>
+        {% if saved_at_label %}
+        <p class="hint">Last generated: <strong>{{ saved_at_label }}</strong></p>
+        {% endif %}
+        {% if warnings %}
+        <div class="warning-panel">
+          <p class="hint warning-text"><strong>Notes</strong></p>
+          <ul class="sync-warning-list">
+            {% for warning in warnings %}
+            <li>{{ warning }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+        <form method="post" action="/top-performer" enctype="multipart/form-data" class="stack-form" data-no-confirm="true">
+          <div class="grid compact-grid">
+            <label>Upload ranking files
+              <input type="file" name="files" accept=".xlsx,.csv" multiple required />
+            </label>
+            
+            <label>Minimum Runs
+              <input type="number" name="minimum_runs" min="0" step="1" value="{{ minimum_runs or 3 }}" required />
+            </label>
+          </div>
+          <div class="actions">
+            <button type="submit" data-confirm-label="generate top performer results">Generate Top Performer</button>
+          </div>
+        </form>
+        <div class="actions">
+          <form method="post" action="/top-performer/clear-stored" class="inline sensitive-inline-form" data-password-gated-form data-password-gated-code="11111">
+            <label class="site-password-label compact-site-password">Action Code
+              <input class="site-password-input compact-site-password-input" type="password" name="action_password" autocomplete="current-password" required data-password-gated-input />
+            </label>
+            <button type="submit" class="danger" data-confirm-label="delete stored top performer data" data-password-gated-button disabled>Delete Stored Data</button>
+          </form>
+        </div>
+      </section>
+
+      {% if summary %}
+      <section class="card">
+        <h2>Generation Summary</h2>
+        <div class="summary-chip-row">
+          <div class="summary-chip">Files: {{ summary.file_count or 0 }}</div>
+          <div class="summary-chip">Rows read: {{ summary.overall_rows or 0 }}</div>
+          <div class="summary-chip">Eligible rows: {{ summary.overall_eligible or 0 }}</div>
+          <div class="summary-chip">Minimum runs: {{ minimum_runs or 0 }}</div>
+        </div>
+      </section>
+      {% endif %}
+
+      {% for result in results %}
+      <section class="card">
+        <div class="card-head-inline">
+          <h2>{{ result.title or result.filename }}</h2>
+          <div class="actions">
+            <button
+              type="button"
+              class="ghost small top-performer-poster-download"
+              data-export-format="jpeg"
+              data-export-target="top-performer-poster-{{ loop.index }}"
+              data-export-title="{{ result.poster_title or 'BEST PERFORMERS' }}"
+            >
+              Download JPEG
+            </button>
+            <button
+              type="button"
+              class="ghost small top-performer-poster-download"
+              data-export-format="pdf"
+              data-export-target="top-performer-poster-{{ loop.index }}"
+              data-export-title="{{ result.poster_title or 'BEST PERFORMERS' }}"
+            >
+              Download PDF
+            </button>
+            <form method="post" action="/top-performer/reset" class="inline">
+              <button type="submit" class="ghost small" data-confirm-label="reset top performer results">Reset</button>
+            </form>
+          </div>
+        </div>
+        {% if result.top_rows %}
+        <section class="top-performer-poster" id="top-performer-poster-{{ loop.index }}">
+          <div class="top-performer-poster-stars" aria-hidden="true"></div>
+          <div class="top-performer-poster-stars top-performer-poster-stars-secondary" aria-hidden="true"></div>
+          <div class="top-performer-poster-particles" aria-hidden="true">
+            <span class="sparkle s1"></span><span class="sparkle s2"></span><span class="sparkle s3"></span><span class="sparkle s4"></span>
+            <span class="sparkle s5"></span><span class="sparkle s6"></span><span class="sparkle s7"></span><span class="sparkle s8"></span>
+            <span class="sparkle s9"></span><span class="sparkle s10"></span><span class="sparkle s11"></span><span class="sparkle s12"></span>
+            <span class="sparkle s13"></span><span class="sparkle s14"></span><span class="sparkle s15"></span><span class="sparkle s16"></span>
+            <span class="sparkle s17"></span><span class="sparkle s18"></span><span class="sparkle s19"></span><span class="sparkle s20"></span>
+            <span class="sparkle s21"></span><span class="sparkle s22"></span><span class="sparkle s23"></span><span class="sparkle s24"></span>
+          </div>
+          <div class="top-performer-poster-head">
+            <h3><img class="top-performer-title-star-image" src="/static/title-star.svg" alt="" /> {{ result.poster_title or 'BEST PERFORMERS' }} <img class="top-performer-title-star-image" src="/static/title-star.svg" alt="" /></h3>
+            <p>Top Ten Ranked Crew</p>
+          </div>
+          <div class="top-performer-poster-grid">
+            {% for row in result.top_rows %}
+            <article class="top-performer-item">
+              <div class="top-performer-avatar-wrap">
+                {% if row.photo_url %}
+                <img class="top-performer-photo" src="{{ row.photo_url }}" alt="{{ row.crew_name }}" />
+                {% else %}
+                <div class="top-performer-avatar">{{ row.rank }}</div>
+                {% endif %}
+              </div>
+              <div class="top-performer-copy">
+                <div class="top-performer-rankline">
+                  <span>Rank {{ row.rank }}</span>
+                  {% if row.rank == 1 %}
+                  <img class="top-performer-medal-image" src="/static/medal-gold.svg" alt="Gold medal" />
+                  {% elif row.rank == 2 %}
+                  <img class="top-performer-medal-image" src="/static/medal-silver.svg" alt="Silver medal" />
+                  {% elif row.rank == 3 %}
+                  <img class="top-performer-medal-image" src="/static/medal-bronze.svg" alt="Bronze medal" />
+                  {% endif %}
+                </div>
+                <strong>{{ row.crew_name }}</strong>
+                <span>Marks: {{ row.total_score }}</span>
+              </div>
+            </article>
+            {% endfor %}
+          </div>
+          <div class="top-performer-poster-foot">
+            <span>"Consistency, dedication, and professional excellence define our best performers."</span>
+            <span>Data source: SSTS | Minimum Runs: {{ minimum_runs or 0 }}</span>
+          </div>
+        </section>
+        {% endif %}
+        <div class="summary-chip-row">
+          {% if result.report_date %}
+          <div class="summary-chip">Report date: {{ result.report_date }}</div>
+          {% endif %}
+          <div class="summary-chip">Rows read: {{ result.row_count }}</div>
+          <div class="summary-chip">Eligible rows: {{ result.eligible_count }}</div>
+          <div class="summary-chip">Top rows: {{ result.top_rows | length }}</div>
+        </div>
+        <div class="table-wrap">
+          <table class="paged">
+            <thead>
+              <tr>
+                <th>Rank</th>
+                <th>Crew Name</th>
+                <th>Photo</th>
+                <th>Runs</th>
+                <th>Total Score</th>
+                <th>BFT</th>
+                <th>BPT</th>
+                <th>Speed</th>
+                <th>Platform</th>
+                <th>Emergency</th>
+                <th>Cautious</th>
+                <th>Punctuality</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in result.top_rows %}
+              <tr>
+                <td>{{ row.rank }}</td>
+                <td><span class="employee-data-pill employee-data-pill-name">{{ row.crew_name }}</span></td>
+                <td>
+                  <form method="post" action="/top-performer/photo" enctype="multipart/form-data" class="top-performer-photo-form">
+                    <input type="hidden" name="crew_name" value="{{ row.crew_name }}" />
+                    {% if row.photo_url %}
+                    <img class="top-performer-table-photo" src="{{ row.photo_url }}" alt="{{ row.crew_name }}" />
+                    {% endif %}
+                    <input type="file" name="photo_file" accept=".png,.jpg,.jpeg,.webp" required />
+                    <button type="submit" class="ghost small" data-confirm-label="save this employee photo to the performer card">Save Photo</button>
+                  </form>
+                </td>
+                <td>{{ row.runs }}</td>
+                <td>{{ row.total_score }}</td>
+                <td>{{ row.bft }}</td>
+                <td>{{ row.bpt }}</td>
+                <td>{{ row.speed }}</td>
+                <td>{{ row.platform }}</td>
+                <td>{{ row.emergency }}</td>
+                <td>{{ row.cautious }}</td>
+                <td>{{ row.punctuality }}</td>
+              </tr>
+              {% endfor %}
+              {% if not result.top_rows %}
+              <tr>
+                <td colspan="12">No eligible performer found for the current minimum runs value.</td>
+              </tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      {% endfor %}
+
+      <section class="card">
+        <h2>Comparison Between Two Months</h2>
+        <form method="post" action="/top-performer/compare" enctype="multipart/form-data" class="stack-form" data-no-confirm="true">
+          <div class="grid compact-grid">
+            <label>Previous Month File
+              <input type="file" name="previous_file" accept=".xlsx,.csv" required />
+            </label>
+            <label>Current Month File
+              <input type="file" name="current_file" accept=".xlsx,.csv" required />
+            </label>
+            <label>Minimum Runs
+              <input type="number" name="minimum_runs" min="0" step="1" value="{{ minimum_runs or 3 }}" required />
+            </label>
+          </div>
+          <div class="actions">
+            <button type="submit" data-confirm-label="compare the two uploaded months">Compare Two Months</button>
+          </div>
+        </form>
+      </section>
+
+      {% if comparison and comparison.get('rows') is not none %}
+      <section class="card">
+        <div class="card-head-inline">
+          <h2>Monthly Comparison Output</h2>
+          <div class="actions">
+            <button
+              type="button"
+              class="ghost small top-performer-poster-download"
+              data-export-format="jpeg"
+              data-export-target="top-performer-comparison-poster"
+              data-export-title="{{ comparison.get('poster_title') or 'MONTHLY COMPARISON' }}"
+            >
+              Download JPEG
+            </button>
+            <button
+              type="button"
+              class="ghost small top-performer-poster-download"
+              data-export-format="pdf"
+              data-export-target="top-performer-comparison-poster"
+              data-export-title="{{ comparison.get('poster_title') or 'MONTHLY COMPARISON' }}"
+            >
+              Download PDF
+            </button>
+            <form method="post" action="/top-performer/comparison/reset" class="inline">
+              <button type="submit" class="ghost small" data-confirm-label="reset monthly comparison output">Reset</button>
+            </form>
+          </div>
+        </div>
+        {% if comparison.get('rows') %}
+        <section class="top-performer-poster comparison-performer-poster" id="top-performer-comparison-poster">
+          <div class="top-performer-poster-stars" aria-hidden="true"></div>
+          <div class="top-performer-poster-stars top-performer-poster-stars-secondary" aria-hidden="true"></div>
+          <div class="top-performer-poster-particles" aria-hidden="true">
+            <span class="sparkle s1"></span><span class="sparkle s2"></span><span class="sparkle s3"></span><span class="sparkle s4"></span>
+            <span class="sparkle s5"></span><span class="sparkle s6"></span><span class="sparkle s7"></span><span class="sparkle s8"></span>
+            <span class="sparkle s9"></span><span class="sparkle s10"></span><span class="sparkle s11"></span><span class="sparkle s12"></span>
+            <span class="sparkle s13"></span><span class="sparkle s14"></span><span class="sparkle s15"></span><span class="sparkle s16"></span>
+            <span class="sparkle s17"></span><span class="sparkle s18"></span><span class="sparkle s19"></span><span class="sparkle s20"></span>
+            <span class="sparkle s21"></span><span class="sparkle s22"></span><span class="sparkle s23"></span><span class="sparkle s24"></span>
+          </div>
+          <div class="top-performer-poster-head">
+            <h3><img class="top-performer-title-star-image" src="/static/title-star.svg" alt="" /> {{ comparison.get('poster_title') or 'MONTHLY COMPARISON' }} <img class="top-performer-title-star-image" src="/static/title-star.svg" alt="" /></h3>
+          </div>
+          <div class="top-performer-poster-grid">
+            {% for row in comparison.get('rows', []) %}
+            <article class="top-performer-item">
+              <div class="top-performer-avatar-wrap">
+                {% if row.get('photo_url') %}
+                <img class="top-performer-photo" src="{{ row.get('photo_url') }}" alt="{{ row.get('crew_name', '') }}" />
+                {% else %}
+                <div class="top-performer-avatar">{{ row.get('rank', loop.index) }}</div>
+                {% endif %}
+              </div>
+              <div class="top-performer-copy">
+                <div class="top-performer-rankline">
+                  <span>Rank {{ row.get('rank', loop.index) }}</span>
+                  {% if row.get('rank', loop.index) == 1 %}
+                  <img class="top-performer-medal-image" src="/static/medal-gold.svg" alt="Gold medal" />
+                  {% elif row.get('rank', loop.index) == 2 %}
+                  <img class="top-performer-medal-image" src="/static/medal-silver.svg" alt="Silver medal" />
+                  {% elif row.get('rank', loop.index) == 3 %}
+                  <img class="top-performer-medal-image" src="/static/medal-bronze.svg" alt="Bronze medal" />
+                  {% endif %}
+                </div>
+                <strong>{{ row.get('crew_name', '') }}</strong>
+                <span>Current: {{ row.get('current_score', '') }} | Change: {{ row.get('score_change', '') }}</span>
+              </div>
+            </article>
+            {% endfor %}
+          </div>
+          <div class="top-performer-poster-foot">
+            <span>"Consistency, dedication, and professional excellence define our best performers."</span>
+            <span>Data source: SSTS | Minimum Runs: {{ minimum_runs or 0 }}</span>
+          </div>
+        </section>
+        {% endif %}
+        <div class="summary-chip-row">
+          <div class="summary-chip">Previous file: {{ comparison.get('previous_filename', '') }}</div>
+          <div class="summary-chip">Current file: {{ comparison.get('current_filename', '') }}</div>
+          {% if comparison.get('previous_report_date') %}
+          <div class="summary-chip">Previous date: {{ comparison.get('previous_report_date') }}</div>
+          {% endif %}
+          {% if comparison.get('current_report_date') %}
+          <div class="summary-chip">Current date: {{ comparison.get('current_report_date') }}</div>
+          {% endif %}
+          <div class="summary-chip">Previous eligible: {{ comparison.get('previous_eligible_count', 0) }}</div>
+          <div class="summary-chip">Current eligible: {{ comparison.get('current_eligible_count', 0) }}</div>
+          <div class="summary-chip">Matched crew: {{ comparison.get('matched_count', 0) }}</div>
+        </div>
+        <div class="table-wrap">
+          <table class="paged">
+            <thead>
+              <tr>
+                <th>Rank</th>
+                <th>Crew Name</th>
+                <th>Photo</th>
+                <th>Previous Runs</th>
+                <th>Current Runs</th>
+                <th>Previous Score</th>
+                <th>Current Score</th>
+                <th>Score Change</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in comparison.get('rows', []) %}
+              <tr>
+                <td>{{ row.get('rank', loop.index) }}</td>
+                <td><span class="employee-data-pill employee-data-pill-name">{{ row.get('crew_name', '') }}</span></td>
+                <td>
+                  <form method="post" action="/top-performer/photo" enctype="multipart/form-data" class="top-performer-photo-form">
+                    <input type="hidden" name="crew_name" value="{{ row.get('crew_name', '') }}" />
+                    {% if row.get('photo_url') %}
+                    <img class="top-performer-table-photo" src="{{ row.get('photo_url') }}" alt="{{ row.get('crew_name', '') }}" />
+                    {% endif %}
+                    <input type="file" name="photo_file" accept=".png,.jpg,.jpeg,.webp" required />
+                    <button type="submit" class="ghost small" data-confirm-label="save this employee photo to the performer card">Save Photo</button>
+                  </form>
+                </td>
+                <td>{{ row.get('previous_runs', '') }}</td>
+                <td>{{ row.get('current_runs', '') }}</td>
+                <td>{{ row.get('previous_score', '') }}</td>
+                <td>{{ row.get('current_score', '') }}</td>
+                <td>{{ row.get('score_change', '') }}</td>
+                <td>{{ row.get('status', '') }}</td>
+              </tr>
+              {% endfor %}
+              {% if not comparison.get('rows') %}
+              <tr>
+                <td colspan="9">No comparison rows found for the current minimum runs value.</td>
+              </tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      {% endif %}
+    </main>
+  </div>
+  <script src="/static/sidebar-toggle.js"></script>
+  <script src="/static/table-pager.js"></script>
+  <script src="/static/table-export.js"></script>
+  <script src="/static/button-confirm.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script>
+    (() => {
+      const buttons = Array.from(document.querySelectorAll('.top-performer-poster-download'));
+      if (!buttons.length) return;
+
+      const sanitizeFilename = (value, fallback = 'top_performer_poster') => {
+        const cleaned = String(value || '')
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '_')
+          .replace(/^_+|_+$/g, '');
+        return cleaned || fallback;
+      };
+
+      const exportPoster = async (button) => {
+        const targetId = button.dataset.exportTarget || '';
+        const format = button.dataset.exportFormat || 'jpeg';
+        const title = button.dataset.exportTitle || 'BEST PERFORMERS';
+        const target = document.getElementById(targetId);
+        if (!target || typeof html2canvas !== 'function') {
+          window.alert('Poster export is not ready yet.');
+          return;
+        }
+
+        const originalText = button.textContent;
+        button.disabled = true;
+        button.textContent = format === 'pdf' ? 'Preparing PDF...' : 'Preparing JPEG...';
+        try {
+          target.classList.add('export-capture');
+          const canvas = await html2canvas(target, {
+            backgroundColor: '#10245d',
+            scale: 3,
+            useCORS: true,
+          });
+          const imageData = canvas.toDataURL('image/jpeg', 0.95);
+          const filename = sanitizeFilename(title);
+
+          if (format === 'pdf') {
+            const { jsPDF } = window.jspdf || {};
+            if (!jsPDF) {
+              throw new Error('PDF library not loaded.');
+            }
+            const pdf = new jsPDF({
+              orientation: canvas.width >= canvas.height ? 'landscape' : 'portrait',
+              unit: 'px',
+              format: [canvas.width, canvas.height],
+            });
+            pdf.addImage(imageData, 'JPEG', 0, 0, canvas.width, canvas.height);
+            pdf.save(`${filename}.pdf`);
+          } else {
+            const link = document.createElement('a');
+            link.href = imageData;
+            link.download = `${filename}.jpeg`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+          }
+        } catch (error) {
+          console.error(error);
+          window.alert('Poster export failed.');
+        } finally {
+          target.classList.remove('export-capture');
+          button.disabled = false;
+          button.textContent = originalText;
+        }
+      };
+
+
+    (() => {
+      const gatedForms = document.querySelectorAll('[data-password-gated-form]');
+      gatedForms.forEach((form) => {
+        const passwordInput = form.querySelector('[data-password-gated-input]');
+        const submitButton = form.querySelector('[data-password-gated-button]');
+        if (!passwordInput || !submitButton) {
+          return;
+        }
+        const requiredCode = form.dataset.passwordGatedCode || '11111';
+        const syncButtonState = () => {
+          submitButton.disabled = passwordInput.value.trim() !== requiredCode;
+        };
+        passwordInput.addEventListener('input', syncButtonState);
+        syncButtonState();
+      });
+    })();
+
+      buttons.forEach((button) => {
+        button.addEventListener('click', () => {
+          const format = button.dataset.exportFormat || 'jpeg';
+          const proceed = window.confirm(`Download performer poster as ${format.toUpperCase()}?`);
+          if (!proceed) {
+            return;
+          }
+          exportPoster(button);
+        });
+      });
+    })();
+  </script>
+</body>
+</html>
