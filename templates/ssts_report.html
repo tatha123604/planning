@@ -56,12 +56,17 @@
           <strong class="metric-value">{{ latest_summary.total_rakes }}</strong>
           <p>Latest successfully stored snapshot.</p>
         </article>
-        <article class="card metric-card">
+        <article class="card metric-card metric-card-online">
+          <span class="metric-label">Online Now</span>
+          <strong class="metric-value">{{ latest_summary.online_now_count }}</strong>
+          <p>Rakes currently active within your offline threshold.</p>
+        </article>
+        <article class="card metric-card metric-card-offline">
           <span class="metric-label">Offline &gt; 2 Hours</span>
           <strong class="metric-value">{{ latest_summary.offline_count }}</strong>
           <p>Rakes currently considered offline by your rule.</p>
         </article>
-        <article class="card metric-card">
+        <article class="card metric-card metric-card-recovery">
           <span class="metric-label">Recently Came Online</span>
           <strong class="metric-value">{{ latest_summary.recently_online_count }}</strong>
           <p>Was offline for more than 5 hours, now active in the latest snapshot.</p>
@@ -128,46 +133,11 @@
                   <td>{{ row.phone }}</td>
                   <td>{{ row.contact }}</td>
                   <td>{{ row.lastupdate_label }}</td>
-                  <td>{{ row.offline_hours }}</td>
+                  <td>{{ row.offline_duration }}</td>
                 </tr>
                 {% else %}
                 <tr>
                   <td colspan="6">No current offline rakes.</td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        </details>
-      </section>
-
-      <section class="card collapsible">
-        <details open>
-          <summary>Last Day Offline Rakes (Previous-Day Snapshot, Last Update &gt; 2 Hours)</summary>
-          {% if previous_day_run %}
-          <p>Reference snapshot: {{ previous_day_run_label }}</p>
-          {% endif %}
-          <div class="table-wrap">
-            <table class="employee-table paged">
-              <thead>
-                <tr>
-                  <th>Rake No</th>
-                  <th>Device ID</th>
-                  <th>Last Update</th>
-                  <th>Offline Hours</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for row in previous_day_offline %}
-                <tr>
-                  <td>{{ row.name }}</td>
-                  <td>{{ row.uniqueid }}</td>
-                  <td>{{ row.lastupdate_label }}</td>
-                  <td>{{ row.offline_hours }}</td>
-                </tr>
-                {% else %}
-                <tr>
-                  <td colspan="4">No previous-day offline snapshot available yet.</td>
                 </tr>
                 {% endfor %}
               </tbody>
@@ -195,7 +165,7 @@
                   <td>{{ row.name }}</td>
                   <td>{{ row.uniqueid }}</td>
                   <td>{{ row.lastupdate_label }}</td>
-                  <td>{{ row.offline_hours }}</td>
+                  <td>{{ row.offline_duration }}</td>
                 </tr>
                 {% else %}
                 <tr>
@@ -208,7 +178,7 @@
         </details>
       </section>
 
-      <section class="card collapsible">
+      <section class="card collapsible ssts-recovery-section">
         <details open>
           <summary>Recently Came Online (Previously Offline &gt; 5 Hours)</summary>
           <div class="table-wrap">
@@ -229,8 +199,8 @@
                   <td>{{ row.name }}</td>
                   <td>{{ row.uniqueid }}</td>
                   <td>{{ row.lastupdate_label }}</td>
-                  <td>{{ row.offline_hours }}</td>
-                  <td>{{ row.previous_offline_hours }}</td>
+                  <td>{{ row.offline_duration }}</td>
+                  <td>{{ row.previous_offline_duration }}</td>
                   <td>{{ row.previous_seen }}</td>
                 </tr>
                 {% else %}
