@@ -967,16 +967,11 @@ def _format_duration(minutes: int | None) -> str | None:
     if minutes is None:
         return None
     total_minutes = max(0, minutes)
-    if total_minutes >= 24 * 60:
-        days = total_minutes // (24 * 60)
-        hours = (total_minutes % (24 * 60)) // 60
-        mins = total_minutes % 60
-        return f"{days}d {hours}h {mins}m"
-    if total_minutes >= 60:
-        hours = total_minutes // 60
-        mins = total_minutes % 60
+    hours = total_minutes // 60
+    mins = total_minutes % 60
+    if hours > 0:
         return f"{hours}h {mins}m"
-    return f"{total_minutes}m"
+    return f"{mins}m"
 
 
 def _parse_ssts_timestamp(value: str | None) -> datetime | None:
