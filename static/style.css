@@ -486,8 +486,20 @@ button:hover { filter: brightness(1.05); }
 .ssts-offline-section .employee-table thead th:hover {
   background: linear-gradient(135deg, rgba(108, 30, 30, 0.99), rgba(142, 45, 45, 0.99));
 }
+.ssts-recent-offline-section .employee-table thead th {
+  background: linear-gradient(135deg, rgba(102, 22, 22, 0.98), rgba(152, 44, 44, 0.98));
+}
+.ssts-recent-offline-section .employee-table thead th:hover {
+  background: linear-gradient(135deg, rgba(122, 28, 28, 0.99), rgba(170, 52, 52, 0.99));
+}
 .ssts-recovery-section details > summary {
   color: #e8fff0;
+}
+.ssts-recovery-section .employee-table thead th {
+  background: linear-gradient(135deg, rgba(17, 92, 57, 0.98), rgba(24, 132, 83, 0.98));
+}
+.ssts-recovery-section .employee-table thead th:hover {
+  background: linear-gradient(135deg, rgba(22, 108, 67, 0.99), rgba(31, 148, 95, 0.99));
 }
 .card + .card {
   margin-top: 18px;
