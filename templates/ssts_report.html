@@ -209,7 +209,7 @@
 
       <section class="card collapsible">
         <details open>
-          <summary>Last Day Recently Offline Rakes (2 Hours to 1 Day)</summary>
+          <summary>Current Recently Offline Rakes (2 Hours to 1 Day)</summary>
           <div class="table-wrap">
             <table class="employee-table paged">
               <thead>
@@ -221,7 +221,7 @@
                 </tr>
               </thead>
               <tbody>
-                {% for row in previous_day_recently_offline %}
+                {% for row in current_recently_offline %}
                 <tr>
                   <td>{{ row.name }}</td>
                   <td>{{ row.uniqueid }}</td>
@@ -230,7 +230,7 @@
                 </tr>
                 {% else %}
                 <tr>
-                  <td colspan="4">No previous-day recently offline rakes found.</td>
+                  <td colspan="4">No current recently offline rakes found.</td>
                 </tr>
                 {% endfor %}
               </tbody>
