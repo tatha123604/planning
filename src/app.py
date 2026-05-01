@@ -1473,8 +1473,33 @@ def _ssts_filter_snapshots(rows: list[SstsDeviceSnapshot]) -> list[SstsDeviceSna
     return [row for row in rows if not _ssts_name_is_excluded(row.name)]
 
 
+def _ssts_latest_remarks_by_device(session: Session) -> dict[int, str]:
+    rows = session.exec(
+        select(SstsDeviceSnapshot).order_by(SstsDeviceSnapshot.observed_at.desc(), SstsDeviceSnapshot.id.desc())
+    ).all()
+    latest: dict[int, str] = {}
+    for row in rows:
+        if row.device_id in latest:
+            continue
+        text_value = str(row.remark or "").strip()
+        if text_value:
+            latest[row.device_id] = text_value
+    return latest
+
+
+def _update_ssts_snapshot_remark(session: Session, snapshot_id: int, remark: str) -> str:
+    row = session.get(SstsDeviceSnapshot, snapshot_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="SSTS row not found.")
+    row.remark = remark.strip() or None
+    session.add(row)
+    session.commit()
+    return row.remark or ""
+
+
 def _snapshot_to_row(snapshot: SstsDeviceSnapshot) -> dict[str, object]:
     return {
+        "snapshot_id": snapshot.id or 0,
         "device_id": snapshot.device_id,
         "name": snapshot.name,
         "uniqueid": snapshot.uniqueid or "",
@@ -1484,6 +1509,7 @@ def _snapshot_to_row(snapshot: SstsDeviceSnapshot) -> dict[str, object]:
         "lastupdate_label": _format_ist(snapshot.lastupdate),
         "offline_minutes": snapshot.offline_minutes,
         "offline_duration": _format_duration(snapshot.offline_minutes),
+        "remark": snapshot.remark or "",
     }
 
 
@@ -1542,6 +1568,7 @@ def refresh_ssts_snapshot(session: Session, force: bool = False) -> dict[str, ob
     observed_at = now_utc.replace(second=0, microsecond=0)
     try:
         devices = [device for device in fetch_ssts_devices() if not _ssts_name_is_excluded(str(device.get("name") or ""))]
+        latest_remarks = _ssts_latest_remarks_by_device(session)
         run = SstsSnapshotRun(
             observed_at=observed_at,
             source_count=len(devices),
@@ -1553,12 +1580,13 @@ def refresh_ssts_snapshot(session: Session, force: bool = False) -> dict[str, ob
         snapshots: list[SstsDeviceSnapshot] = []
         for device in devices:
             lastupdate = _parse_ssts_timestamp(str(device.get("lastupdate") or ""))
+            device_id = int(device.get("id") or 0)
             snapshots.append(
                 SstsDeviceSnapshot(
                     run_id=run.id or 0,
                     observed_at=observed_at,
                     observed_day=observed_at.date(),
-                    device_id=int(device.get("id") or 0),
+                    device_id=device_id,
                     name=str(device.get("name") or "Unknown"),
                     uniqueid=str(device.get("uniqueid") or "") or None,
                     phone=str(device.get("phone") or "") or None,
@@ -1566,6 +1594,7 @@ def refresh_ssts_snapshot(session: Session, force: bool = False) -> dict[str, ob
                     lastupdate=lastupdate,
                     offline_minutes=_minutes_since(observed_at, lastupdate),
                     attributes=str(device.get("attributes") or "") or None,
+                    remark=latest_remarks.get(device_id),
                 )
             )
         session.add_all(snapshots)
@@ -6034,6 +6063,26 @@ def ssts_report_page(
             **context,
         },
     )
+
+
+@app.post("/ssts-report/remark")
+async def update_ssts_report_remark(
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    try:
+        payload = await request.json()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid request payload.") from exc
+
+    try:
+        snapshot_id = int(payload.get("snapshot_id"))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid snapshot id.") from exc
+
+    remark = str(payload.get("remark") or "")
+    saved_remark = _update_ssts_snapshot_remark(session, snapshot_id, remark)
+    return JSONResponse({"ok": True, "remark": saved_remark})
 
 
 @app.get("/reports/cli-distribution.xlsx")

@@ -168,6 +168,10 @@ def init_db() -> None:
                 "ON sstsdevicesnapshot (observed_day, offline_minutes);"
             )
         )
+        ssts_cols = conn.execute(text("PRAGMA table_info(sstsdevicesnapshot);")).fetchall()
+        ssts_names = {c[1] for c in ssts_cols}
+        if ssts_cols and "remark" not in ssts_names:
+            conn.execute(text("ALTER TABLE sstsdevicesnapshot ADD COLUMN remark TEXT;"))
 
 
 def get_session() -> Session:

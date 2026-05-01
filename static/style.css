@@ -501,6 +501,33 @@ button:hover { filter: brightness(1.05); }
 .ssts-recovery-section .employee-table thead th:hover {
   background: linear-gradient(135deg, rgba(22, 108, 67, 0.99), rgba(31, 148, 95, 0.99));
 }
+.ssts-remark-cell {
+  min-width: 240px;
+}
+.ssts-remark-editor {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ssts-remark-input {
+  flex: 1 1 auto;
+  min-width: 120px;
+}
+.ssts-remark-save {
+  flex: 0 0 auto;
+}
+.ssts-remark-status {
+  min-width: 44px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #8fdcff;
+}
+.ssts-remark-status[data-state="saved"] {
+  color: #9ff7c9;
+}
+.ssts-remark-status[data-state="error"] {
+  color: #ffb3b3;
+}
 .card + .card {
   margin-top: 18px;
 }
