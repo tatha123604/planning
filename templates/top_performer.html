@@ -435,11 +435,73 @@
         button.disabled = true;
         button.textContent = format === 'pdf' ? 'Preparing PDF...' : 'Preparing JPEG...';
         try {
+          const waitForImages = async (root) => {
+            const images = Array.from(root.querySelectorAll('img'));
+            await Promise.all(images.map((img) => {
+              if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+              return new Promise((resolve) => {
+                img.addEventListener('load', resolve, { once: true });
+                img.addEventListener('error', resolve, { once: true });
+              });
+            }));
+          };
+          await waitForImages(target);
+          if (document.fonts && document.fonts.ready) {
+            await document.fonts.ready;
+          }
+          const exportWidth = target.scrollWidth;
+          const exportHeight = target.scrollHeight;
           target.classList.add('export-capture');
           const canvas = await html2canvas(target, {
             backgroundColor: '#10245d',
             scale: 3,
             useCORS: true,
+            width: exportWidth,
+            height: exportHeight,
+            windowWidth: exportWidth,
+            windowHeight: exportHeight,
+            onclone: (clonedDoc) => {
+              const clonedTarget = clonedDoc.getElementById(targetId);
+              if (!clonedTarget) return;
+              clonedTarget.classList.add('export-capture');
+              clonedTarget.style.width = `${exportWidth}px`;
+              clonedTarget.style.height = `${exportHeight}px`;
+              const style = clonedDoc.createElement('style');
+              style.textContent = `
+                .top-performer-poster.export-capture,
+                .comparison-performer-poster.export-capture {
+                  color: #f6e8a7 !important;
+                  -webkit-print-color-adjust: exact !important;
+                  print-color-adjust: exact !important;
+                }
+                .top-performer-poster.export-capture .top-performer-poster-head h3,
+                .comparison-performer-poster.export-capture .top-performer-poster-head h3 {
+                  color: #ffd86b !important;
+                }
+                .top-performer-poster.export-capture .top-performer-poster-head p,
+                .comparison-performer-poster.export-capture .top-performer-poster-head p {
+                  color: #eef4ff !important;
+                }
+                .top-performer-poster.export-capture .top-performer-copy strong,
+                .comparison-performer-poster.export-capture .top-performer-copy strong {
+                  color: #ffe179 !important;
+                }
+                .top-performer-poster.export-capture .top-performer-copy span,
+                .comparison-performer-poster.export-capture .top-performer-copy span,
+                .top-performer-poster.export-capture .top-performer-rankline,
+                .comparison-performer-poster.export-capture .top-performer-rankline,
+                .top-performer-poster.export-capture .top-performer-poster-foot,
+                .comparison-performer-poster.export-capture .top-performer-poster-foot {
+                  color: #ecf2ff !important;
+                }
+                .top-performer-poster.export-capture .top-performer-title-star-image,
+                .comparison-performer-poster.export-capture .top-performer-title-star-image {
+                  opacity: 1 !important;
+                  filter: none !important;
+                }
+              `;
+              clonedDoc.head.appendChild(style);
+            },
           });
           const imageData = canvas.toDataURL('image/jpeg', 0.95);
           const filename = sanitizeFilename(title);
