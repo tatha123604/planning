@@ -196,3 +196,4 @@ class SstsDeviceSnapshot(SQLModel, table=True):
     lastupdate: datetime | None = Field(default=None, index=True)
     offline_minutes: int | None = None
     attributes: str | None = None
+    remark: str | None = None
