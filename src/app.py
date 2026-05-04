@@ -1450,17 +1450,27 @@ def _minutes_since(now_utc: datetime, lastupdate: datetime | None) -> int | None
     return max(0, int(diff.total_seconds() // 60))
 
 
-def _ssts_is_offline(snapshot: SstsDeviceSnapshot) -> bool:
-    return (snapshot.offline_minutes or 0) > SSTS_OFFLINE_THRESHOLD_MINUTES
+def _snapshot_offline_minutes(
+    snapshot: SstsDeviceSnapshot,
+    reference_time: datetime | None = None,
+) -> int | None:
+    reference_utc = _ensure_utc(reference_time or snapshot.observed_at)
+    if reference_utc is None:
+        return snapshot.offline_minutes
+    return _minutes_since(reference_utc, snapshot.lastupdate)
 
 
-def _ssts_is_recently_offline(snapshot: SstsDeviceSnapshot) -> bool:
-    minutes = snapshot.offline_minutes or 0
+def _ssts_is_offline(snapshot: SstsDeviceSnapshot, reference_time: datetime | None = None) -> bool:
+    return (_snapshot_offline_minutes(snapshot, reference_time) or 0) > SSTS_OFFLINE_THRESHOLD_MINUTES
+
+
+def _ssts_is_recently_offline(snapshot: SstsDeviceSnapshot, reference_time: datetime | None = None) -> bool:
+    minutes = _snapshot_offline_minutes(snapshot, reference_time) or 0
     return SSTS_OFFLINE_THRESHOLD_MINUTES < minutes < SSTS_RECENT_OFFLINE_MAX_MINUTES
 
 
-def _ssts_is_online_now(snapshot: SstsDeviceSnapshot) -> bool:
-    return not _ssts_is_offline(snapshot)
+def _ssts_is_online_now(snapshot: SstsDeviceSnapshot, reference_time: datetime | None = None) -> bool:
+    return not _ssts_is_offline(snapshot, reference_time)
 
 
 def _ssts_name_is_excluded(name: str | None) -> bool:
@@ -1496,7 +1506,8 @@ def _update_ssts_snapshot_remark(session: Session, snapshot_id: int, remark: str
     return row.remark or ""
 
 
-def _snapshot_to_row(snapshot: SstsDeviceSnapshot) -> dict[str, object]:
+def _snapshot_to_row(snapshot: SstsDeviceSnapshot, reference_time: datetime | None = None) -> dict[str, object]:
+    offline_minutes = _snapshot_offline_minutes(snapshot, reference_time)
     return {
         "snapshot_id": snapshot.id or 0,
         "device_id": snapshot.device_id,
@@ -1506,15 +1517,16 @@ def _snapshot_to_row(snapshot: SstsDeviceSnapshot) -> dict[str, object]:
         "contact": snapshot.contact or "",
         "lastupdate": snapshot.lastupdate,
         "lastupdate_label": _format_ist(snapshot.lastupdate),
-        "offline_minutes": snapshot.offline_minutes,
-        "offline_duration": _format_duration(snapshot.offline_minutes),
+        "offline_minutes": offline_minutes,
+        "offline_duration": _format_duration(offline_minutes),
         "remark": snapshot.remark or "",
     }
 
 
-def _ssts_sort_key(snapshot: SstsDeviceSnapshot) -> tuple[int, int, str]:
+def _ssts_sort_key(snapshot: SstsDeviceSnapshot, reference_time: datetime | None = None) -> tuple[int, int, str]:
+    offline_minutes = _snapshot_offline_minutes(snapshot, reference_time)
     return (
-        -(snapshot.offline_minutes or -1),
+        -(offline_minutes or -1),
         snapshot.device_id,
         snapshot.name.lower(),
     )
@@ -1652,6 +1664,7 @@ def build_ssts_report_context(session: Session) -> dict[str, object]:
     latest_snapshots = _ssts_filter_snapshots(_snapshots_for_run(session, latest_run.id or 0))
     latest_map = {row.device_id: row for row in latest_snapshots}
     latest_run_time = _ensure_utc(latest_run.observed_at)
+    current_reference_time = _utc_now()
     previous_day_cutoff = latest_run_time - timedelta(days=1)
     previous_day_run = next(
         (run for run in runs if run.fetch_status == "ok" and _ensure_utc(run.observed_at) <= previous_day_cutoff),
@@ -1659,16 +1672,20 @@ def build_ssts_report_context(session: Session) -> dict[str, object]:
     )
     previous_day_snapshots = _ssts_filter_snapshots(_snapshots_for_run(session, previous_day_run.id or 0)) if previous_day_run else []
 
-    current_offline = [_snapshot_to_row(row) for row in sorted(latest_snapshots, key=_ssts_sort_key) if _ssts_is_offline(row)]
+    current_offline = [
+        _snapshot_to_row(row, reference_time=current_reference_time)
+        for row in sorted(latest_snapshots, key=lambda item: _ssts_sort_key(item, current_reference_time))
+        if _ssts_is_offline(row, reference_time=current_reference_time)
+    ]
     online_now = [
-        _snapshot_to_row(row)
+        _snapshot_to_row(row, reference_time=current_reference_time)
         for row in sorted(latest_snapshots, key=lambda item: (item.name.lower(), item.device_id))
-        if _ssts_is_online_now(row)
+        if _ssts_is_online_now(row, reference_time=current_reference_time)
     ]
     current_recently_offline = [
-        _snapshot_to_row(row)
-        for row in sorted(latest_snapshots, key=_ssts_sort_key)
-        if _ssts_is_recently_offline(row)
+        _snapshot_to_row(row, reference_time=current_reference_time)
+        for row in sorted(latest_snapshots, key=lambda item: _ssts_sort_key(item, current_reference_time))
+        if _ssts_is_recently_offline(row, reference_time=current_reference_time)
     ]
     previous_day_offline = [
         _snapshot_to_row(row)
@@ -1710,7 +1727,7 @@ def build_ssts_report_context(session: Session) -> dict[str, object]:
 
     recently_online = []
     for device_id, latest_row in latest_map.items():
-        if not _ssts_is_online_now(latest_row):
+        if not _ssts_is_online_now(latest_row, reference_time=current_reference_time):
             continue
         history = history_by_device.get(device_id, [])
         if len(history) < 2:
@@ -1721,7 +1738,7 @@ def build_ssts_report_context(session: Session) -> dict[str, object]:
             continue
         if (previous_row.offline_minutes or 0) <= SSTS_PREVIOUSLY_OFFLINE_THRESHOLD_MINUTES:
             continue
-        row = _snapshot_to_row(latest_row)
+        row = _snapshot_to_row(latest_row, reference_time=current_reference_time)
         row["recovery_seen"] = _format_ist(recovery_row.observed_at)
         row["recovery_lastupdate_label"] = _format_ist(recovery_row.lastupdate)
         row["recovery_offline_duration"] = _format_duration(recovery_row.offline_minutes)
@@ -1735,7 +1752,10 @@ def build_ssts_report_context(session: Session) -> dict[str, object]:
 
     return {
         "latest_run": latest_run,
-        "latest_rows": [_snapshot_to_row(row) for row in sorted(latest_snapshots, key=_ssts_sort_key)],
+        "latest_rows": [
+            _snapshot_to_row(row, reference_time=current_reference_time)
+            for row in sorted(latest_snapshots, key=lambda item: _ssts_sort_key(item, current_reference_time))
+        ],
         "online_now": online_now,
         "current_offline": current_offline,
         "current_recently_offline": current_recently_offline,
