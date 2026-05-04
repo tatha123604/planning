@@ -797,6 +797,7 @@ SSTS_RECENTLY_ONLINE_THRESHOLD_MINUTES = 5
 SSTS_PREVIOUSLY_OFFLINE_THRESHOLD_MINUTES = 300
 SSTS_RECENT_OFFLINE_MAX_MINUTES = 24 * 60
 SSTS_REFRESH_INTERVAL_MINUTES = 30
+SSTS_EXCLUDED_RAKE_NAMES = {"TEST1", "TEST2"}
 IST = timezone(timedelta(hours=5, minutes=30))
 
 
@@ -1473,8 +1474,42 @@ def _ssts_is_online_now(snapshot: SstsDeviceSnapshot) -> bool:
     return minutes <= SSTS_RECENTLY_ONLINE_THRESHOLD_MINUTES
 
 
+def _ssts_name_is_excluded(name: str | None) -> bool:
+    normalized = " ".join(str(name or "").strip().upper().split())
+    return normalized in SSTS_EXCLUDED_RAKE_NAMES
+
+
+def _ssts_filter_snapshots(rows: list[SstsDeviceSnapshot]) -> list[SstsDeviceSnapshot]:
+    return [row for row in rows if not _ssts_name_is_excluded(row.name)]
+
+
+def _ssts_latest_remarks_by_device(session: Session) -> dict[int, str]:
+    rows = session.exec(
+        select(SstsDeviceSnapshot).order_by(SstsDeviceSnapshot.observed_at.desc(), SstsDeviceSnapshot.id.desc())
+    ).all()
+    latest: dict[int, str] = {}
+    for row in rows:
+        if row.device_id in latest:
+            continue
+        text_value = str(row.remark or "").strip()
+        if text_value:
+            latest[row.device_id] = text_value
+    return latest
+
+
+def _update_ssts_snapshot_remark(session: Session, snapshot_id: int, remark: str) -> str:
+    row = session.get(SstsDeviceSnapshot, snapshot_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="SSTS row not found.")
+    row.remark = remark.strip() or None
+    session.add(row)
+    session.commit()
+    return row.remark or ""
+
+
 def _snapshot_to_row(snapshot: SstsDeviceSnapshot) -> dict[str, object]:
     return {
+        "snapshot_id": snapshot.id or 0,
         "device_id": snapshot.device_id,
         "name": snapshot.name,
         "uniqueid": snapshot.uniqueid or "",
@@ -1484,6 +1519,7 @@ def _snapshot_to_row(snapshot: SstsDeviceSnapshot) -> dict[str, object]:
         "lastupdate_label": _format_ist(snapshot.lastupdate),
         "offline_minutes": snapshot.offline_minutes,
         "offline_duration": _format_duration(snapshot.offline_minutes),
+        "remark": snapshot.remark or "",
     }
 
 
@@ -1541,7 +1577,8 @@ def refresh_ssts_snapshot(session: Session, force: bool = False) -> dict[str, ob
             }
     observed_at = now_utc.replace(second=0, microsecond=0)
     try:
-        devices = fetch_ssts_devices()
+        devices = [device for device in fetch_ssts_devices() if not _ssts_name_is_excluded(str(device.get("name") or ""))]
+        latest_remarks = _ssts_latest_remarks_by_device(session)
         run = SstsSnapshotRun(
             observed_at=observed_at,
             source_count=len(devices),
@@ -1553,12 +1590,13 @@ def refresh_ssts_snapshot(session: Session, force: bool = False) -> dict[str, ob
         snapshots: list[SstsDeviceSnapshot] = []
         for device in devices:
             lastupdate = _parse_ssts_timestamp(str(device.get("lastupdate") or ""))
+            device_id = int(device.get("id") or 0)
             snapshots.append(
                 SstsDeviceSnapshot(
                     run_id=run.id or 0,
                     observed_at=observed_at,
                     observed_day=observed_at.date(),
-                    device_id=int(device.get("id") or 0),
+                    device_id=device_id,
                     name=str(device.get("name") or "Unknown"),
                     uniqueid=str(device.get("uniqueid") or "") or None,
                     phone=str(device.get("phone") or "") or None,
@@ -1566,6 +1604,7 @@ def refresh_ssts_snapshot(session: Session, force: bool = False) -> dict[str, ob
                     lastupdate=lastupdate,
                     offline_minutes=_minutes_since(observed_at, lastupdate),
                     attributes=str(device.get("attributes") or "") or None,
+                    remark=latest_remarks.get(device_id),
                 )
             )
         session.add_all(snapshots)
@@ -1621,7 +1660,7 @@ def build_ssts_report_context(session: Session) -> dict[str, object]:
             "daily_summary": [],
         }
 
-    latest_snapshots = _snapshots_for_run(session, latest_run.id or 0)
+    latest_snapshots = _ssts_filter_snapshots(_snapshots_for_run(session, latest_run.id or 0))
     latest_map = {row.device_id: row for row in latest_snapshots}
     latest_run_time = _ensure_utc(latest_run.observed_at)
     previous_day_cutoff = latest_run_time - timedelta(days=1)
@@ -1629,7 +1668,7 @@ def build_ssts_report_context(session: Session) -> dict[str, object]:
         (run for run in runs if run.fetch_status == "ok" and _ensure_utc(run.observed_at) <= previous_day_cutoff),
         None,
     )
-    previous_day_snapshots = _snapshots_for_run(session, previous_day_run.id or 0) if previous_day_run else []
+    previous_day_snapshots = _ssts_filter_snapshots(_snapshots_for_run(session, previous_day_run.id or 0)) if previous_day_run else []
 
     current_offline = [_snapshot_to_row(row) for row in sorted(latest_snapshots, key=_ssts_sort_key) if _ssts_is_offline(row)]
     online_now = [
@@ -1660,7 +1699,7 @@ def build_ssts_report_context(session: Session) -> dict[str, object]:
         latest_by_day.setdefault(run.observed_at.date(), run)
     daily_summary = []
     for day, run in sorted(latest_by_day.items(), key=lambda item: item[0], reverse=True)[:7]:
-        rows = _snapshots_for_run(session, run.id or 0)
+        rows = _ssts_filter_snapshots(_snapshots_for_run(session, run.id or 0))
         offline_count = sum(1 for row in rows if _ssts_is_offline(row))
         recent_offline_count = sum(1 for row in rows if _ssts_is_recently_offline(row))
         daily_summary.append(
@@ -1674,7 +1713,7 @@ def build_ssts_report_context(session: Session) -> dict[str, object]:
         )
 
     recovery_runs = [run for run in runs if run.fetch_status == "ok" and _ensure_utc(run.observed_at) <= latest_run_time]
-    snapshots_by_run = {run.id: _snapshots_for_run(session, run.id or 0) for run in recovery_runs}
+    snapshots_by_run = {run.id: _ssts_filter_snapshots(_snapshots_for_run(session, run.id or 0)) for run in recovery_runs}
     history_by_device: dict[int, list[SstsDeviceSnapshot]] = {}
     for run in sorted(recovery_runs, key=lambda item: item.observed_at):
         for row in snapshots_by_run.get(run.id, []):
@@ -6041,6 +6080,26 @@ def ssts_report_page(
             **context,
         },
     )
+
+
+@app.post("/ssts-report/remark")
+async def update_ssts_report_remark(
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    try:
+        payload = await request.json()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid request payload.") from exc
+
+    try:
+        snapshot_id = int(payload.get("snapshot_id"))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid snapshot id.") from exc
+
+    remark = str(payload.get("remark") or "")
+    saved_remark = _update_ssts_snapshot_remark(session, snapshot_id, remark)
+    return JSONResponse({"ok": True, "remark": saved_remark})
 
 
 @app.get("/reports/cli-distribution.xlsx")
