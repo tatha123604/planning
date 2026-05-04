@@ -193,6 +193,14 @@ def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _ensure_utc(dt: datetime | None) -> datetime | None:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 def _parse_ssts_timestamp(value: str | None) -> datetime | None:
     if not value:
         return None
@@ -205,7 +213,7 @@ def _parse_ssts_timestamp(value: str | None) -> datetime | None:
 def _minutes_since(now_utc: datetime, lastupdate: datetime | None) -> int | None:
     if not lastupdate:
         return None
-    diff = now_utc - lastupdate
+    diff = now_utc - _ensure_utc(lastupdate)
     return max(0, int(diff.total_seconds() // 60))
 
 
@@ -219,7 +227,10 @@ def _ssts_is_recently_offline(snapshot: SstsDeviceSnapshot) -> bool:
 
 
 def _ssts_is_online_now(snapshot: SstsDeviceSnapshot) -> bool:
-    return (snapshot.offline_minutes or 10**9) <= SSTS_RECENTLY_ONLINE_THRESHOLD_MINUTES
+    minutes = snapshot.offline_minutes
+    if minutes is None:
+        return False
+    return minutes <= SSTS_RECENTLY_ONLINE_THRESHOLD_MINUTES
 
 
 def _snapshot_to_row(snapshot: SstsDeviceSnapshot) -> dict[str, object]:
@@ -230,8 +241,8 @@ def _snapshot_to_row(snapshot: SstsDeviceSnapshot) -> dict[str, object]:
         "phone": snapshot.phone or "",
         "contact": snapshot.contact or "",
         "lastupdate": snapshot.lastupdate,
-        "lastupdate_label": snapshot.lastupdate.astimezone(timezone.utc).strftime("%d-%m-%Y %H:%M UTC")
-        if snapshot.lastupdate
+        "lastupdate_label": _ensure_utc(snapshot.lastupdate).strftime("%d-%m-%Y %H:%M UTC")
+        if _ensure_utc(snapshot.lastupdate)
         else "No signal",
         "offline_minutes": snapshot.offline_minutes,
         "offline_hours": round((snapshot.offline_minutes or 0) / 60, 1) if snapshot.offline_minutes is not None else None,
@@ -281,13 +292,14 @@ def refresh_ssts_snapshot(session: Session, force: bool = False) -> dict[str, ob
     now_utc = _utc_now()
     latest_run = session.exec(select(SstsSnapshotRun).order_by(SstsSnapshotRun.observed_at.desc())).first()
     if latest_run and not force:
-        age_minutes = int((now_utc - latest_run.observed_at).total_seconds() // 60)
+        latest_run_time = _ensure_utc(latest_run.observed_at)
+        age_minutes = int((now_utc - latest_run_time).total_seconds() // 60)
         if age_minutes < SSTS_REFRESH_INTERVAL_MINUTES and latest_run.fetch_status == "ok":
             return {
                 "status": "cached",
                 "observed_at": latest_run.observed_at,
                 "source_count": latest_run.source_count,
-                "message": f"Using last sync from {latest_run.observed_at.astimezone(timezone.utc).strftime('%d-%m-%Y %H:%M UTC')}.",
+                "message": f"Using last sync from {latest_run_time.strftime('%d-%m-%Y %H:%M UTC')}.",
             }
     observed_at = now_utc.replace(second=0, microsecond=0)
     try:
@@ -373,9 +385,10 @@ def build_ssts_report_context(session: Session) -> dict[str, object]:
 
     latest_snapshots = _snapshots_for_run(session, latest_run.id or 0)
     latest_map = {row.device_id: row for row in latest_snapshots}
-    previous_day_cutoff = latest_run.observed_at - timedelta(days=1)
+    latest_run_time = _ensure_utc(latest_run.observed_at)
+    previous_day_cutoff = latest_run_time - timedelta(days=1)
     previous_day_run = next(
-        (run for run in runs if run.fetch_status == "ok" and run.observed_at <= previous_day_cutoff),
+        (run for run in runs if run.fetch_status == "ok" and _ensure_utc(run.observed_at) <= previous_day_cutoff),
         None,
     )
     previous_day_snapshots = _snapshots_for_run(session, previous_day_run.id or 0) if previous_day_run else []
@@ -410,21 +423,17 @@ def build_ssts_report_context(session: Session) -> dict[str, object]:
         daily_summary.append(
             {
                 "day": day.strftime("%d-%m-%Y"),
-                "observed_at": run.observed_at.astimezone(timezone.utc).strftime("%d-%m-%Y %H:%M UTC"),
+                "observed_at": _ensure_utc(run.observed_at).strftime("%d-%m-%Y %H:%M UTC"),
                 "total_rakes": len(rows),
                 "offline_count": offline_count,
                 "recent_offline_count": recent_offline_count,
             }
         )
 
-    recent_runs = [
-        run
-        for run in runs
-        if run.fetch_status == "ok" and latest_run.observed_at - timedelta(days=1) <= run.observed_at <= latest_run.observed_at
-    ]
-    snapshots_by_run = {run.id: _snapshots_for_run(session, run.id or 0) for run in recent_runs}
+    recovery_runs = [run for run in runs if run.fetch_status == "ok" and _ensure_utc(run.observed_at) <= latest_run_time]
+    snapshots_by_run = {run.id: _snapshots_for_run(session, run.id or 0) for run in recovery_runs}
     history_by_device: dict[int, list[SstsDeviceSnapshot]] = {}
-    for run in sorted(recent_runs, key=lambda item: item.observed_at):
+    for run in sorted(recovery_runs, key=lambda item: item.observed_at):
         for row in snapshots_by_run.get(run.id, []):
             history_by_device.setdefault(row.device_id, []).append(row)
 
@@ -439,7 +448,7 @@ def build_ssts_report_context(session: Session) -> dict[str, object]:
         if (previous_row.offline_minutes or 0) > SSTS_PREVIOUSLY_OFFLINE_THRESHOLD_MINUTES:
             row = _snapshot_to_row(latest_row)
             row["previous_offline_hours"] = round((previous_row.offline_minutes or 0) / 60, 1)
-            row["previous_seen"] = previous_row.observed_at.astimezone(timezone.utc).strftime("%d-%m-%Y %H:%M UTC")
+            row["previous_seen"] = _ensure_utc(previous_row.observed_at).strftime("%d-%m-%Y %H:%M UTC")
             recently_online.append(row)
     recently_online.sort(key=lambda row: (-float(row.get("previous_offline_hours") or 0), str(row.get("name") or "").lower()))
 
