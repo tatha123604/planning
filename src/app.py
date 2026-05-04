@@ -1460,7 +1460,10 @@ def _ssts_is_recently_offline(snapshot: SstsDeviceSnapshot) -> bool:
 
 
 def _ssts_is_online_now(snapshot: SstsDeviceSnapshot) -> bool:
-    return (snapshot.offline_minutes or 10**9) <= SSTS_RECENTLY_ONLINE_THRESHOLD_MINUTES
+    minutes = snapshot.offline_minutes
+    if minutes is None:
+        return False
+    return minutes <= SSTS_RECENTLY_ONLINE_THRESHOLD_MINUTES
 
 
 def _snapshot_to_row(snapshot: SstsDeviceSnapshot) -> dict[str, object]:
@@ -1663,15 +1666,10 @@ def build_ssts_report_context(session: Session) -> dict[str, object]:
             }
         )
 
-    recent_runs = [
-        run
-        for run in runs
-        if run.fetch_status == "ok"
-        and latest_run_time - timedelta(days=1) <= _ensure_utc(run.observed_at) <= latest_run_time
-    ]
-    snapshots_by_run = {run.id: _snapshots_for_run(session, run.id or 0) for run in recent_runs}
+    recovery_runs = [run for run in runs if run.fetch_status == "ok" and _ensure_utc(run.observed_at) <= latest_run_time]
+    snapshots_by_run = {run.id: _snapshots_for_run(session, run.id or 0) for run in recovery_runs}
     history_by_device: dict[int, list[SstsDeviceSnapshot]] = {}
-    for run in sorted(recent_runs, key=lambda item: item.observed_at):
+    for run in sorted(recovery_runs, key=lambda item: item.observed_at):
         for row in snapshots_by_run.get(run.id, []):
             history_by_device.setdefault(row.device_id, []).append(row)
 
