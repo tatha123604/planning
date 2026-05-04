@@ -90,9 +90,9 @@
         </a>
         <a class="metric-card-link" href="#recently-online-table">
           <article class="card metric-card metric-card-recovery metric-card-clickable">
-            <span class="metric-label">Recently Came Online</span>
+            <span class="metric-label">Recently Back Online</span>
             <strong class="metric-value">{{ latest_summary.recently_online_count }}</strong>
-            <p>Was offline for more than 5 hours, now active in the latest snapshot.</p>
+            <p>Was offline for more than 5 hours in the previous snapshot and is no longer offline.</p>
             <span class="metric-card-footer">Open table</span>
           </article>
         </a>
@@ -258,7 +258,7 @@
 
       <section class="card collapsible ssts-recovery-section" id="recently-online-table">
         <details open>
-          <summary>Recently Came Online (Previously Offline &gt; 5 Hours)</summary>
+          <summary>Recently Back Online (Previously Offline &gt; 5 Hours)</summary>
           <div class="table-wrap">
             <table class="employee-table paged">
               <thead>

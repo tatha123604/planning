@@ -793,7 +793,6 @@ SSTS_API_DEVICE_URL = f"{SSTS_API_BASE_URL}/device"
 SSTS_API_USER = os.getenv("SSTS_API_USER", "srdeeopsdah@gmail.com")
 SSTS_API_PASSWORD = os.getenv("SSTS_API_PASSWORD", "sdah1234")
 SSTS_OFFLINE_THRESHOLD_MINUTES = 120
-SSTS_RECENTLY_ONLINE_THRESHOLD_MINUTES = 5
 SSTS_PREVIOUSLY_OFFLINE_THRESHOLD_MINUTES = 300
 SSTS_RECENT_OFFLINE_MAX_MINUTES = 24 * 60
 SSTS_REFRESH_INTERVAL_MINUTES = 30
@@ -1468,10 +1467,7 @@ def _ssts_is_recently_offline(snapshot: SstsDeviceSnapshot) -> bool:
 
 
 def _ssts_is_online_now(snapshot: SstsDeviceSnapshot) -> bool:
-    minutes = snapshot.offline_minutes
-    if minutes is None:
-        return False
-    return minutes <= SSTS_RECENTLY_ONLINE_THRESHOLD_MINUTES
+    return not _ssts_is_offline(snapshot)
 
 
 def _ssts_name_is_excluded(name: str | None) -> bool:
@@ -1674,7 +1670,7 @@ def build_ssts_report_context(session: Session) -> dict[str, object]:
     online_now = [
         _snapshot_to_row(row)
         for row in sorted(latest_snapshots, key=lambda item: (item.name.lower(), item.device_id))
-        if not _ssts_is_offline(row)
+        if _ssts_is_online_now(row)
     ]
     current_recently_offline = [
         _snapshot_to_row(row)
