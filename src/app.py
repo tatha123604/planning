@@ -1423,13 +1423,6 @@ def _format_ist(dt: datetime | None) -> str:
     return dt_utc.astimezone(IST).strftime("%d-%m-%Y %H:%M IST")
 
 
-def _ist_date(dt: datetime | None) -> date | None:
-    dt_utc = _ensure_utc(dt)
-    if dt_utc is None:
-        return None
-    return dt_utc.astimezone(IST).date()
-
-
 def _format_duration(minutes: int | None) -> str | None:
     if minutes is None:
         return None
@@ -1715,24 +1708,19 @@ def build_ssts_report_context(session: Session) -> dict[str, object]:
         for row in snapshots_by_run.get(run.id, []):
             history_by_device.setdefault(row.device_id, []).append(row)
 
-    latest_ist_day = _ist_date(latest_run.observed_at)
     recently_online = []
-    for device_id, history in history_by_device.items():
-        recovery_pair: tuple[SstsDeviceSnapshot, SstsDeviceSnapshot] | None = None
-        for idx in range(1, len(history)):
-            previous_row = history[idx - 1]
-            current_row = history[idx]
-            if _ist_date(current_row.observed_at) != latest_ist_day:
-                continue
-            if not _ssts_is_online_now(current_row):
-                continue
-            if (previous_row.offline_minutes or 0) <= SSTS_PREVIOUSLY_OFFLINE_THRESHOLD_MINUTES:
-                continue
-            recovery_pair = (previous_row, current_row)
-        if recovery_pair is None:
+    for device_id, latest_row in latest_map.items():
+        if not _ssts_is_online_now(latest_row):
             continue
-        previous_row, recovery_row = recovery_pair
-        latest_row = latest_map.get(device_id, recovery_row)
+        history = history_by_device.get(device_id, [])
+        if len(history) < 2:
+            continue
+        recovery_row = history[-1]
+        previous_row = history[-2]
+        if recovery_row.run_id != (latest_run.id or 0):
+            continue
+        if (previous_row.offline_minutes or 0) <= SSTS_PREVIOUSLY_OFFLINE_THRESHOLD_MINUTES:
+            continue
         row = _snapshot_to_row(latest_row)
         row["recovery_seen"] = _format_ist(recovery_row.observed_at)
         row["recovery_lastupdate_label"] = _format_ist(recovery_row.lastupdate)
