@@ -207,9 +207,9 @@
         </details>
       </section>
 
-      <section class="card collapsible">
+      <section class="card collapsible ssts-recent-offline-section">
         <details open>
-          <summary>Last Day Recently Offline Rakes (2 Hours to 1 Day)</summary>
+          <summary>Recently Offline Rakes (2 Hours to 1 Day)</summary>
           <div class="table-wrap">
             <table class="employee-table paged">
               <thead>
@@ -218,19 +218,36 @@
                   <th>Device ID</th>
                   <th>Last Update</th>
                   <th>Offline Hours</th>
+                  <th>Remark</th>
                 </tr>
               </thead>
               <tbody>
-                {% for row in previous_day_recently_offline %}
+                {% for row in current_recently_offline %}
                 <tr>
                   <td>{{ row.name }}</td>
                   <td>{{ row.uniqueid }}</td>
                   <td>{{ row.lastupdate_label }}</td>
                   <td>{{ row.offline_duration }}</td>
+                  <td class="ssts-remark-cell">
+                    <div
+                      class="ssts-remark-editor"
+                      data-snapshot-id="{{ row.snapshot_id }}"
+                      data-save-url="/ssts-report/remark"
+                    >
+                      <input
+                        type="text"
+                        class="ssts-remark-input"
+                        value="{{ row.remark }}"
+                        placeholder="Add remark"
+                      />
+                      <button type="button" class="ghost small ssts-remark-save">Save</button>
+                      <span class="ssts-remark-status" aria-live="polite"></span>
+                    </div>
+                  </td>
                 </tr>
                 {% else %}
                 <tr>
-                  <td colspan="4">No previous-day recently offline rakes found.</td>
+                  <td colspan="5">No current recently offline rakes found.</td>
                 </tr>
                 {% endfor %}
               </tbody>
@@ -276,6 +293,72 @@
       </section>
     </main>
   </div>
+  <script>
+    (() => {
+      const remarkEditors = document.querySelectorAll('.ssts-remark-editor');
+      remarkEditors.forEach((editor) => {
+        const input = editor.querySelector('.ssts-remark-input');
+        const saveButton = editor.querySelector('.ssts-remark-save');
+        const status = editor.querySelector('.ssts-remark-status');
+        const saveUrl = editor.dataset.saveUrl;
+        const snapshotId = Number(editor.dataset.snapshotId || '0');
+
+        const setStatus = (message, state = '') => {
+          if (!status) return;
+          status.textContent = message;
+          status.dataset.state = state;
+        };
+
+        const saveRemark = async () => {
+          if (!input || !saveButton || !saveUrl || !snapshotId) return;
+          const previousLabel = saveButton.textContent;
+          saveButton.disabled = true;
+          saveButton.textContent = 'Saving...';
+          setStatus('');
+          try {
+            const response = await fetch(saveUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                snapshot_id: snapshotId,
+                remark: input.value,
+              }),
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+              throw new Error(payload.detail || 'Could not save remark.');
+            }
+            input.value = payload.remark || '';
+            input.defaultValue = payload.remark || '';
+            setStatus('Saved', 'saved');
+          } catch (error) {
+            setStatus(error && error.message ? error.message : 'Could not save remark.', 'error');
+          } finally {
+            saveButton.disabled = false;
+            saveButton.textContent = previousLabel;
+          }
+        };
+
+        if (saveButton) {
+          saveButton.addEventListener('click', saveRemark);
+        }
+
+        if (input) {
+          input.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              saveRemark();
+            }
+          });
+          input.addEventListener('input', () => {
+            if (status && status.dataset.state === 'saved') {
+              setStatus('');
+            }
+          });
+        }
+      });
+    })();
+  </script>
   <script src="/static/table-pager.js?v={{ asset_ver }}"></script>
   <script src="/static/sidebar-toggle.js?v={{ asset_ver }}"></script>
 </body>
