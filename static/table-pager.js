@@ -15,7 +15,7 @@
     info.style.fontSize = "13px";
   }
 
-  function createPagerBar({ showRowsSelector = false } = {}) {
+  function createPagerBar({ showRowsSelector = false, showSearch = false } = {}) {
     const wrapper = document.createElement("div");
     wrapper.className = "table-pager";
     wrapper.style.display = "flex";
@@ -35,6 +35,7 @@
     right.style.marginLeft = "auto";
 
     let select = null;
+    let search = null;
 
     if (showRowsSelector) {
       const label = document.createElement("label");
@@ -52,6 +53,15 @@
       });
       select.value = String(DEFAULT_PAGE_SIZE);
       left.append(label, select);
+    }
+
+    if (showSearch) {
+      search = document.createElement("input");
+      search.type = "search";
+      search.className = "table-pager-search";
+      search.placeholder = "Search table...";
+      search.setAttribute("aria-label", "Search table rows");
+      left.append(search);
     }
 
     const info = document.createElement("span");
@@ -72,7 +82,7 @@
     right.append(prev, next);
     wrapper.append(left, right);
 
-    return { wrapper, info, prev, next, select };
+    return { wrapper, info, prev, next, select, search };
   }
 
   function injectControls(table) {
@@ -109,7 +119,10 @@
     let pageSize = table.id === "cli-distribution-table" ? 0 : DEFAULT_PAGE_SIZE;
     let page = 0;
 
-    const topPager = createPagerBar({ showRowsSelector: true });
+    const topPager = createPagerBar({
+      showRowsSelector: true,
+      showSearch: table.dataset.searchable === "true" || window.location.pathname === "/ssts-report",
+    });
     if (table.id === "cli-distribution-table" && topPager.select) {
       topPager.select.value = "0";
     }
@@ -181,6 +194,16 @@
 
     topPager.select?.addEventListener("change", () => {
       pageSize = parseInt(topPager.select.value, 10);
+      page = 0;
+      render();
+    });
+
+    topPager.search?.addEventListener("input", () => {
+      const query = String(topPager.search.value || "").trim().toLowerCase();
+      pageableRows.forEach((row) => {
+        const text = String(row.textContent || "").replace(/\s+/g, " ").trim().toLowerCase();
+        row.dataset.filterHidden = query && !text.includes(query) ? "true" : "false";
+      });
       page = 0;
       render();
     });
