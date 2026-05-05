@@ -1433,10 +1433,19 @@ def _format_duration(minutes: int | None) -> str | None:
     months, days = divmod(days, 30)
     hours, rem = divmod(rem, 60 * 60)
     mins, secs = divmod(rem, 60)
-    return (
-        f"{years:02d} YY {months:02d} MM {days:02d} DD "
-        f"{hours:02d} hh {mins:02d} mm {secs:02d} ss"
-    )
+    if years:
+        return (
+            f"{years:02d} YY {months:02d} MM {days:02d} DD "
+            f"{hours:02d} hh {mins:02d} mm {secs:02d} ss"
+        )
+    if months:
+        return (
+            f"{months:02d} MM {days:02d} DD "
+            f"{hours:02d} hh {mins:02d} mm {secs:02d} ss"
+        )
+    if days:
+        return f"{days:02d} DD {hours:02d} hh {mins:02d} mm {secs:02d} ss"
+    return f"{hours:02d} hh {mins:02d} mm {secs:02d} ss"
 
 
 def _parse_ssts_timestamp(value: str | None) -> datetime | None:
