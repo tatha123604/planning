@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SSTS Report | SDAH Crew Planner</title>
   <link rel="stylesheet" href="/static/style.css?v={{ asset_ver }}" />
+  <link rel="icon" type="image/svg+xml" href="/static/indian-railways-mark.svg" />
 </head>
 <body>
   <div class="layout">
@@ -54,24 +55,28 @@
       </header>
 
       <section class="grid">
-        <article class="card metric-card">
-          <span class="metric-label">Latest Snapshot</span>
-          <strong class="metric-value">
-            {% if latest_run %}
-              {{ latest_run_label }}
-            {% else %}
-              Not synced yet
-            {% endif %}
-          </strong>
-          <p>{{ sync_state.message }}</p>
-          <span class="metric-card-footer metric-card-footer-placeholder" aria-hidden="true"></span>
-        </article>
-        <article class="card metric-card metric-card-total">
-          <span class="metric-label">Total Rakes</span>
-          <strong class="metric-value">{{ latest_summary.total_rakes }}</strong>
-          <p>Latest successfully stored snapshot.</p>
-          <span class="metric-card-footer metric-card-footer-placeholder" aria-hidden="true"></span>
-        </article>
+        <div class="metric-card-link">
+          <article class="card metric-card">
+            <span class="metric-label">Latest Snapshot</span>
+            <strong class="metric-value">
+              {% if latest_run %}
+                {{ latest_run_label }}
+              {% else %}
+                Not synced yet
+              {% endif %}
+            </strong>
+            <p>{{ sync_state.message }}</p>
+            <span class="metric-card-footer metric-card-footer-placeholder" aria-hidden="true"></span>
+          </article>
+        </div>
+        <div class="metric-card-link">
+          <article class="card metric-card metric-card-total metric-card-clickable">
+            <span class="metric-label">Total Rakes</span>
+            <strong class="metric-value">{{ latest_summary.total_rakes }}</strong>
+            <p>Latest successfully stored snapshot.</p>
+            <span class="metric-card-footer metric-card-footer-placeholder" aria-hidden="true"></span>
+          </article>
+        </div>
         <a class="metric-card-link" href="#online-now-table">
           <article class="card metric-card metric-card-online metric-card-clickable">
             <span class="metric-label">Online Now</span>
