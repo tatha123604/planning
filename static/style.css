@@ -1233,6 +1233,23 @@ ul { padding-left: 18px; margin: 6px 0; }
   border-color: rgba(123, 215, 255, 0.65);
   box-shadow: 0 0 0 3px rgba(123, 215, 255, 0.16), inset 0 1px 0 rgba(255,255,255,0.08);
 }
+.table-pager-search {
+  min-width: 220px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(123, 215, 255, 0.34);
+  background: linear-gradient(135deg, rgba(18, 31, 52, 0.96), rgba(11, 46, 70, 0.96));
+  color: #dff6ff;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 8px 18px rgba(0,0,0,0.18);
+}
+.table-pager-search::placeholder {
+  color: rgba(223, 246, 255, 0.68);
+}
+.table-pager-search:focus {
+  outline: none;
+  border-color: rgba(123, 215, 255, 0.65);
+  box-shadow: 0 0 0 3px rgba(123, 215, 255, 0.16), inset 0 1px 0 rgba(255,255,255,0.08);
+}
 .table-pager-info {
   padding: 7px 12px;
   border-radius: 999px;
