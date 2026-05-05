@@ -44,7 +44,7 @@
           <span class="metric-label">Latest Snapshot</span>
           <strong class="metric-value">
             {% if latest_run %}
-              {{ latest_run.observed_at.strftime("%d-%m-%Y %H:%M") }} UTC
+              {{ latest_run.observed_at.astimezone(IST).strftime("%d-%m-%Y %H:%M IST") }}
             {% else %}
               Not synced yet
             {% endif %}
@@ -128,7 +128,7 @@
                   <td>{{ row.phone }}</td>
                   <td>{{ row.contact }}</td>
                   <td>{{ row.lastupdate_label }}</td>
-                  <td>{{ row.offline_hours }}</td>
+                  <td>{{ row.offline_duration }}</td>
                 </tr>
                 {% else %}
                 <tr>
@@ -145,7 +145,7 @@
         <details open>
           <summary>Last Day Offline Rakes (Previous-Day Snapshot, Last Update &gt; 2 Hours)</summary>
           {% if previous_day_run %}
-          <p>Reference snapshot: {{ previous_day_run.observed_at.strftime("%d-%m-%Y %H:%M") }} UTC</p>
+          <p>Reference snapshot: {{ previous_day_run.observed_at.astimezone(IST).strftime("%d-%m-%Y %H:%M IST") }}</p>
           {% endif %}
           <div class="table-wrap">
             <table class="employee-table paged">
@@ -163,7 +163,7 @@
                   <td>{{ row.name }}</td>
                   <td>{{ row.uniqueid }}</td>
                   <td>{{ row.lastupdate_label }}</td>
-                  <td>{{ row.offline_hours }}</td>
+                  <td>{{ row.offline_duration }}</td>
                 </tr>
                 {% else %}
                 <tr>
@@ -195,7 +195,7 @@
                   <td>{{ row.name }}</td>
                   <td>{{ row.uniqueid }}</td>
                   <td>{{ row.lastupdate_label }}</td>
-                  <td>{{ row.offline_hours }}</td>
+                  <td>{{ row.offline_duration }}</td>
                 </tr>
                 {% else %}
                 <tr>
@@ -229,8 +229,8 @@
                   <td>{{ row.name }}</td>
                   <td>{{ row.uniqueid }}</td>
                   <td>{{ row.lastupdate_label }}</td>
-                  <td>{{ row.offline_hours }}</td>
-                  <td>{{ row.previous_offline_hours }}</td>
+                  <td>{{ row.offline_duration }}</td>
+                  <td>{{ row.previous_offline_duration }}</td>
                   <td>{{ row.previous_seen }}</td>
                 </tr>
                 {% else %}
