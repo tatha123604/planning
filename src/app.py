@@ -1416,11 +1416,12 @@ def _ensure_utc(dt: datetime | None) -> datetime | None:
     return dt.astimezone(timezone.utc)
 
 
-def _format_ist(dt: datetime | None) -> str:
+def _format_ist(dt: datetime | None, *, include_seconds: bool = False) -> str:
     dt_utc = _ensure_utc(dt)
     if dt_utc is None:
         return "No signal"
-    return dt_utc.astimezone(IST).strftime("%d-%m-%Y %H:%M IST")
+    fmt = "%d-%m-%Y %H:%M:%S IST" if include_seconds else "%d-%m-%Y %H:%M IST"
+    return dt_utc.astimezone(IST).strftime(fmt)
 
 
 def _ist_date(dt: datetime | None) -> date | None:
@@ -1445,7 +1446,16 @@ def _parse_ssts_timestamp(value: str | None) -> datetime | None:
     if not value:
         return None
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
+        # The SSTS API emits a trailing "Z", but the original SSTS dashboard
+        # treats these values as local wall-clock timestamps. Preserve that
+        # wall time in IST so our report matches the source records.
+        normalized = value.strip().replace("T", " ")
+        if normalized.endswith("Z"):
+            normalized = normalized[:-1]
+        parsed = datetime.fromisoformat(normalized)
+        if parsed.tzinfo is not None:
+            parsed = parsed.replace(tzinfo=None)
+        return parsed.replace(tzinfo=IST).astimezone(timezone.utc)
     except ValueError:
         return None
 
@@ -1481,7 +1491,7 @@ def _snapshot_to_row(snapshot: SstsDeviceSnapshot) -> dict[str, object]:
         "phone": snapshot.phone or "",
         "contact": snapshot.contact or "",
         "lastupdate": snapshot.lastupdate,
-        "lastupdate_label": _format_ist(snapshot.lastupdate),
+        "lastupdate_label": _format_ist(snapshot.lastupdate, include_seconds=True),
         "offline_minutes": snapshot.offline_minutes,
         "offline_duration": _format_duration(snapshot.offline_minutes),
     }
