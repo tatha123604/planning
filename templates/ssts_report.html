@@ -216,6 +216,7 @@
                 <tr>
                   <th>Rake No</th>
                   <th>Device ID</th>
+                  <th>Mobile No</th>
                   <th>Last Update</th>
                   <th>Offline Hours</th>
                   <th>Remark</th>
@@ -226,6 +227,7 @@
                 <tr>
                   <td>{{ row.name }}</td>
                   <td>{{ row.uniqueid }}</td>
+                  <td>{{ row.phone }}</td>
                   <td>{{ row.lastupdate_label }}</td>
                   <td>{{ row.offline_duration }}</td>
                   <td class="ssts-remark-cell">
@@ -247,7 +249,7 @@
                 </tr>
                 {% else %}
                 <tr>
-                  <td colspan="5">No current recently offline rakes found.</td>
+                  <td colspan="6">No current recently offline rakes found.</td>
                 </tr>
                 {% endfor %}
               </tbody>
