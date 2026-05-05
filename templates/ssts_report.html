@@ -216,6 +216,7 @@
                 <tr>
                   <th>Rake No</th>
                   <th>Device ID</th>
+                  <th>Mobile No</th>
                   <th>Last Update</th>
                   <th>Offline Hours</th>
                 </tr>
@@ -225,12 +226,13 @@
                 <tr>
                   <td>{{ row.name }}</td>
                   <td>{{ row.uniqueid }}</td>
+                  <td>{{ row.phone }}</td>
                   <td>{{ row.lastupdate_label }}</td>
                   <td>{{ row.offline_duration }}</td>
                 </tr>
                 {% else %}
                 <tr>
-                  <td colspan="4">No previous-day recently offline rakes found.</td>
+                  <td colspan="5">No previous-day recently offline rakes found.</td>
                 </tr>
                 {% endfor %}
               </tbody>
