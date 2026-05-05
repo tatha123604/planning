@@ -1431,7 +1431,7 @@ def _format_duration(minutes: int | None) -> str | None:
     days, rem = divmod(total_seconds, 24 * 60 * 60)
     hours, rem = divmod(rem, 60 * 60)
     mins, secs = divmod(rem, 60)
-    return f"{days}:{hours:02d}:{mins:02d}:{secs:02d}"
+    return f"{days}d {hours:02d}:{mins:02d}:{secs:02d}"
 
 
 def _parse_ssts_timestamp(value: str | None) -> datetime | None:
