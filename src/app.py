@@ -1427,12 +1427,11 @@ def _format_ist(dt: datetime | None, *, include_seconds: bool = False) -> str:
 def _format_duration(minutes: int | None) -> str | None:
     if minutes is None:
         return None
-    total_minutes = max(0, minutes)
-    hours = total_minutes // 60
-    mins = total_minutes % 60
-    if hours > 0:
-        return f"{hours}h {mins}m"
-    return f"{mins}m"
+    total_seconds = max(0, int(minutes)) * 60
+    days, rem = divmod(total_seconds, 24 * 60 * 60)
+    hours, rem = divmod(rem, 60 * 60)
+    mins, secs = divmod(rem, 60)
+    return f"{days}:{hours:02d}:{mins:02d}:{secs:02d}"
 
 
 def _parse_ssts_timestamp(value: str | None) -> datetime | None:
