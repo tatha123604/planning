@@ -621,6 +621,21 @@ thead th {
   position: relative;
   overflow: hidden;
 }
+.th-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 8px;
+  margin-right: 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(123, 215, 255, 0.34);
+  background: rgba(7, 17, 31, 0.55);
+  color: rgba(223, 246, 255, 0.92);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  line-height: 1;
+}
 .col-frozen {
   position: sticky;
   z-index: 3;
