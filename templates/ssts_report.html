@@ -93,6 +93,14 @@
             <span class="metric-card-footer">Open table</span>
           </article>
         </a>
+        <a class="metric-card-link" href="#recently-offline-table">
+          <article class="card metric-card metric-card-recent-offline metric-card-clickable">
+            <span class="metric-label">Offline 2h to 1 Day</span>
+            <strong class="metric-value">{{ latest_summary.recently_offline_count }}</strong>
+            <p>Rakes offline between 2 hours and 1 day.</p>
+            <span class="metric-card-footer">Open table</span>
+          </article>
+        </a>
         <a class="metric-card-link" href="#recently-online-table">
           <article class="card metric-card metric-card-recovery metric-card-clickable">
             <span class="metric-label">Recently Back Online</span>
@@ -212,7 +220,7 @@
         </details>
       </section>
 
-      <section class="card collapsible ssts-recent-offline-section">
+      <section class="card collapsible ssts-recent-offline-section" id="recently-offline-table">
         <details open>
           <summary>Recently Offline Rakes (2 Hours to 1 Day)</summary>
           <div class="table-wrap">
