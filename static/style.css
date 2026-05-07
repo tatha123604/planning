@@ -97,8 +97,14 @@ button:hover { filter: brightness(1.05); }
 .metric-card {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 0;
   min-height: 150px;
+}
+.metric-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
 }
 .metric-label {
   font-size: 12px;
@@ -111,6 +117,57 @@ button:hover { filter: brightness(1.05); }
   font-size: 2rem;
   color: #f5fbff;
   line-height: 1.1;
+}
+.metric-card-total .metric-value {
+  font-size: 2.2rem;
+  letter-spacing: 0.02em;
+}
+.metric-level {
+  position: relative;
+  height: 16px;
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.12);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02)),
+    rgba(8, 13, 24, 0.9);
+  box-shadow: inset 0 2px 8px rgba(0,0,0,0.28);
+}
+.metric-level-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--level-fill, 0%);
+  min-width: 0;
+  border-radius: inherit;
+  transition: width 0.35s ease;
+}
+.metric-level-fill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255,255,255,0.28), rgba(255,255,255,0.04));
+  mix-blend-mode: screen;
+}
+.metric-level-total .metric-level-fill {
+  background: linear-gradient(90deg, #12bde7 0%, #66e1b6 100%);
+}
+.metric-level-offline .metric-level-fill {
+  background: linear-gradient(90deg, #ff9580 0%, #ffc46c 100%);
+}
+.metric-level-recovery .metric-level-fill {
+  background: linear-gradient(90deg, #66e1b6 0%, #12bde7 100%);
+}
+.metric-meter-notes {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: #b8c7dc;
+  font-weight: 700;
+}
+.metric-card p {
+  margin-top: auto;
 }
 .card + .card {
   margin-top: 18px;
@@ -935,4 +992,8 @@ ul { padding-left: 18px; margin: 6px 0; }
   .layout { flex-direction: column; }
   .sidebar { width: 100%; height: auto; position: relative; border-right: none; border-bottom: 1px solid rgba(255,255,255,0.06); }
   .content { padding: 16px; }
+  .metric-meter-notes {
+    flex-direction: column;
+    gap: 6px;
+  }
 }

@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SSTS Report | SDAH Crew Planner</title>
+  <link rel="icon" type="image/svg+xml" href="/static/ssts-favicon.svg?v={{ asset_ver }}" />
   <link rel="stylesheet" href="/static/style.css?v={{ asset_ver }}" />
 </head>
 <body>
@@ -31,40 +32,69 @@
           <p>Live rake health from <a href="{{ ssts_web_url }}" target="_blank" rel="noreferrer">SSTS Rakes</a>, with snapshot history for offline and recovery tracking.</p>
         </div>
         <div class="header-actions">
-          <form method="get" action="/ssts-report">
-            <input type="hidden" name="refresh" value="1" />
-            <button type="submit">Refresh SSTS Data</button>
-          </form>
+          <a class="ghost small" href="/ssts-report">Reload Report</a>
           <a class="ghost small" href="/logout">Logout</a>
         </div>
       </header>
 
+      {% set total_rakes = latest_summary.total_rakes or 0 %}
+      {% set offline_count = latest_summary.offline_count or 0 %}
+      {% set recently_online_count = latest_summary.recently_online_count or 0 %}
+      {% set online_count = total_rakes - offline_count if total_rakes >= offline_count else 0 %}
+
       <section class="grid">
         <article class="card metric-card">
-          <span class="metric-label">Latest Snapshot</span>
-          <strong class="metric-value">
-            {% if latest_run %}
-              {{ latest_run.observed_at.astimezone(IST).strftime("%d-%m-%Y %H:%M IST") }}
-            {% else %}
-              Not synced yet
-            {% endif %}
-          </strong>
-          <p>{{ sync_state.message }}</p>
+          <div class="metric-card-body">
+            <span class="metric-label">Latest Snapshot</span>
+            <strong class="metric-value">
+              {% if latest_run %}
+                {{ latest_run.observed_at.astimezone(IST).strftime("%d-%m-%Y %H:%M IST") }}
+              {% else %}
+                Not synced yet
+              {% endif %}
+            </strong>
+            <p>Showing the latest stored snapshot only.</p>
+          </div>
+        </article>
+        <article class="card metric-card metric-card-total">
+          <div class="metric-card-body">
+            <span class="metric-label">Total Rakes</span>
+            <strong class="metric-value">{{ latest_summary.total_rakes }}</strong>
+            <div class="metric-level metric-level-total" style="--level-fill: 100%;">
+              <div class="metric-level-fill"></div>
+            </div>
+            <div class="metric-meter-notes">
+              <span>Online now {{ online_count }}</span>
+              <span>Offline {{ offline_count }}</span>
+            </div>
+            <p>Latest successfully stored snapshot.</p>
+          </div>
         </article>
         <article class="card metric-card">
-          <span class="metric-label">Total Rakes</span>
-          <strong class="metric-value">{{ latest_summary.total_rakes }}</strong>
-          <p>Latest successfully stored snapshot.</p>
+          <div class="metric-card-body">
+            <span class="metric-label">Offline &gt; 2 Hours</span>
+            <strong class="metric-value">{{ latest_summary.offline_count }}</strong>
+            <div class="metric-level metric-level-offline" style="--level-fill: {{ ((offline_count / total_rakes) * 100) if total_rakes else 0 }}%;">
+              <div class="metric-level-fill"></div>
+            </div>
+            <div class="metric-meter-notes">
+              <span>{{ "%.1f"|format(((offline_count / total_rakes) * 100) if total_rakes else 0) }}% of total rakes</span>
+            </div>
+            <p>Rakes currently considered offline by your rule.</p>
+          </div>
         </article>
         <article class="card metric-card">
-          <span class="metric-label">Offline &gt; 2 Hours</span>
-          <strong class="metric-value">{{ latest_summary.offline_count }}</strong>
-          <p>Rakes currently considered offline by your rule.</p>
-        </article>
-        <article class="card metric-card">
-          <span class="metric-label">Recently Came Online</span>
-          <strong class="metric-value">{{ latest_summary.recently_online_count }}</strong>
-          <p>Was offline for more than 5 hours, now active in the latest snapshot.</p>
+          <div class="metric-card-body">
+            <span class="metric-label">Recently Came Online</span>
+            <strong class="metric-value">{{ latest_summary.recently_online_count }}</strong>
+            <div class="metric-level metric-level-recovery" style="--level-fill: {{ ((recently_online_count / total_rakes) * 100) if total_rakes else 0 }}%;">
+              <div class="metric-level-fill"></div>
+            </div>
+            <div class="metric-meter-notes">
+              <span>{{ "%.1f"|format(((recently_online_count / total_rakes) * 100) if total_rakes else 0) }}% recovery window</span>
+            </div>
+            <p>Was offline for more than 5 hours, now active in the latest snapshot.</p>
+          </div>
         </article>
       </section>
 
