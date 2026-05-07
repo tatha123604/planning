@@ -202,6 +202,7 @@
                   <th><span class="th-key" title="Cars">CRS</span>Cars</th>
                   <th><span class="th-key" title="Last Update">LU</span>Last Update</th>
                   <th><span class="th-key" title="Status">ST</span>Status</th>
+                  <th><span class="th-key" title="Remark">RMK</span>Remark</th>
                 </tr>
               </thead>
               <tbody>
@@ -213,10 +214,26 @@
                   <td>{{ row.contact }}</td>
                   <td>{{ row.lastupdate_label }}</td>
                   <td>{{ row.offline_duration }}</td>
+                  <td class="ssts-remark-cell">
+                    <div
+                      class="ssts-remark-editor"
+                      data-snapshot-id="{{ row.snapshot_id }}"
+                      data-save-url="/ssts-report/remark"
+                    >
+                      <input
+                        type="text"
+                        class="ssts-remark-input"
+                        value="{{ row.remark }}"
+                        placeholder="Add remark"
+                      />
+                      <button type="button" class="ghost small ssts-remark-save">Save</button>
+                      <span class="ssts-remark-status" aria-live="polite"></span>
+                    </div>
+                  </td>
                 </tr>
                 {% else %}
                 <tr>
-                  <td colspan="6">No online rakes found in the latest snapshot.</td>
+                  <td colspan="7">No online rakes found in the latest snapshot.</td>
                 </tr>
                 {% endfor %}
               </tbody>
@@ -238,6 +255,7 @@
                   <th><span class="th-key" title="Cars">CRS</span>Cars</th>
                   <th><span class="th-key" title="Last Update">LU</span>Last Update</th>
                   <th><span class="th-key" title="Offline Duration">OFF</span>Offline Hours</th>
+                  <th><span class="th-key" title="Remark">RMK</span>Remark</th>
                 </tr>
               </thead>
               <tbody>
@@ -249,10 +267,26 @@
                   <td>{{ row.contact }}</td>
                   <td>{{ row.lastupdate_label }}</td>
                   <td>{{ row.offline_duration }}</td>
+                  <td class="ssts-remark-cell">
+                    <div
+                      class="ssts-remark-editor"
+                      data-snapshot-id="{{ row.snapshot_id }}"
+                      data-save-url="/ssts-report/remark"
+                    >
+                      <input
+                        type="text"
+                        class="ssts-remark-input"
+                        value="{{ row.remark }}"
+                        placeholder="Add remark"
+                      />
+                      <button type="button" class="ghost small ssts-remark-save">Save</button>
+                      <span class="ssts-remark-status" aria-live="polite"></span>
+                    </div>
+                  </td>
                 </tr>
                 {% else %}
                 <tr>
-                  <td colspan="6">No current offline rakes.</td>
+                  <td colspan="7">No current offline rakes.</td>
                 </tr>
                 {% endfor %}
               </tbody>
@@ -325,6 +359,7 @@
                   <th><span class="th-key" title="Current Offline Duration">COFF</span>Current Offline Hours</th>
                   <th><span class="th-key" title="Previous Offline Duration">POFF</span>Previous Offline Hours</th>
                   <th><span class="th-key" title="Previous Snapshot">PSNAP</span>Previous Snapshot</th>
+                  <th><span class="th-key" title="Remark">RMK</span>Remark</th>
                 </tr>
               </thead>
               <tbody>
@@ -336,10 +371,26 @@
                   <td>{{ row.offline_duration }}</td>
                   <td>{{ row.previous_offline_duration }}</td>
                   <td>{{ row.previous_seen }}</td>
+                  <td class="ssts-remark-cell">
+                    <div
+                      class="ssts-remark-editor"
+                      data-snapshot-id="{{ row.snapshot_id }}"
+                      data-save-url="/ssts-report/remark"
+                    >
+                      <input
+                        type="text"
+                        class="ssts-remark-input"
+                        value="{{ row.remark }}"
+                        placeholder="Add remark"
+                      />
+                      <button type="button" class="ghost small ssts-remark-save">Save</button>
+                      <span class="ssts-remark-status" aria-live="polite"></span>
+                    </div>
+                  </td>
                 </tr>
                 {% else %}
                 <tr>
-                  <td colspan="6">No recent online recovery detected yet.</td>
+                  <td colspan="7">No recent online recovery detected yet.</td>
                 </tr>
                 {% endfor %}
               </tbody>
