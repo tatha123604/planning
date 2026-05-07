@@ -83,6 +83,9 @@
           <article class="card metric-card metric-card-total metric-card-clickable">
             <span class="metric-label">Total Rakes</span>
             <strong class="metric-value">{{ latest_summary.total_rakes }}</strong>
+            <div class="metric-level metric-level-total" style="--level-fill: 100%;">
+              <div class="metric-level-fill"></div>
+            </div>
             <div class="metric-meter-notes">
               <span>Online {{ online_now_count }}</span>
               <span>Offline {{ offline_count }}</span>
@@ -95,6 +98,9 @@
           <article class="card metric-card metric-card-online metric-card-clickable">
             <span class="metric-label">Online Now</span>
             <strong class="metric-value">{{ latest_summary.online_now_count }}</strong>
+            <div class="metric-level metric-level-online" style="--level-fill: {{ online_now_ratio }}%;">
+              <div class="metric-level-fill"></div>
+            </div>
             <div class="metric-meter-notes">
               <span>{{ "%.1f"|format(online_now_ratio) }}% of total rakes</span>
             </div>
@@ -106,6 +112,9 @@
           <article class="card metric-card metric-card-offline metric-card-clickable">
             <span class="metric-label">Offline &gt; 2 Hours</span>
             <strong class="metric-value">{{ latest_summary.offline_count }}</strong>
+            <div class="metric-level metric-level-offline" style="--level-fill: {{ offline_ratio }}%;">
+              <div class="metric-level-fill"></div>
+            </div>
             <div class="metric-meter-notes">
               <span>{{ "%.1f"|format(offline_ratio) }}% of total rakes</span>
             </div>
@@ -117,6 +126,9 @@
           <article class="card metric-card metric-card-recent-offline metric-card-clickable">
             <span class="metric-label">Offline 2h to 1 Day</span>
             <strong class="metric-value">{{ latest_summary.recently_offline_count }}</strong>
+            <div class="metric-level metric-level-recent-offline" style="--level-fill: {{ recently_offline_ratio }}%;">
+              <div class="metric-level-fill"></div>
+            </div>
             <div class="metric-meter-notes">
               <span>{{ "%.1f"|format(recently_offline_ratio) }}% of offline rakes</span>
             </div>
@@ -128,6 +140,9 @@
           <article class="card metric-card metric-card-recovery metric-card-clickable">
             <span class="metric-label">Recently Back Online</span>
             <strong class="metric-value">{{ latest_summary.recently_online_count }}</strong>
+            <div class="metric-level metric-level-recovery" style="--level-fill: {{ recently_online_ratio }}%;">
+              <div class="metric-level-fill"></div>
+            </div>
             <div class="metric-meter-notes">
               <span>{{ "%.1f"|format(recently_online_ratio) }}% of online rakes</span>
             </div>

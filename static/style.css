@@ -358,6 +358,46 @@ button:hover { filter: brightness(1.05); }
   display: block;
   min-height: 2.25em;
 }
+.metric-level {
+  position: relative;
+  height: 16px;
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.18);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02)),
+    rgba(7, 17, 31, 0.68);
+  box-shadow: inset 0 2px 8px rgba(0,0,0,0.28);
+}
+.metric-level-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--level-fill, 0%);
+  border-radius: inherit;
+  transition: width 0.35s ease;
+}
+.metric-level-fill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255,255,255,0.24), rgba(255,255,255,0.04));
+  mix-blend-mode: screen;
+}
+.metric-level-total .metric-level-fill {
+  background: linear-gradient(90deg, #ffe45c 0%, #ffd36b 100%);
+}
+.metric-level-online .metric-level-fill {
+  background: linear-gradient(90deg, #66e1b6 0%, #8af2c8 100%);
+}
+.metric-level-offline .metric-level-fill {
+  background: linear-gradient(90deg, #ff9580 0%, #ffb27a 100%);
+}
+.metric-level-recent-offline .metric-level-fill {
+  background: linear-gradient(90deg, #ffbf6b 0%, #ffe45c 100%);
+}
+.metric-level-recovery .metric-level-fill {
+  background: linear-gradient(90deg, #7ff0c4 0%, #12bde7 100%);
+}
 .metric-meter-notes {
   display: flex;
   justify-content: space-between;
