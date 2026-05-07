@@ -80,11 +80,7 @@
           </article>
         </div>
         <div class="metric-card-link">
-          <article class="card metric-card metric-card-total metric-card-clickable" style="--level-fill: 100%;">
-            <div class="metric-water" aria-hidden="true">
-              <div class="metric-water-fill"></div>
-            </div>
-            <div class="metric-card-content">
+          <article class="card metric-card metric-card-total metric-card-clickable">
             <span class="metric-label">Total Rakes</span>
             <strong class="metric-value">{{ latest_summary.total_rakes }}</strong>
             <div class="metric-meter-notes">
@@ -93,15 +89,10 @@
             </div>
             <p>Latest successfully stored snapshot.</p>
             <span class="metric-card-footer metric-card-footer-placeholder" aria-hidden="true"></span>
-            </div>
           </article>
         </div>
         <a class="metric-card-link" href="#online-now-table">
-          <article class="card metric-card metric-card-online metric-card-clickable" style="--level-fill: {{ online_now_ratio }}%;">
-            <div class="metric-water" aria-hidden="true">
-              <div class="metric-water-fill"></div>
-            </div>
-            <div class="metric-card-content">
+          <article class="card metric-card metric-card-online metric-card-clickable">
             <span class="metric-label">Online Now</span>
             <strong class="metric-value">{{ latest_summary.online_now_count }}</strong>
             <div class="metric-meter-notes">
@@ -109,15 +100,10 @@
             </div>
             <p>Rakes currently active within your offline threshold.</p>
             <span class="metric-card-footer">Open table</span>
-            </div>
           </article>
         </a>
         <a class="metric-card-link" href="#offline-now-table">
-          <article class="card metric-card metric-card-offline metric-card-clickable" style="--level-fill: {{ offline_ratio }}%;">
-            <div class="metric-water" aria-hidden="true">
-              <div class="metric-water-fill"></div>
-            </div>
-            <div class="metric-card-content">
+          <article class="card metric-card metric-card-offline metric-card-clickable">
             <span class="metric-label">Offline &gt; 2 Hours</span>
             <strong class="metric-value">{{ latest_summary.offline_count }}</strong>
             <div class="metric-meter-notes">
@@ -125,15 +111,10 @@
             </div>
             <p>Rakes currently considered offline by your rule.</p>
             <span class="metric-card-footer">Open table</span>
-            </div>
           </article>
         </a>
         <a class="metric-card-link" href="#recently-offline-table">
-          <article class="card metric-card metric-card-recent-offline metric-card-clickable" style="--level-fill: {{ recently_offline_ratio }}%;">
-            <div class="metric-water" aria-hidden="true">
-              <div class="metric-water-fill"></div>
-            </div>
-            <div class="metric-card-content">
+          <article class="card metric-card metric-card-recent-offline metric-card-clickable">
             <span class="metric-label">Offline 2h to 1 Day</span>
             <strong class="metric-value">{{ latest_summary.recently_offline_count }}</strong>
             <div class="metric-meter-notes">
@@ -141,15 +122,10 @@
             </div>
             <p>Rakes offline between 2 hours and 1 day.</p>
             <span class="metric-card-footer">Open table</span>
-            </div>
           </article>
         </a>
         <a class="metric-card-link" href="#recently-online-table">
-          <article class="card metric-card metric-card-recovery metric-card-clickable" style="--level-fill: {{ recently_online_ratio }}%;">
-            <div class="metric-water" aria-hidden="true">
-              <div class="metric-water-fill"></div>
-            </div>
-            <div class="metric-card-content">
+          <article class="card metric-card metric-card-recovery metric-card-clickable">
             <span class="metric-label">Recently Back Online</span>
             <strong class="metric-value">{{ latest_summary.recently_online_count }}</strong>
             <div class="metric-meter-notes">
@@ -157,7 +133,6 @@
             </div>
             <p>Was offline for more than 5 hours in the previous snapshot and is no longer offline.</p>
             <span class="metric-card-footer">Open table</span>
-            </div>
           </article>
         </a>
       </section>
