@@ -124,12 +124,20 @@
             <tbody>
               {% for row in daily_summary %}
               <tr>
-                <td><a class="ghost small" href="/ssts-report?selected_day={{ row.day_iso }}">{{ row.day }}</a></td>
+                <td>{{ row.day }}</td>
                 <td>{{ row.observed_at }}</td>
                 <td>{{ row.total_rakes }}</td>
                 <td>{{ row.offline_count }}</td>
-                <td>{{ row.recent_offline_count }}</td>
-                <td>{{ row.recently_online_count }}</td>
+                <td>
+                  <a class="summary-link" href="/ssts-report?selected_day={{ row.day_iso }}&detail_view=recent_offline#daily-detail">
+                    {{ row.recent_offline_count }}
+                  </a>
+                </td>
+                <td>
+                  <a class="summary-link" href="/ssts-report?selected_day={{ row.day_iso }}&detail_view=recently_online#daily-detail">
+                    {{ row.recently_online_count }}
+                  </a>
+                </td>
               </tr>
               {% else %}
               <tr>
@@ -141,57 +149,131 @@
         </div>
       </section>
 
-      <section class="card">
+      <section class="card" id="daily-detail">
         <div class="card-head-inline">
           <div>
-            <h2>Date-Wise Detailed Data</h2>
+            <h2>Detailed Daily Offline/Online Summary</h2>
             {% if selected_day_label and selected_day_run %}
             <p>
-              Showing all rake data for {{ selected_day_label }} from snapshot
+              Showing selected summary details for {{ selected_day_label }} from snapshot
               {{ selected_day_run.observed_at.astimezone(IST).strftime("%d-%m-%Y %H:%M IST") }}.
             </p>
             {% else %}
-            <p>Select a date from the Daily Offline Summary table to view that day's full detail.</p>
+            <p>Select a date, then click a value in the summary table to open the matching detail table.</p>
             {% endif %}
           </div>
         </div>
-        <div class="table-wrap">
-          <table class="employee-table paged" data-exportable="true" data-export-name="ssts_date_wise_detail_{{ selected_day or 'latest' }}">
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Rake No</th>
-                <th>Device ID</th>
-                <th>Mobile No</th>
-                <th>Cars</th>
-                <th>Last Update</th>
-                <th>Offline Hours</th>
-                <th>Status</th>
-                <th>Previous Offline Hours</th>
-                <th>Previous Snapshot</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for row in selected_day_rows %}
-              <tr>
-                <td>{{ selected_day_label }}</td>
-                <td>{{ row.name }}</td>
-                <td>{{ row.uniqueid }}</td>
-                <td>{{ row.phone }}</td>
-                <td>{{ row.contact }}</td>
-                <td>{{ row.lastupdate_label }}</td>
-                <td>{{ row.offline_duration }}</td>
-                <td>{{ row.status }}</td>
-                <td>{{ row.previous_offline_duration or '' }}</td>
-                <td>{{ row.previous_seen or '' }}</td>
-              </tr>
-              {% else %}
-              <tr>
-                <td colspan="10">No date-wise detail available yet.</td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
+        <form class="detail-date-filter" method="get" action="/ssts-report">
+          <label for="detail-day-select">Selected Date</label>
+          <select id="detail-day-select" name="selected_day" onchange="this.form.submit()">
+            {% for row in daily_summary %}
+            <option value="{{ row.day_iso }}" {% if selected_day == row.day_iso %}selected{% endif %}>{{ row.day }} | {{ row.observed_at }}</option>
+            {% endfor %}
+          </select>
+          {% if active_detail_view %}
+          <input type="hidden" name="detail_view" value="{{ active_detail_view }}" />
+          {% endif %}
+          <noscript><button class="ghost small" type="submit">Load Date</button></noscript>
+        </form>
+
+        <div class="detail-panels">
+          <section class="detail-panel {% if active_detail_view != 'recent_offline' %}is-hidden{% endif %}">
+            <div class="detail-panel-head">
+              <h3>Offline 2h to 1 Day</h3>
+              <p>Click count from the summary table to open this date-wise detail.</p>
+            </div>
+            <div class="table-wrap">
+              <table class="employee-table paged" data-exportable="true" data-export-name="ssts_offline_2h_to_1_day_{{ selected_day or 'latest' }}">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Rake No</th>
+                    <th>Device ID</th>
+                    <th>Mobile No</th>
+                    <th>Cars</th>
+                    <th>Last Update</th>
+                    <th>Offline Hours</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% if active_detail_view == 'recent_offline' %}
+                    {% for row in selected_day_recent_offline_rows %}
+                    <tr>
+                      <td>{{ selected_day_label }}</td>
+                      <td>{{ row.name }}</td>
+                      <td>{{ row.uniqueid }}</td>
+                      <td>{{ row.phone }}</td>
+                      <td>{{ row.contact }}</td>
+                      <td>{{ row.lastupdate_label }}</td>
+                      <td>{{ row.offline_duration }}</td>
+                      <td>{{ row.status }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                      <td colspan="8">No Offline 2h to 1 Day data for the selected date.</td>
+                    </tr>
+                    {% endfor %}
+                  {% else %}
+                  <tr>
+                    <td colspan="8">This table stays hidden until you click an "Offline 2h to 1 Day" value in the summary table.</td>
+                  </tr>
+                  {% endif %}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="detail-panel {% if active_detail_view != 'recently_online' %}is-hidden{% endif %}">
+            <div class="detail-panel-head">
+              <h3>Recently Back Online (Previously Offline &gt; 5 Hours)</h3>
+              <p>Click count from the summary table to open this date-wise recovery detail.</p>
+            </div>
+            <div class="table-wrap">
+              <table class="employee-table paged" data-exportable="true" data-export-name="ssts_recently_back_online_{{ selected_day or 'latest' }}">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Rake No</th>
+                    <th>Device ID</th>
+                    <th>Mobile No</th>
+                    <th>Cars</th>
+                    <th>Current Last Update</th>
+                    <th>Current Offline Hours</th>
+                    <th>Status</th>
+                    <th>Previous Offline Hours</th>
+                    <th>Previous Snapshot</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% if active_detail_view == 'recently_online' %}
+                    {% for row in selected_day_recently_online_rows %}
+                    <tr>
+                      <td>{{ selected_day_label }}</td>
+                      <td>{{ row.name }}</td>
+                      <td>{{ row.uniqueid }}</td>
+                      <td>{{ row.phone }}</td>
+                      <td>{{ row.contact }}</td>
+                      <td>{{ row.lastupdate_label }}</td>
+                      <td>{{ row.offline_duration }}</td>
+                      <td>{{ row.status }}</td>
+                      <td>{{ row.previous_offline_duration or '' }}</td>
+                      <td>{{ row.previous_seen or '' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                      <td colspan="10">No Recently Back Online data for the selected date.</td>
+                    </tr>
+                    {% endfor %}
+                  {% else %}
+                  <tr>
+                    <td colspan="10">This table stays hidden until you click a "Recently Back Online" value in the summary table.</td>
+                  </tr>
+                  {% endif %}
+                </tbody>
+              </table>
+            </div>
+          </section>
         </div>
       </section>
 
