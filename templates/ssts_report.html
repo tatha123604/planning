@@ -200,6 +200,71 @@
         </div>
       </section>
 
+      <section class="card">
+        <div class="card-head-inline">
+          <div>
+            <h2>Detailed Analysis</h2>
+            <p>Graphical date-wise rake summary for offline more than 2 hours and online status from the latest daily snapshots.</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="employee-table paged" data-exportable="true" data-export-name="ssts_detailed_analysis">
+            <thead>
+              <tr>
+                <th>Rake No</th>
+                <th>Device ID</th>
+                <th>Graphical Summary</th>
+                <th>Offline &gt; 2h Days</th>
+                <th>Online Days</th>
+                {% for day in detailed_analysis_days %}
+                <th>{{ day.day }}</th>
+                {% endfor %}
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in detailed_analysis_rows %}
+              <tr>
+                <td>{{ row.name }}</td>
+                <td>{{ row.uniqueid }}</td>
+                <td>
+                  <div class="analysis-summary">
+                    <div class="analysis-summary-bar">
+                      {% set total_days = (row.offline_days + row.online_days) or 1 %}
+                      {% set offline_fill = ((row.offline_days / total_days) * 100) %}
+                      {% set online_fill = ((row.online_days / total_days) * 100) %}
+                      <span class="analysis-summary-fill analysis-summary-fill-offline" style="width: {{ '%.1f'|format(offline_fill) }}%;"></span>
+                      <span class="analysis-summary-fill analysis-summary-fill-online" style="width: {{ '%.1f'|format(online_fill) }}%;"></span>
+                    </div>
+                    <div class="analysis-summary-notes">
+                      <span>Off {{ row.offline_days }}</span>
+                      <span>On {{ row.online_days }}</span>
+                    </div>
+                  </div>
+                </td>
+                <td>{{ row.offline_days }}</td>
+                <td>{{ row.online_days }}</td>
+                {% for status in row.statuses %}
+                <td>
+                  <div class="analysis-chip analysis-chip-{{ status.state }}">
+                    <strong>{{ status.label }}</strong>
+                    <span>{{ status.duration or '-' }}</span>
+                    <div class="analysis-chip-meter">
+                      <span class="analysis-chip-meter-fill analysis-chip-meter-fill-{{ status.state }}" style="width: {{ status.percent }}%;"></span>
+                    </div>
+                  </div>
+                </td>
+                {% endfor %}
+              </tr>
+              {% else %}
+              <tr>
+                <td colspan="{{ 5 + (detailed_analysis_days|length) }}">No detailed analysis available yet.</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       <section class="card" id="daily-detail">
         <div class="card-head-inline">
           <div>

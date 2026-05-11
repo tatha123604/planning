@@ -1682,6 +1682,8 @@ def build_ssts_report_context(session: Session, selected_day: date | None = None
             "previous_day_recently_offline": [],
             "recently_online": [],
             "daily_summary": [],
+            "detailed_analysis_days": [],
+            "detailed_analysis_rows": [],
             "selected_day": None,
             "selected_day_label": None,
             "selected_day_run": None,
@@ -1754,7 +1756,8 @@ def build_ssts_report_context(session: Session, selected_day: date | None = None
             continue
         latest_by_day.setdefault(run.observed_at.date(), run)
     daily_summary = []
-    for day, run in sorted(latest_by_day.items(), key=lambda item: item[0], reverse=True)[:7]:
+    analysis_day_runs = sorted(latest_by_day.items(), key=lambda item: item[0], reverse=True)[:7]
+    for day, run in analysis_day_runs:
         rows = _ssts_filter_snapshots(_snapshots_for_run(session, run.id or 0))
         offline_count = sum(1 for row in rows if _ssts_is_offline(row))
         recent_offline_count = sum(1 for row in rows if _ssts_is_recently_offline(row))
@@ -1769,6 +1772,74 @@ def build_ssts_report_context(session: Session, selected_day: date | None = None
                 "recently_online_count": recently_online_by_run_id.get(run.id or 0, 0),
             }
         )
+
+    analysis_days = [
+        {
+            "day": day.strftime("%d-%m-%Y"),
+            "day_iso": day.isoformat(),
+            "run_id": run.id or 0,
+        }
+        for day, run in analysis_day_runs
+    ]
+    analysis_rows_by_run: dict[int, list[SstsDeviceSnapshot]] = {
+        item["run_id"]: _ssts_filter_snapshots(_snapshots_for_run(session, int(item["run_id"])))
+        for item in analysis_days
+    }
+    analysis_rakes: dict[int, dict[str, object]] = {}
+    for day_info in analysis_days:
+        run_id = int(day_info["run_id"])
+        snapshots = analysis_rows_by_run.get(run_id, [])
+        day_snapshot_map = {row.device_id: row for row in snapshots}
+        for row in snapshots:
+            item = analysis_rakes.setdefault(
+                row.device_id,
+                {
+                    "device_id": row.device_id,
+                    "name": row.name,
+                    "uniqueid": row.uniqueid or "",
+                    "remark": row.remark or "",
+                    "statuses": [],
+                    "offline_days": 0,
+                    "online_days": 0,
+                },
+            )
+            item["name"] = row.name
+            item["uniqueid"] = row.uniqueid or ""
+            if row.remark:
+                item["remark"] = row.remark
+        for device_id, item in analysis_rakes.items():
+            row = day_snapshot_map.get(device_id)
+            if row is None:
+                item["statuses"].append(
+                    {
+                        "state": "missing",
+                        "label": "No Data",
+                        "minutes": None,
+                        "duration": "",
+                        "percent": 0,
+                    }
+                )
+                continue
+            offline_minutes = row.offline_minutes or 0
+            is_offline = _ssts_is_offline(row)
+            percent = min(100, round((offline_minutes / (24 * 60)) * 100)) if offline_minutes > 0 else 0
+            if is_offline:
+                item["offline_days"] = int(item["offline_days"]) + 1
+            else:
+                item["online_days"] = int(item["online_days"]) + 1
+            item["statuses"].append(
+                {
+                    "state": "offline" if is_offline else "online",
+                    "label": "Offline > 2h" if is_offline else "Online <= 2h",
+                    "minutes": offline_minutes,
+                    "duration": _format_duration(offline_minutes) or "",
+                    "percent": percent,
+                }
+            )
+    detailed_analysis_rows = sorted(
+        analysis_rakes.values(),
+        key=lambda item: (-int(item.get("offline_days") or 0), str(item.get("name") or "").lower()),
+    )
 
     recovery_runs = [run for run in runs if run.fetch_status == "ok" and _ensure_utc(run.observed_at) <= latest_run_time]
     snapshots_by_run = {run.id: _ssts_filter_snapshots(_snapshots_for_run(session, run.id or 0)) for run in recovery_runs}
@@ -1835,6 +1906,8 @@ def build_ssts_report_context(session: Session, selected_day: date | None = None
         "previous_day_recently_offline": previous_day_recently_offline,
         "recently_online": recently_online,
         "daily_summary": daily_summary,
+        "detailed_analysis_days": analysis_days,
+        "detailed_analysis_rows": detailed_analysis_rows,
         "selected_day": selected_day_value.isoformat() if selected_day_value else None,
         "selected_day_label": selected_day_value.strftime("%d-%m-%Y") if selected_day_value else None,
         "selected_day_run": selected_day_run,

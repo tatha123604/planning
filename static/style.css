@@ -1710,6 +1710,87 @@ ul { padding-left: 18px; margin: 6px 0; }
 .detail-panel-head p {
   margin: 0;
 }
+.analysis-summary {
+  min-width: 160px;
+}
+.analysis-summary-bar {
+  display: flex;
+  overflow: hidden;
+  height: 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(123, 215, 255, 0.18);
+}
+.analysis-summary-fill {
+  display: block;
+  height: 100%;
+}
+.analysis-summary-fill-offline {
+  background: linear-gradient(135deg, rgba(255, 124, 124, 0.95), rgba(255, 168, 120, 0.82));
+}
+.analysis-summary-fill-online {
+  background: linear-gradient(135deg, rgba(112, 240, 178, 0.95), rgba(73, 214, 255, 0.82));
+}
+.analysis-summary-notes {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #dbeeff;
+}
+.analysis-chip {
+  min-width: 118px;
+  padding: 8px 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(123, 215, 255, 0.14);
+  background: rgba(10, 18, 30, 0.75);
+}
+.analysis-chip strong,
+.analysis-chip span {
+  display: block;
+}
+.analysis-chip strong {
+  font-size: 12px;
+  color: #f7fbff;
+}
+.analysis-chip span {
+  margin-top: 3px;
+  font-size: 11px;
+  color: #cfe6ff;
+}
+.analysis-chip-offline {
+  background: linear-gradient(180deg, rgba(86, 26, 26, 0.9), rgba(40, 14, 14, 0.92));
+  border-color: rgba(255, 122, 122, 0.34);
+}
+.analysis-chip-online {
+  background: linear-gradient(180deg, rgba(14, 62, 49, 0.9), rgba(9, 29, 23, 0.92));
+  border-color: rgba(112, 240, 178, 0.34);
+}
+.analysis-chip-missing {
+  background: linear-gradient(180deg, rgba(54, 56, 67, 0.92), rgba(26, 28, 35, 0.94));
+  border-color: rgba(188, 196, 214, 0.22);
+}
+.analysis-chip-meter {
+  margin-top: 7px;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+}
+.analysis-chip-meter-fill {
+  display: block;
+  height: 100%;
+}
+.analysis-chip-meter-fill-offline {
+  background: linear-gradient(135deg, #ff8f8f, #ffbf7a);
+}
+.analysis-chip-meter-fill-online {
+  background: linear-gradient(135deg, #7cf0c3, #69d6ff);
+}
+.analysis-chip-meter-fill-missing {
+  background: linear-gradient(135deg, #8b92a6, #c2cad9);
+}
 .top-performer-poster {
   margin: 0 0 16px;
   padding: 18px 20px 16px;
