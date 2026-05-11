@@ -43,6 +43,7 @@
 
       {% set total_rakes = latest_summary.total_rakes or 0 %}
       {% set offline_count = latest_summary.offline_count or 0 %}
+      {% set recent_offline_count = latest_summary.recent_offline_count or latest_summary.recently_offline_count or 0 %}
       {% set recently_online_count = latest_summary.recently_online_count or 0 %}
       {% set online_count = total_rakes - offline_count if total_rakes >= offline_count else 0 %}
 
@@ -70,6 +71,7 @@
             <div class="metric-meter-notes">
               <span>Online now {{ online_count }}</span>
               <span>Offline {{ offline_count }}</span>
+              <span>Offline 2h to 1 Day {{ recent_offline_count }}</span>
             </div>
             <p>Latest successfully stored snapshot.</p>
           </div>
@@ -85,6 +87,19 @@
               <span>{{ "%.1f"|format(((offline_count / total_rakes) * 100) if total_rakes else 0) }}% of total rakes</span>
             </div>
             <p>Rakes currently considered offline by your rule.</p>
+          </div>
+        </article>
+        <article class="card metric-card">
+          <div class="metric-card-body">
+            <span class="metric-label">Offline 2h to 1 Day</span>
+            <strong class="metric-value">{{ recent_offline_count }}</strong>
+            <div class="metric-level metric-level-offline" style="--level-fill: {{ ((recent_offline_count / total_rakes) * 100) if total_rakes else 0 }}%;">
+              <div class="metric-level-fill"></div>
+            </div>
+            <div class="metric-meter-notes">
+              <span>{{ "%.1f"|format(((recent_offline_count / total_rakes) * 100) if total_rakes else 0) }}% of total rakes</span>
+            </div>
+            <p>Rakes offline between 2 hours and 1 day in the latest snapshot.</p>
           </div>
         </article>
         <article class="card metric-card">
