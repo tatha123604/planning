@@ -1823,11 +1823,13 @@ def build_ssts_report_context(
                         "name": row.name,
                         "uniqueid": row.uniqueid or "",
                         "remark": row.remark or "",
+                        "lastupdate_label": _format_ist(row.lastupdate, include_seconds=True),
                         "points": [],
                     },
                 )
                 rake["name"] = row.name
                 rake["uniqueid"] = row.uniqueid or ""
+                rake["lastupdate_label"] = _format_ist(row.lastupdate, include_seconds=True)
                 if row.remark:
                     rake["remark"] = row.remark
                 rake["points"].append(
@@ -1888,6 +1890,7 @@ def build_ssts_report_context(
                     "device_id": rake["device_id"],
                     "name": rake["name"],
                     "uniqueid": rake["uniqueid"],
+                    "lastupdate_label": rake["lastupdate_label"],
                     "remark": rake["remark"],
                     "segments": segments,
                     "offline_periods": offline_periods,

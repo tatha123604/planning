@@ -232,6 +232,7 @@
               <tr>
                 <th>Rake No</th>
                 <th>Device ID</th>
+                <th>Last Update</th>
                 <th>Graphical Representation</th>
                 <th>Ordered Summary</th>
                 <th>Offline &gt; 2h Periods</th>
@@ -244,6 +245,7 @@
               <tr>
                 <td>{{ row.name }}</td>
                 <td>{{ row.uniqueid }}</td>
+                <td>{{ row.lastupdate_label }}</td>
                 <td>
                   <div class="timeline-card">
                     <div class="timeline-scale">
@@ -275,7 +277,7 @@
               </tr>
               {% else %}
               <tr>
-                <td colspan="6">No detailed analysis available yet.</td>
+                <td colspan="8">No detailed analysis available yet.</td>
               </tr>
               {% endfor %}
             </tbody>
