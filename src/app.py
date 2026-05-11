@@ -1685,7 +1685,8 @@ def build_ssts_report_context(session: Session, selected_day: date | None = None
             "selected_day": None,
             "selected_day_label": None,
             "selected_day_run": None,
-            "selected_day_rows": [],
+            "selected_day_recent_offline_rows": [],
+            "selected_day_recently_online_rows": [],
         }
 
     latest_snapshots = _ssts_filter_snapshots(_snapshots_for_run(session, latest_run.id or 0))
@@ -1805,24 +1806,20 @@ def build_ssts_report_context(session: Session, selected_day: date | None = None
     if selected_day_value is None and available_days:
         selected_day_value = date.fromisoformat(str(available_days[0]))
     selected_day_run = latest_by_day.get(selected_day_value) if selected_day_value else None
-    selected_day_rows = []
+    selected_day_recent_offline_rows = []
+    selected_day_recently_online_rows = []
     if selected_day_run:
         selected_run_id = selected_day_run.id or 0
         for row in sorted(snapshots_by_run.get(selected_run_id, []), key=_ssts_sort_key):
             detail = _snapshot_to_row(row)
-            if _ssts_is_offline(row):
-                detail["status"] = "Offline > 2 Hours"
-            elif _ssts_is_recently_offline(row):
+            if _ssts_is_recently_offline(row):
                 detail["status"] = "Offline 2 Hours to 1 Day"
-            elif _ssts_is_online_now(row):
-                if (selected_run_id, row.device_id) in recently_online_info_by_run_device:
-                    detail["status"] = "Recently Back Online"
-                    detail.update(recently_online_info_by_run_device[(selected_run_id, row.device_id)])
-                else:
-                    detail["status"] = "Online"
-            else:
-                detail["status"] = "No Recent Signal"
-            selected_day_rows.append(detail)
+                selected_day_recent_offline_rows.append(detail)
+                continue
+            if _ssts_is_online_now(row) and (selected_run_id, row.device_id) in recently_online_info_by_run_device:
+                detail["status"] = "Recently Back Online"
+                detail.update(recently_online_info_by_run_device[(selected_run_id, row.device_id)])
+                selected_day_recently_online_rows.append(detail)
 
     return {
         "latest_run": latest_run,
@@ -1841,7 +1838,8 @@ def build_ssts_report_context(session: Session, selected_day: date | None = None
         "selected_day": selected_day_value.isoformat() if selected_day_value else None,
         "selected_day_label": selected_day_value.strftime("%d-%m-%Y") if selected_day_value else None,
         "selected_day_run": selected_day_run,
-        "selected_day_rows": selected_day_rows,
+        "selected_day_recent_offline_rows": selected_day_recent_offline_rows,
+        "selected_day_recently_online_rows": selected_day_recently_online_rows,
     }
 
 
@@ -6135,6 +6133,7 @@ def ssts_report_page(
     request: Request,
     force: int = 0,
     selected_day: str | None = None,
+    detail_view: str | None = None,
     session: Session = Depends(get_session),
 ):
     sync_result = refresh_ssts_snapshot(session, force=bool(force))
@@ -6171,6 +6170,7 @@ def ssts_report_page(
             "IST": IST,
             "sync_state": sync_result,
             "IST": IST,
+            "active_detail_view": detail_view if detail_view in {"recent_offline", "recently_online"} else None,
             **context,
         },
     )
