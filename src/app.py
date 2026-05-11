@@ -1424,6 +1424,13 @@ def _format_ist(dt: datetime | None, *, include_seconds: bool = False) -> str:
     return dt_utc.astimezone(IST).strftime(fmt)
 
 
+def _format_ist_time(dt: datetime | None) -> str:
+    dt_utc = _ensure_utc(dt)
+    if dt_utc is None:
+        return ""
+    return dt_utc.astimezone(IST).strftime("%H:%M")
+
+
 def _format_duration(minutes: int | None) -> str | None:
     if minutes is None:
         return None
@@ -1669,7 +1676,11 @@ def _snapshots_for_run(session: Session, run_id: int) -> list[SstsDeviceSnapshot
     return list(snapshots)
 
 
-def build_ssts_report_context(session: Session, selected_day: date | None = None) -> dict[str, object]:
+def build_ssts_report_context(
+    session: Session,
+    selected_day: date | None = None,
+    analysis_day: date | None = None,
+) -> dict[str, object]:
     runs = _distinct_ssts_runs(session)
     latest_run = next((run for run in runs if run.fetch_status == "ok"), None)
     if not latest_run:
@@ -1682,8 +1693,10 @@ def build_ssts_report_context(session: Session, selected_day: date | None = None
             "previous_day_recently_offline": [],
             "recently_online": [],
             "daily_summary": [],
-            "detailed_analysis_days": [],
-            "detailed_analysis_rows": [],
+            "analysis_day_options": [],
+            "selected_analysis_day": None,
+            "selected_analysis_day_label": None,
+            "selected_analysis_rows": [],
             "selected_day": None,
             "selected_day_label": None,
             "selected_day_run": None,
@@ -1773,7 +1786,7 @@ def build_ssts_report_context(session: Session, selected_day: date | None = None
             }
         )
 
-    analysis_days = [
+    analysis_day_options = [
         {
             "day": day.strftime("%d-%m-%Y"),
             "day_iso": day.isoformat(),
@@ -1781,65 +1794,114 @@ def build_ssts_report_context(session: Session, selected_day: date | None = None
         }
         for day, run in analysis_day_runs
     ]
-    analysis_rows_by_run: dict[int, list[SstsDeviceSnapshot]] = {
-        item["run_id"]: _ssts_filter_snapshots(_snapshots_for_run(session, int(item["run_id"])))
-        for item in analysis_days
-    }
-    analysis_rakes: dict[int, dict[str, object]] = {}
-    for day_info in analysis_days:
-        run_id = int(day_info["run_id"])
-        snapshots = analysis_rows_by_run.get(run_id, [])
-        day_snapshot_map = {row.device_id: row for row in snapshots}
-        for row in snapshots:
-            item = analysis_rakes.setdefault(
-                row.device_id,
-                {
-                    "device_id": row.device_id,
-                    "name": row.name,
-                    "uniqueid": row.uniqueid or "",
-                    "remark": row.remark or "",
-                    "statuses": [],
-                    "offline_days": 0,
-                    "online_days": 0,
-                },
-            )
-            item["name"] = row.name
-            item["uniqueid"] = row.uniqueid or ""
-            if row.remark:
-                item["remark"] = row.remark
-        for device_id, item in analysis_rakes.items():
-            row = day_snapshot_map.get(device_id)
-            if row is None:
-                item["statuses"].append(
+    analysis_day_value = analysis_day if analysis_day in latest_by_day else None
+    if analysis_day_value is None:
+        analysis_day_value = selected_day if selected_day in latest_by_day else None
+    if analysis_day_value is None and analysis_day_options:
+        analysis_day_value = date.fromisoformat(str(analysis_day_options[0]["day_iso"]))
+    selected_analysis_rows: list[dict[str, object]] = []
+    if analysis_day_value is not None:
+        selected_day_runs = [
+            run
+            for run in runs
+            if run.fetch_status == "ok" and run.observed_at.date() == analysis_day_value
+        ]
+        selected_day_runs.sort(key=lambda item: item.observed_at)
+        day_rows_by_run = {
+            run.id or 0: _ssts_filter_snapshots(_snapshots_for_run(session, run.id or 0))
+            for run in selected_day_runs
+        }
+        rake_points: dict[int, dict[str, object]] = {}
+        for run in selected_day_runs:
+            run_time = _ensure_utc(run.observed_at)
+            for row in day_rows_by_run.get(run.id or 0, []):
+                state = "offline" if _ssts_is_offline(row) else "online"
+                rake = rake_points.setdefault(
+                    row.device_id,
                     {
-                        "state": "missing",
-                        "label": "No Data",
-                        "minutes": None,
-                        "duration": "",
-                        "percent": 0,
+                        "device_id": row.device_id,
+                        "name": row.name,
+                        "uniqueid": row.uniqueid or "",
+                        "remark": row.remark or "",
+                        "points": [],
+                    },
+                )
+                rake["name"] = row.name
+                rake["uniqueid"] = row.uniqueid or ""
+                if row.remark:
+                    rake["remark"] = row.remark
+                rake["points"].append(
+                    {
+                        "time": run_time,
+                        "state": state,
                     }
                 )
+        day_start = datetime.combine(analysis_day_value, datetime.min.time(), tzinfo=IST).astimezone(timezone.utc)
+        day_end = day_start + timedelta(days=1)
+        for rake in rake_points.values():
+            points = sorted(
+                [point for point in rake.get("points", []) if point.get("time") is not None],
+                key=lambda point: point["time"],
+            )
+            if not points:
                 continue
-            offline_minutes = row.offline_minutes or 0
-            is_offline = _ssts_is_offline(row)
-            percent = min(100, round((offline_minutes / (24 * 60)) * 100)) if offline_minutes > 0 else 0
-            if is_offline:
-                item["offline_days"] = int(item["offline_days"]) + 1
-            else:
-                item["online_days"] = int(item["online_days"]) + 1
-            item["statuses"].append(
+            segments: list[dict[str, object]] = []
+            current_state = str(points[0]["state"])
+            segment_start = max(day_start, points[0]["time"])
+            for point in points[1:]:
+                point_time = point["time"]
+                point_state = str(point["state"])
+                if point_state == current_state:
+                    continue
+                duration_minutes = max(0, int((point_time - segment_start).total_seconds() // 60))
+                if duration_minutes >= SSTS_OFFLINE_THRESHOLD_MINUTES:
+                    segments.append(
+                        {
+                            "state": current_state,
+                            "start_label": _format_ist_time(segment_start),
+                            "end_label": _format_ist_time(point_time - timedelta(minutes=1)),
+                            "duration_label": _format_duration(duration_minutes) or "",
+                            "width_percent": round((duration_minutes / (24 * 60)) * 100, 2),
+                            "summary_label": f"{_format_ist_time(segment_start)} to {_format_ist_time(point_time - timedelta(minutes=1))} {'offline' if current_state == 'offline' else 'online'}",
+                        }
+                    )
+                current_state = point_state
+                segment_start = point_time
+            last_point_time = points[-1]["time"] + timedelta(minutes=SSTS_REFRESH_INTERVAL_MINUTES)
+            segment_end = min(day_end, last_point_time)
+            duration_minutes = max(0, int((segment_end - segment_start).total_seconds() // 60))
+            if duration_minutes >= SSTS_OFFLINE_THRESHOLD_MINUTES:
+                segments.append(
+                    {
+                        "state": current_state,
+                        "start_label": _format_ist_time(segment_start),
+                        "end_label": _format_ist_time(segment_end - timedelta(minutes=1)),
+                        "duration_label": _format_duration(duration_minutes) or "",
+                        "width_percent": round((duration_minutes / (24 * 60)) * 100, 2),
+                        "summary_label": f"{_format_ist_time(segment_start)} to {_format_ist_time(segment_end - timedelta(minutes=1))} {'offline' if current_state == 'offline' else 'online'}",
+                    }
+                )
+            offline_periods = sum(1 for segment in segments if segment["state"] == "offline")
+            online_periods = sum(1 for segment in segments if segment["state"] == "online")
+            selected_analysis_rows.append(
                 {
-                    "state": "offline" if is_offline else "online",
-                    "label": "Offline > 2h" if is_offline else "Online <= 2h",
-                    "minutes": offline_minutes,
-                    "duration": _format_duration(offline_minutes) or "",
-                    "percent": percent,
+                    "device_id": rake["device_id"],
+                    "name": rake["name"],
+                    "uniqueid": rake["uniqueid"],
+                    "remark": rake["remark"],
+                    "segments": segments,
+                    "offline_periods": offline_periods,
+                    "online_periods": online_periods,
+                    "timeline_summary": ", ".join(str(segment["summary_label"]) for segment in segments),
                 }
             )
-    detailed_analysis_rows = sorted(
-        analysis_rakes.values(),
-        key=lambda item: (-int(item.get("offline_days") or 0), str(item.get("name") or "").lower()),
-    )
+        selected_analysis_rows.sort(
+            key=lambda item: (
+                -int(item.get("offline_periods") or 0),
+                -int(item.get("online_periods") or 0),
+                str(item.get("name") or "").lower(),
+            )
+        )
 
     recovery_runs = [run for run in runs if run.fetch_status == "ok" and _ensure_utc(run.observed_at) <= latest_run_time]
     snapshots_by_run = {run.id: _ssts_filter_snapshots(_snapshots_for_run(session, run.id or 0)) for run in recovery_runs}
@@ -1906,8 +1968,10 @@ def build_ssts_report_context(session: Session, selected_day: date | None = None
         "previous_day_recently_offline": previous_day_recently_offline,
         "recently_online": recently_online,
         "daily_summary": daily_summary,
-        "detailed_analysis_days": analysis_days,
-        "detailed_analysis_rows": detailed_analysis_rows,
+        "analysis_day_options": analysis_day_options,
+        "selected_analysis_day": analysis_day_value.isoformat() if analysis_day_value else None,
+        "selected_analysis_day_label": analysis_day_value.strftime("%d-%m-%Y") if analysis_day_value else None,
+        "selected_analysis_rows": selected_analysis_rows,
         "selected_day": selected_day_value.isoformat() if selected_day_value else None,
         "selected_day_label": selected_day_value.strftime("%d-%m-%Y") if selected_day_value else None,
         "selected_day_run": selected_day_run,
@@ -6206,6 +6270,7 @@ def ssts_report_page(
     request: Request,
     force: int = 0,
     selected_day: str | None = None,
+    analysis_day: str | None = None,
     detail_view: str | None = None,
     session: Session = Depends(get_session),
 ):
@@ -6216,7 +6281,17 @@ def ssts_report_page(
             selected_day_value = date.fromisoformat(selected_day)
         except ValueError:
             selected_day_value = None
-    context = build_ssts_report_context(session, selected_day=selected_day_value)
+    analysis_day_value: date | None = None
+    if analysis_day:
+        try:
+            analysis_day_value = date.fromisoformat(analysis_day)
+        except ValueError:
+            analysis_day_value = None
+    context = build_ssts_report_context(
+        session,
+        selected_day=selected_day_value,
+        analysis_day=analysis_day_value,
+    )
     latest_run = context.get("latest_run")
     latest_summary = {
         "total_rakes": len(context.get("latest_rows", [])),

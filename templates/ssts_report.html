@@ -204,60 +204,78 @@
         <div class="card-head-inline">
           <div>
             <h2>Detailed Analysis</h2>
-            <p>Graphical date-wise rake summary for offline more than 2 hours and online status from the latest daily snapshots.</p>
+            {% if selected_analysis_day_label %}
+            <p>Graphical day-wise rake timeline for {{ selected_analysis_day_label }}, showing ordered online/offline periods longer than 2 hours.</p>
+            {% else %}
+            <p>Select a date to view each rake's ordered online/offline timeline for periods longer than 2 hours.</p>
+            {% endif %}
           </div>
         </div>
+        <form class="detail-date-filter" method="get" action="/ssts-report">
+          <label for="analysis-day-select">Analysis Date</label>
+          <select id="analysis-day-select" name="analysis_day" onchange="this.form.submit()">
+            {% for row in analysis_day_options %}
+            <option value="{{ row.day_iso }}" {% if selected_analysis_day == row.day_iso %}selected{% endif %}>{{ row.day }}</option>
+            {% endfor %}
+          </select>
+          {% if selected_day %}
+          <input type="hidden" name="selected_day" value="{{ selected_day }}" />
+          {% endif %}
+          {% if active_detail_view %}
+          <input type="hidden" name="detail_view" value="{{ active_detail_view }}" />
+          {% endif %}
+          <noscript><button class="ghost small" type="submit">Load Date</button></noscript>
+        </form>
         <div class="table-wrap">
-          <table class="employee-table paged" data-exportable="true" data-export-name="ssts_detailed_analysis">
+          <table class="employee-table paged" data-exportable="true" data-export-name="ssts_detailed_analysis_{{ selected_analysis_day or 'latest' }}">
             <thead>
               <tr>
                 <th>Rake No</th>
                 <th>Device ID</th>
-                <th>Graphical Summary</th>
-                <th>Offline &gt; 2h Days</th>
-                <th>Online Days</th>
-                {% for day in detailed_analysis_days %}
-                <th>{{ day.day }}</th>
-                {% endfor %}
+                <th>Graphical Representation</th>
+                <th>Ordered Summary</th>
+                <th>Offline &gt; 2h Periods</th>
+                <th>Online &gt; 2h Periods</th>
+                <th>Remark</th>
               </tr>
             </thead>
             <tbody>
-              {% for row in detailed_analysis_rows %}
+              {% for row in selected_analysis_rows %}
               <tr>
                 <td>{{ row.name }}</td>
                 <td>{{ row.uniqueid }}</td>
                 <td>
-                  <div class="analysis-summary">
-                    <div class="analysis-summary-bar">
-                      {% set total_days = (row.offline_days + row.online_days) or 1 %}
-                      {% set offline_fill = ((row.offline_days / total_days) * 100) %}
-                      {% set online_fill = ((row.online_days / total_days) * 100) %}
-                      <span class="analysis-summary-fill analysis-summary-fill-offline" style="width: {{ '%.1f'|format(offline_fill) }}%;"></span>
-                      <span class="analysis-summary-fill analysis-summary-fill-online" style="width: {{ '%.1f'|format(online_fill) }}%;"></span>
+                  <div class="timeline-card">
+                    <div class="timeline-scale">
+                      <span>00:00</span>
+                      <span>12:00</span>
+                      <span>24:00</span>
                     </div>
-                    <div class="analysis-summary-notes">
-                      <span>Off {{ row.offline_days }}</span>
-                      <span>On {{ row.online_days }}</span>
+                    <div class="timeline-bar">
+                      {% for segment in row.segments %}
+                      <span class="timeline-segment timeline-segment-{{ segment.state }}" style="width: {{ segment.width_percent }}%;" title="{{ segment.summary_label }} ({{ segment.duration_label }})"></span>
+                      {% endfor %}
+                    </div>
+                    <div class="timeline-legend">
+                      <span class="timeline-legend-item"><i class="timeline-dot timeline-dot-online"></i>Online</span>
+                      <span class="timeline-legend-item"><i class="timeline-dot timeline-dot-offline"></i>Offline</span>
                     </div>
                   </div>
                 </td>
-                <td>{{ row.offline_days }}</td>
-                <td>{{ row.online_days }}</td>
-                {% for status in row.statuses %}
                 <td>
-                  <div class="analysis-chip analysis-chip-{{ status.state }}">
-                    <strong>{{ status.label }}</strong>
-                    <span>{{ status.duration or '-' }}</span>
-                    <div class="analysis-chip-meter">
-                      <span class="analysis-chip-meter-fill analysis-chip-meter-fill-{{ status.state }}" style="width: {{ status.percent }}%;"></span>
-                    </div>
-                  </div>
+                  {% if row.timeline_summary %}
+                  <div class="timeline-summary-list">{{ row.timeline_summary }}</div>
+                  {% else %}
+                  <span class="timeline-empty">No online/offline period longer than 2 hours found for this date.</span>
+                  {% endif %}
                 </td>
-                {% endfor %}
+                <td>{{ row.offline_periods }}</td>
+                <td>{{ row.online_periods }}</td>
+                <td>{{ row.remark }}</td>
               </tr>
               {% else %}
               <tr>
-                <td colspan="{{ 5 + (detailed_analysis_days|length) }}">No detailed analysis available yet.</td>
+                <td colspan="6">No detailed analysis available yet.</td>
               </tr>
               {% endfor %}
             </tbody>
@@ -286,6 +304,9 @@
             <option value="{{ row.day_iso }}" {% if selected_day == row.day_iso %}selected{% endif %}>{{ row.day }} | {{ row.observed_at }}</option>
             {% endfor %}
           </select>
+          {% if selected_analysis_day %}
+          <input type="hidden" name="analysis_day" value="{{ selected_analysis_day }}" />
+          {% endif %}
           {% if active_detail_view %}
           <input type="hidden" name="detail_view" value="{{ active_detail_view }}" />
           {% endif %}
