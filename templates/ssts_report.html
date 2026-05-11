@@ -30,8 +30,12 @@
         <div>
           <h1>SSTS Report</h1>
           <p>Live rake health from <a href="{{ ssts_web_url }}" target="_blank" rel="noreferrer">SSTS Rakes</a>, with snapshot history for offline and recovery tracking.</p>
+          {% if ssts_sync_message %}
+          <p>{{ ssts_sync_message }}</p>
+          {% endif %}
         </div>
         <div class="header-actions">
+          <a class="ghost small" href="/ssts-report?force=1">Force Refresh</a>
           <a class="ghost small" href="/ssts-report">Reload Report</a>
           <a class="ghost small" href="/logout">Logout</a>
         </div>
@@ -106,7 +110,7 @@
           </div>
         </div>
         <div class="table-wrap">
-          <table class="paged">
+          <table class="paged" data-exportable="true" data-export-name="daily_offline_summary">
             <thead>
               <tr>
                 <th>Date</th>
@@ -114,20 +118,76 @@
                 <th>Total Rakes</th>
                 <th>Offline &gt; 2h</th>
                 <th>Offline 2h to 1 Day</th>
+                <th>Recently Back Online (Previously Offline &gt; 5 Hours)</th>
               </tr>
             </thead>
             <tbody>
               {% for row in daily_summary %}
               <tr>
-                <td>{{ row.day }}</td>
+                <td><a class="ghost small" href="/ssts-report?selected_day={{ row.day_iso }}">{{ row.day }}</a></td>
                 <td>{{ row.observed_at }}</td>
                 <td>{{ row.total_rakes }}</td>
                 <td>{{ row.offline_count }}</td>
                 <td>{{ row.recent_offline_count }}</td>
+                <td>{{ row.recently_online_count }}</td>
               </tr>
               {% else %}
               <tr>
-                <td colspan="5">No SSTS snapshots available yet.</td>
+                <td colspan="6">No SSTS snapshots available yet.</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head-inline">
+          <div>
+            <h2>Date-Wise Detailed Data</h2>
+            {% if selected_day_label and selected_day_run %}
+            <p>
+              Showing all rake data for {{ selected_day_label }} from snapshot
+              {{ selected_day_run.observed_at.astimezone(IST).strftime("%d-%m-%Y %H:%M IST") }}.
+            </p>
+            {% else %}
+            <p>Select a date from the Daily Offline Summary table to view that day's full detail.</p>
+            {% endif %}
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="employee-table paged" data-exportable="true" data-export-name="ssts_date_wise_detail_{{ selected_day or 'latest' }}">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Rake No</th>
+                <th>Device ID</th>
+                <th>Mobile No</th>
+                <th>Cars</th>
+                <th>Last Update</th>
+                <th>Offline Hours</th>
+                <th>Status</th>
+                <th>Previous Offline Hours</th>
+                <th>Previous Snapshot</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in selected_day_rows %}
+              <tr>
+                <td>{{ selected_day_label }}</td>
+                <td>{{ row.name }}</td>
+                <td>{{ row.uniqueid }}</td>
+                <td>{{ row.phone }}</td>
+                <td>{{ row.contact }}</td>
+                <td>{{ row.lastupdate_label }}</td>
+                <td>{{ row.offline_duration }}</td>
+                <td>{{ row.status }}</td>
+                <td>{{ row.previous_offline_duration or '' }}</td>
+                <td>{{ row.previous_seen or '' }}</td>
+              </tr>
+              {% else %}
+              <tr>
+                <td colspan="10">No date-wise detail available yet.</td>
               </tr>
               {% endfor %}
             </tbody>
@@ -139,7 +199,7 @@
         <details open>
           <summary>Current Offline Rakes (Last Update &gt; 2 Hours)</summary>
           <div class="table-wrap">
-            <table class="employee-table paged">
+            <table class="employee-table paged" data-exportable="true" data-export-name="current_offline_rakes">
               <thead>
                 <tr>
                   <th>Rake No</th>
@@ -173,12 +233,47 @@
 
       <section class="card collapsible">
         <details open>
+          <summary>Current Recently Offline Rakes (2 Hours to 1 Day)</summary>
+          {% if latest_run %}
+          <p>Reference snapshot: {{ latest_run.observed_at.astimezone(IST).strftime("%d-%m-%Y %H:%M IST") }}</p>
+          {% endif %}
+          <div class="table-wrap">
+            <table class="employee-table paged" data-exportable="true" data-export-name="current_recently_offline_rakes">
+              <thead>
+                <tr>
+                  <th>Rake No</th>
+                  <th>Device ID</th>
+                  <th>Last Update</th>
+                  <th>Offline Hours</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in current_recently_offline %}
+                <tr>
+                  <td>{{ row.name }}</td>
+                  <td>{{ row.uniqueid }}</td>
+                  <td>{{ row.lastupdate_label }}</td>
+                  <td>{{ row.offline_duration }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                  <td colspan="4">No current recently offline rakes found.</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      </section>
+
+      <section class="card collapsible">
+        <details open>
           <summary>Last Day Offline Rakes (Previous-Day Snapshot, Last Update &gt; 2 Hours)</summary>
           {% if previous_day_run %}
           <p>Reference snapshot: {{ previous_day_run.observed_at.astimezone(IST).strftime("%d-%m-%Y %H:%M IST") }}</p>
           {% endif %}
           <div class="table-wrap">
-            <table class="employee-table paged">
+            <table class="employee-table paged" data-exportable="true" data-export-name="last_day_offline_rakes">
               <thead>
                 <tr>
                   <th>Rake No</th>
@@ -208,9 +303,12 @@
 
       <section class="card collapsible">
         <details open>
-          <summary>Last Day Recently Offline Rakes (2 Hours to 1 Day)</summary>
+          <summary>Previous-Day Recently Offline Rakes (2 Hours to 1 Day)</summary>
+          {% if previous_day_run %}
+          <p>Reference snapshot: {{ previous_day_run.observed_at.astimezone(IST).strftime("%d-%m-%Y %H:%M IST") }}</p>
+          {% endif %}
           <div class="table-wrap">
-            <table class="employee-table paged">
+            <table class="employee-table paged" data-exportable="true" data-export-name="previous_day_recently_offline_rakes">
               <thead>
                 <tr>
                   <th>Rake No</th>
@@ -242,7 +340,7 @@
         <details open>
           <summary>Recently Came Online (Previously Offline &gt; 5 Hours)</summary>
           <div class="table-wrap">
-            <table class="employee-table paged">
+            <table class="employee-table paged" data-exportable="true" data-export-name="recently_back_online">
               <thead>
                 <tr>
                   <th>Rake No</th>
@@ -276,6 +374,7 @@
     </main>
   </div>
   <script src="/static/table-pager.js?v={{ asset_ver }}"></script>
+  <script src="/static/table-export.js?v={{ asset_ver }}"></script>
   <script src="/static/sidebar-toggle.js?v={{ asset_ver }}"></script>
 </body>
 </html>

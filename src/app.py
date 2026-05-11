@@ -396,7 +396,7 @@ def _snapshots_for_run(session: Session, run_id: int) -> list[SstsDeviceSnapshot
     return list(snapshots)
 
 
-def build_ssts_report_context(session: Session) -> dict[str, object]:
+def build_ssts_report_context(session: Session, selected_day: date | None = None) -> dict[str, object]:
     runs = _distinct_ssts_runs(session)
     latest_run = next((run for run in runs if run.fetch_status == "ok"), None)
     if not latest_run:
@@ -409,6 +409,10 @@ def build_ssts_report_context(session: Session) -> dict[str, object]:
             "previous_day_recently_offline": [],
             "recently_online": [],
             "daily_summary": [],
+            "selected_day": None,
+            "selected_day_label": None,
+            "selected_day_run": None,
+            "selected_day_rows": [],
         }
 
     latest_snapshots = _snapshots_for_run(session, latest_run.id or 0)
@@ -438,6 +442,28 @@ def build_ssts_report_context(session: Session) -> dict[str, object]:
         if _ssts_is_recently_offline(row)
     ]
 
+    recovery_runs = [run for run in runs if run.fetch_status == "ok" and _ensure_utc(run.observed_at) <= latest_run_time]
+    snapshots_by_run = {run.id: _snapshots_for_run(session, run.id or 0) for run in recovery_runs}
+    history_by_device: dict[int, list[SstsDeviceSnapshot]] = {}
+    recently_online_by_run_id: dict[int, int] = {}
+    recently_online_info_by_run_device: dict[tuple[int, int], dict[str, object]] = {}
+    for run in sorted(recovery_runs, key=lambda item: item.observed_at):
+        current_rows = snapshots_by_run.get(run.id, [])
+        recovered_count = 0
+        for row in current_rows:
+            history = history_by_device.setdefault(row.device_id, [])
+            if _ssts_is_online_now(row) and history:
+                previous_row = history[-1]
+                if (previous_row.offline_minutes or 0) > SSTS_PREVIOUSLY_OFFLINE_THRESHOLD_MINUTES:
+                    recovered_count += 1
+                    recently_online_info_by_run_device[(run.id or 0, row.device_id)] = {
+                        "previous_offline_hours": round((previous_row.offline_minutes or 0) / 60, 1),
+                        "previous_offline_duration": _format_duration(previous_row.offline_minutes),
+                        "previous_seen": _format_ist(previous_row.observed_at),
+                    }
+            history.append(row)
+        recently_online_by_run_id[run.id or 0] = recovered_count
+
     latest_by_day: dict[date, SstsSnapshotRun] = {}
     for run in runs:
         if run.fetch_status != "ok":
@@ -451,19 +477,14 @@ def build_ssts_report_context(session: Session) -> dict[str, object]:
         daily_summary.append(
             {
                 "day": day.strftime("%d-%m-%Y"),
+                "day_iso": day.isoformat(),
                 "observed_at": _format_ist(run.observed_at),
                 "total_rakes": len(rows),
                 "offline_count": offline_count,
                 "recent_offline_count": recent_offline_count,
+                "recently_online_count": recently_online_by_run_id.get(run.id or 0, 0),
             }
         )
-
-    recovery_runs = [run for run in runs if run.fetch_status == "ok" and _ensure_utc(run.observed_at) <= latest_run_time]
-    snapshots_by_run = {run.id: _snapshots_for_run(session, run.id or 0) for run in recovery_runs}
-    history_by_device: dict[int, list[SstsDeviceSnapshot]] = {}
-    for run in sorted(recovery_runs, key=lambda item: item.observed_at):
-        for row in snapshots_by_run.get(run.id, []):
-            history_by_device.setdefault(row.device_id, []).append(row)
 
     recently_online = []
     for device_id, latest_row in latest_map.items():
@@ -475,11 +496,33 @@ def build_ssts_report_context(session: Session) -> dict[str, object]:
         previous_row = history[-2]
         if (previous_row.offline_minutes or 0) > SSTS_PREVIOUSLY_OFFLINE_THRESHOLD_MINUTES:
             row = _snapshot_to_row(latest_row)
-            row["previous_offline_hours"] = round((previous_row.offline_minutes or 0) / 60, 1)
-            row["previous_offline_duration"] = _format_duration(previous_row.offline_minutes)
-            row["previous_seen"] = _format_ist(previous_row.observed_at)
+            row.update(recently_online_info_by_run_device.get((latest_run.id or 0, device_id), {}))
             recently_online.append(row)
     recently_online.sort(key=lambda row: (-float(row.get("previous_offline_hours") or 0), str(row.get("name") or "").lower()))
+
+    available_days = [item["day_iso"] for item in daily_summary]
+    selected_day_value = selected_day if selected_day in latest_by_day else None
+    if selected_day_value is None and available_days:
+        selected_day_value = date.fromisoformat(str(available_days[0]))
+    selected_day_run = latest_by_day.get(selected_day_value) if selected_day_value else None
+    selected_day_rows = []
+    if selected_day_run:
+        selected_run_id = selected_day_run.id or 0
+        for row in sorted(snapshots_by_run.get(selected_run_id, []), key=_ssts_sort_key):
+            detail = _snapshot_to_row(row)
+            if _ssts_is_offline(row):
+                detail["status"] = "Offline > 2 Hours"
+            elif _ssts_is_recently_offline(row):
+                detail["status"] = "Offline 2 Hours to 1 Day"
+            elif _ssts_is_online_now(row):
+                if (selected_run_id, row.device_id) in recently_online_info_by_run_device:
+                    detail["status"] = "Recently Back Online"
+                    detail.update(recently_online_info_by_run_device[(selected_run_id, row.device_id)])
+                else:
+                    detail["status"] = "Online"
+            else:
+                detail["status"] = "No Recent Signal"
+            selected_day_rows.append(detail)
 
     return {
         "latest_run": latest_run,
@@ -491,6 +534,10 @@ def build_ssts_report_context(session: Session) -> dict[str, object]:
         "previous_day_recently_offline": previous_day_recently_offline,
         "recently_online": recently_online,
         "daily_summary": daily_summary,
+        "selected_day": selected_day_value.isoformat() if selected_day_value else None,
+        "selected_day_label": selected_day_value.strftime("%d-%m-%Y") if selected_day_value else None,
+        "selected_day_run": selected_day_run,
+        "selected_day_rows": selected_day_rows,
     }
 
 
@@ -936,11 +983,18 @@ def reports_page(
 @app.get("/ssts-report")
 def ssts_report_page(
     request: Request,
-    refresh: int = 0,
+    force: int = 0,
+    selected_day: str | None = None,
     session: Session = Depends(get_session),
 ):
-    sync_state = refresh_ssts_snapshot(session, force=bool(refresh))
-    context = build_ssts_report_context(session)
+    sync_result = refresh_ssts_snapshot(session, force=bool(force))
+    selected_day_value: date | None = None
+    if selected_day:
+        try:
+            selected_day_value = date.fromisoformat(selected_day)
+        except ValueError:
+            selected_day_value = None
+    context = build_ssts_report_context(session, selected_day=selected_day_value)
     latest_run = context.get("latest_run")
     latest_summary = {
         "total_rakes": len(context.get("latest_rows", [])),
@@ -954,9 +1008,11 @@ def ssts_report_page(
             "request": request,
             "active_page": "ssts_report",
             "ssts_web_url": SSTS_WEB_URL,
-            "sync_state": sync_state,
             "latest_run": latest_run,
             "latest_summary": latest_summary,
+            "ssts_sync_status": sync_result.get("status"),
+            "ssts_sync_message": sync_result.get("message"),
+            "ssts_sync_observed_at": sync_result.get("observed_at"),
             "IST": IST,
             **context,
         },
