@@ -58,7 +58,8 @@
       {% set total_rakes = latest_summary.total_rakes or 0 %}
       {% set online_now_count = latest_summary.online_now_count or 0 %}
       {% set offline_count = latest_summary.offline_count or 0 %}
-      {% set recently_offline_count = latest_summary.recently_offline_count or 0 %}
+      {% set recent_offline_count = latest_summary.recent_offline_count or latest_summary.recently_offline_count or 0 %}
+      {% set recently_offline_count = recent_offline_count %}
       {% set recently_online_count = latest_summary.recently_online_count or 0 %}
       {% set online_now_ratio = ((online_now_count / total_rakes) * 100) if total_rakes else 0 %}
       {% set offline_ratio = ((offline_count / total_rakes) * 100) if total_rakes else 0 %}
@@ -93,6 +94,7 @@
             <div class="metric-meter-notes">
               <span>Online {{ online_now_count }}</span>
               <span>Offline {{ offline_count }}</span>
+              <span>Offline 2h to 1 Day {{ recent_offline_count }}</span>
             </div>
             <p>Latest successfully stored snapshot.</p>
             <span class="metric-card-footer metric-card-footer-placeholder" aria-hidden="true"></span>
@@ -129,7 +131,7 @@
         <a class="metric-card-link" href="#recently-offline-table">
           <article class="card metric-card metric-card-recent-offline metric-card-clickable">
             <span class="metric-label">Offline 2h to 1 Day</span>
-            <strong class="metric-value">{{ latest_summary.recently_offline_count }}</strong>
+            <strong class="metric-value">{{ recent_offline_count }}</strong>
             <div class="metric-level metric-level-recent-offline" style="--level-fill: {{ recently_offline_ratio }}%;">
               <div class="metric-level-fill"></div>
             </div>

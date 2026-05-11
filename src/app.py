@@ -6332,6 +6332,7 @@ def ssts_report_page(
         "total_rakes": len(context.get("latest_rows", [])),
         "online_now_count": len(context.get("latest_rows", [])) - len(context.get("current_offline", [])),
         "offline_count": len(context.get("current_offline", [])),
+        "recent_offline_count": len(context.get("current_recently_offline", [])),
         "recently_offline_count": len(context.get("current_recently_offline", [])),
         "recently_online_count": len(context.get("recently_online", [])),
     }
