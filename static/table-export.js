@@ -1,5 +1,6 @@
 (() => {
   const ACTION_HEADER_RE = /^actions$/i;
+  const EXPORT_IGNORED_HEADER_RE = /^graphical representation$/i;
 
   const normalizeText = (value) => String(value ?? "").replace(/\s+/g, " ").trim();
 
@@ -68,7 +69,9 @@
     );
     const ignoredIndexes = new Set(
       headers
-        .map((header, index) => (ACTION_HEADER_RE.test(header) ? index : -1))
+        .map((header, index) => (
+          ACTION_HEADER_RE.test(header) || EXPORT_IGNORED_HEADER_RE.test(header) ? index : -1
+        ))
         .filter((index) => index >= 0)
     );
     const keepIndexes = headers.map((_, index) => index).filter((index) => !ignoredIndexes.has(index));
