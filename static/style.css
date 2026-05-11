@@ -386,6 +386,33 @@ button:hover { filter: brightness(1.05); }
 .metric-level-total .metric-level-fill {
   background: linear-gradient(90deg, #ffe45c 0%, #ffd36b 100%);
 }
+.metric-level-split {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  width: 100%;
+  height: 100%;
+}
+.metric-level-split-online,
+.metric-level-split-offline {
+  height: 100%;
+}
+.metric-level-split-online {
+  background: linear-gradient(90deg, #66e1b6 0%, #8af2c8 100%);
+}
+.metric-level-split-offline {
+  background: linear-gradient(90deg, #ff9580 0%, #ffb27a 100%);
+}
+.metric-level-split-online:first-child {
+  border-radius: 999px 0 0 999px;
+}
+.metric-level-split-offline:last-child {
+  border-radius: 0 999px 999px 0;
+}
+.metric-level-split-online:only-child,
+.metric-level-split-offline:only-child {
+  border-radius: 999px;
+}
 .metric-level-online .metric-level-fill {
   background: linear-gradient(90deg, #66e1b6 0%, #8af2c8 100%);
 }

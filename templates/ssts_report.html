@@ -84,8 +84,11 @@
           <article class="card metric-card metric-card-total metric-card-clickable">
             <span class="metric-label">Total Rakes</span>
             <strong class="metric-value">{{ latest_summary.total_rakes }}</strong>
-            <div class="metric-level metric-level-total" style="--level-fill: 100%;">
-              <div class="metric-level-fill"></div>
+            <div class="metric-level metric-level-total">
+              <div class="metric-level-split">
+                <div class="metric-level-split-online" style="width: {{ online_now_ratio }}%;"></div>
+                <div class="metric-level-split-offline" style="width: {{ offline_ratio }}%;"></div>
+              </div>
             </div>
             <div class="metric-meter-notes">
               <span>Online {{ online_now_count }}</span>
