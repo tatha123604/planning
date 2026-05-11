@@ -2,6 +2,55 @@
   const DEFAULT_PAGE_SIZE = 10;
   const isFilterHidden = (row) => row?.dataset?.filterHidden === "true";
 
+  function normalizeText(value) {
+    return String(value || "").replace(/\s+/g, " ").trim();
+  }
+
+  function parseSortableNumber(text) {
+    const normalized = normalizeText(text).replace(/,/g, "");
+    if (!normalized) return null;
+    const num = Number(normalized);
+    return Number.isFinite(num) ? num : null;
+  }
+
+  function parseSortableDateTime(text) {
+    // Matches "dd-mm-yyyy hh:mm" or "dd-mm-yyyy hh:mm:ss" with optional timezone suffix (IST/UTC).
+    const normalized = normalizeText(text);
+    const match = normalized.match(/(\d{2})-(\d{2})-(\d{4})\s+(\d{2}):(\d{2})(?::(\d{2}))?/);
+    if (!match) return null;
+    const [, dd, mm, yyyy, hh, mi, ss] = match;
+    // Use a sortable yyyymmddhhmmss integer (timezone label doesn't matter if consistent).
+    return Number(`${yyyy}${mm}${dd}${hh}${mi}${(ss || "00").padStart(2, "0")}`);
+  }
+
+  function parseSortableDuration(text) {
+    // Supports:
+    // - "HH hh MM mm SS ss"
+    // - "DD DD HH hh MM mm SS ss"
+    // - "MM MM DD DD HH hh MM mm SS ss"
+    // - "YY YY MM MM DD DD HH hh MM mm SS ss"
+    const normalized = normalizeText(text).toUpperCase();
+    if (!normalized) return null;
+    const grab = (unit) => {
+      const m = normalized.match(new RegExp(`(\\d+)\\s*${unit}\\b`));
+      return m ? parseInt(m[1], 10) : 0;
+    };
+
+    const years = grab("YY");
+    const months = grab("MM");
+    const days = grab("DD");
+    const hours = grab("HH");
+    const secs = grab("SS");
+
+    // Disambiguate months vs minutes by looking for the time-part "hh ... mm ... ss".
+    const timeMinMatch = normalized.match(/(\d+)\s*HH\b.*?(\d+)\s*MM\b.*?(\d+)\s*SS\b/);
+    const minutes = timeMinMatch ? parseInt(timeMinMatch[2], 10) : 0;
+
+    // Approximate conversion: 1Y=365d, 1M=30d.
+    const totalDays = years * 365 + months * 30 + days;
+    return totalDays * 86400 + hours * 3600 + minutes * 60 + secs;
+  }
+
   function styleGroup(group, justifyContent = "flex-start") {
     group.style.display = "flex";
     group.style.alignItems = "center";
@@ -118,6 +167,8 @@
 
     let pageSize = table.id === "cli-distribution-table" ? 0 : DEFAULT_PAGE_SIZE;
     let page = 0;
+    let sortColumn = null;
+    let sortDirection = 1; // 1 = asc, -1 = desc
 
     const topPager = createPagerBar({
       showRowsSelector: true,
@@ -134,6 +185,115 @@
       const hostWidth = pagerAnchor.clientWidth || pagerHost.clientWidth || table.clientWidth || 0;
       [topPager.wrapper, bottomPager.wrapper].forEach((wrapper) => {
         wrapper.style.width = hostWidth > 0 ? `${hostWidth}px` : "";
+      });
+    };
+
+    const tbody = table.tBodies[0];
+    const originalIndex = new Map(pageableRows.map((row, idx) => [row, idx]));
+    const updateSortIndicators = () => {
+      const headCells = Array.from(table.tHead?.rows?.[0]?.cells || []);
+      headCells.forEach((cell, idx) => {
+        const indicator = cell.querySelector(".table-sort-indicator");
+        if (!indicator) return;
+        if (idx !== sortColumn) {
+          indicator.textContent = "";
+          indicator.setAttribute("data-dir", "");
+          return;
+        }
+        indicator.textContent = sortDirection === 1 ? "▲" : "▼";
+        indicator.setAttribute("data-dir", sortDirection === 1 ? "asc" : "desc");
+      });
+    };
+
+    const coerceSortKey = (headerText, cellText) => {
+      const header = normalizeText(headerText).toLowerCase();
+      const value = normalizeText(cellText);
+      if (!value) return { kind: "empty", value: "" };
+
+      if (header.includes("update") || header.includes("snapshot") || header.includes("time") || header.includes("date")) {
+        const dt = parseSortableDateTime(value);
+        if (dt !== null) return { kind: "number", value: dt };
+      }
+
+      if (header.includes("offline") || header.includes("duration") || header.includes("hours") || header.includes("status")) {
+        const dur = parseSortableDuration(value);
+        if (dur !== null) return { kind: "number", value: dur };
+      }
+
+      const num = parseSortableNumber(value);
+      if (num !== null) return { kind: "number", value: num };
+
+      return { kind: "text", value: value.toLowerCase() };
+    };
+
+    const sortRows = () => {
+      if (sortColumn === null) return;
+      const headCells = Array.from(table.tHead?.rows?.[0]?.cells || []);
+      const headerText = headCells[sortColumn]?.textContent || "";
+      const getCellText = (row) => {
+        const cell = row.cells?.[sortColumn];
+        if (!cell) return "";
+        // Prefer visible text; ignore inputs/buttons for remark editor etc.
+        return normalizeText(cell.innerText || cell.textContent || "");
+      };
+
+      pageableRows.sort((a, b) => {
+        const ak = coerceSortKey(headerText, getCellText(a));
+        const bk = coerceSortKey(headerText, getCellText(b));
+
+        if (ak.kind === "empty" && bk.kind !== "empty") return 1;
+        if (bk.kind === "empty" && ak.kind !== "empty") return -1;
+
+        if (ak.kind === "number" && bk.kind === "number") {
+          if (ak.value === bk.value) return (originalIndex.get(a) ?? 0) - (originalIndex.get(b) ?? 0);
+          return sortDirection * (ak.value - bk.value);
+        }
+
+        if (ak.value === bk.value) return (originalIndex.get(a) ?? 0) - (originalIndex.get(b) ?? 0);
+        return sortDirection * String(ak.value).localeCompare(String(bk.value));
+      });
+
+      // Re-append rows in sorted order so paging/filtering uses the new ordering.
+      pageableRows.forEach((row) => tbody.appendChild(row));
+      stickyRows.forEach((row) => tbody.appendChild(row));
+      updateSortIndicators();
+    };
+
+    const enableSorting = () => {
+      const headRow = table.tHead?.rows?.[0];
+      if (!headRow) return;
+      const headCells = Array.from(headRow.cells || []);
+      if (!headCells.length) return;
+
+      headCells.forEach((cell, idx) => {
+        // Avoid double-injecting.
+        if (cell.querySelector(".table-sort-indicator")) return;
+        cell.classList.add("table-sortable");
+        cell.tabIndex = 0;
+        const indicator = document.createElement("span");
+        indicator.className = "table-sort-indicator";
+        indicator.setAttribute("aria-hidden", "true");
+        cell.appendChild(indicator);
+
+        const activate = () => {
+          if (sortColumn === idx) {
+            sortDirection = sortDirection === 1 ? -1 : 1;
+          } else {
+            sortColumn = idx;
+            sortDirection = 1;
+          }
+          page = 0;
+          sortRows();
+          render();
+        };
+
+        cell.addEventListener("click", activate);
+        cell.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            activate();
+          }
+        });
       });
     };
 
@@ -247,6 +407,8 @@
       render();
     });
     table.dataset.pagerReady = "true";
+    enableSorting();
+    sortRows();
     render();
   }
 

@@ -60,6 +60,10 @@
       {% set offline_count = latest_summary.offline_count or 0 %}
       {% set recently_offline_count = latest_summary.recently_offline_count or 0 %}
       {% set recently_online_count = latest_summary.recently_online_count or 0 %}
+      {% set online_now_ratio = ((online_now_count / total_rakes) * 100) if total_rakes else 0 %}
+      {% set offline_ratio = ((offline_count / total_rakes) * 100) if total_rakes else 0 %}
+      {% set recently_offline_ratio = ((recently_offline_count / offline_count) * 100) if offline_count else 0 %}
+      {% set recently_online_ratio = ((recently_online_count / online_now_count) * 100) if online_now_count else 0 %}
 
       <section class="grid">
         <div class="metric-card-link">
@@ -95,11 +99,11 @@
           <article class="card metric-card metric-card-online metric-card-clickable">
             <span class="metric-label">Online Now</span>
             <strong class="metric-value">{{ latest_summary.online_now_count }}</strong>
-            <div class="metric-level metric-level-online" style="--level-fill: {{ ((online_now_count / total_rakes) * 100) if total_rakes else 0 }}%;">
+            <div class="metric-level metric-level-online" style="--level-fill: {{ online_now_ratio }}%;">
               <div class="metric-level-fill"></div>
             </div>
             <div class="metric-meter-notes">
-              <span>{{ "%.1f"|format(((online_now_count / total_rakes) * 100) if total_rakes else 0) }}% of total</span>
+              <span>{{ "%.1f"|format(online_now_ratio) }}% of total rakes</span>
             </div>
             <p>Rakes currently active within your offline threshold.</p>
             <span class="metric-card-footer">Open table</span>
@@ -109,11 +113,11 @@
           <article class="card metric-card metric-card-offline metric-card-clickable">
             <span class="metric-label">Offline &gt; 2 Hours</span>
             <strong class="metric-value">{{ latest_summary.offline_count }}</strong>
-            <div class="metric-level metric-level-offline" style="--level-fill: {{ ((offline_count / total_rakes) * 100) if total_rakes else 0 }}%;">
+            <div class="metric-level metric-level-offline" style="--level-fill: {{ offline_ratio }}%;">
               <div class="metric-level-fill"></div>
             </div>
             <div class="metric-meter-notes">
-              <span>{{ "%.1f"|format(((offline_count / total_rakes) * 100) if total_rakes else 0) }}% of total</span>
+              <span>{{ "%.1f"|format(offline_ratio) }}% of total rakes</span>
             </div>
             <p>Rakes currently considered offline by your rule.</p>
             <span class="metric-card-footer">Open table</span>
@@ -123,11 +127,11 @@
           <article class="card metric-card metric-card-recent-offline metric-card-clickable">
             <span class="metric-label">Offline 2h to 1 Day</span>
             <strong class="metric-value">{{ latest_summary.recently_offline_count }}</strong>
-            <div class="metric-level metric-level-recent-offline" style="--level-fill: {{ ((recently_offline_count / total_rakes) * 100) if total_rakes else 0 }}%;">
+            <div class="metric-level metric-level-recent-offline" style="--level-fill: {{ recently_offline_ratio }}%;">
               <div class="metric-level-fill"></div>
             </div>
             <div class="metric-meter-notes">
-              <span>{{ "%.1f"|format(((recently_offline_count / total_rakes) * 100) if total_rakes else 0) }}% of total</span>
+              <span>{{ "%.1f"|format(recently_offline_ratio) }}% of offline rakes</span>
             </div>
             <p>Rakes offline between 2 hours and 1 day.</p>
             <span class="metric-card-footer">Open table</span>
@@ -135,15 +139,15 @@
         </a>
         <a class="metric-card-link" href="#recently-online-table">
           <article class="card metric-card metric-card-recovery metric-card-clickable">
-            <span class="metric-label">Recently Came Online</span>
+            <span class="metric-label">Recently Back Online</span>
             <strong class="metric-value">{{ latest_summary.recently_online_count }}</strong>
-            <div class="metric-level metric-level-recovery" style="--level-fill: {{ ((recently_online_count / total_rakes) * 100) if total_rakes else 0 }}%;">
+            <div class="metric-level metric-level-recovery" style="--level-fill: {{ recently_online_ratio }}%;">
               <div class="metric-level-fill"></div>
             </div>
             <div class="metric-meter-notes">
-              <span>{{ "%.1f"|format(((recently_online_count / total_rakes) * 100) if total_rakes else 0) }}% of total</span>
+              <span>{{ "%.1f"|format(recently_online_ratio) }}% of online rakes</span>
             </div>
-            <p>Was offline for more than 5 hours, now active in the latest snapshot.</p>
+            <p>Was offline for more than 5 hours in the previous snapshot and is no longer offline.</p>
             <span class="metric-card-footer">Open table</span>
           </article>
         </a>
@@ -255,6 +259,7 @@
                   <th><span class="th-key" title="Cars">CRS</span>Cars</th>
                   <th><span class="th-key" title="Last Update">LU</span>Last Update</th>
                   <th><span class="th-key" title="Status">ST</span>Status</th>
+                  <th><span class="th-key" title="Remark">RMK</span>Remark</th>
                 </tr>
               </thead>
               <tbody>
@@ -266,10 +271,26 @@
                   <td>{{ row.contact }}</td>
                   <td>{{ row.lastupdate_label }}</td>
                   <td>{{ row.offline_duration }}</td>
+                  <td class="ssts-remark-cell">
+                    <div
+                      class="ssts-remark-editor"
+                      data-snapshot-id="{{ row.snapshot_id }}"
+                      data-save-url="/ssts-report/remark"
+                    >
+                      <input
+                        type="text"
+                        class="ssts-remark-input"
+                        value="{{ row.remark }}"
+                        placeholder="Add remark"
+                      />
+                      <button type="button" class="ghost small ssts-remark-save">Save</button>
+                      <span class="ssts-remark-status" aria-live="polite"></span>
+                    </div>
+                  </td>
                 </tr>
                 {% else %}
                 <tr>
-                  <td colspan="6">No online rakes found in the latest snapshot.</td>
+                  <td colspan="7">No online rakes found in the latest snapshot.</td>
                 </tr>
                 {% endfor %}
               </tbody>
@@ -291,6 +312,7 @@
                   <th><span class="th-key" title="Cars">CRS</span>Cars</th>
                   <th><span class="th-key" title="Last Update">LU</span>Last Update</th>
                   <th><span class="th-key" title="Offline Duration">OFF</span>Offline Hours</th>
+                  <th><span class="th-key" title="Remark">RMK</span>Remark</th>
                 </tr>
               </thead>
               <tbody>
@@ -302,10 +324,26 @@
                   <td>{{ row.contact }}</td>
                   <td>{{ row.lastupdate_label }}</td>
                   <td>{{ row.offline_duration }}</td>
+                  <td class="ssts-remark-cell">
+                    <div
+                      class="ssts-remark-editor"
+                      data-snapshot-id="{{ row.snapshot_id }}"
+                      data-save-url="/ssts-report/remark"
+                    >
+                      <input
+                        type="text"
+                        class="ssts-remark-input"
+                        value="{{ row.remark }}"
+                        placeholder="Add remark"
+                      />
+                      <button type="button" class="ghost small ssts-remark-save">Save</button>
+                      <span class="ssts-remark-status" aria-live="polite"></span>
+                    </div>
+                  </td>
                 </tr>
                 {% else %}
                 <tr>
-                  <td colspan="6">No current offline rakes.</td>
+                  <td colspan="7">No current offline rakes.</td>
                 </tr>
                 {% endfor %}
               </tbody>
@@ -314,7 +352,7 @@
         </details>
       </section>
 
-      <section class="card collapsible">
+      <section class="card collapsible ssts-recent-offline-section" id="recently-offline-table">
         <details open>
           <summary>Current Recently Offline Rakes (2 Hours to 1 Day)</summary>
           {% if latest_run %}
@@ -329,6 +367,7 @@
                   <th><span class="th-key" title="Mobile No">MOB</span>Mobile No</th>
                   <th><span class="th-key" title="Last Update">LU</span>Last Update</th>
                   <th><span class="th-key" title="Offline Duration">OFF</span>Offline Hours</th>
+                  <th><span class="th-key" title="Remark">RMK</span>Remark</th>
                 </tr>
               </thead>
               <tbody>
@@ -339,10 +378,26 @@
                   <td>{{ row.phone }}</td>
                   <td>{{ row.lastupdate_label }}</td>
                   <td>{{ row.offline_duration }}</td>
+                  <td class="ssts-remark-cell">
+                    <div
+                      class="ssts-remark-editor"
+                      data-snapshot-id="{{ row.snapshot_id }}"
+                      data-save-url="/ssts-report/remark"
+                    >
+                      <input
+                        type="text"
+                        class="ssts-remark-input"
+                        value="{{ row.remark }}"
+                        placeholder="Add remark"
+                      />
+                      <button type="button" class="ghost small ssts-remark-save">Save</button>
+                      <span class="ssts-remark-status" aria-live="polite"></span>
+                    </div>
+                  </td>
                 </tr>
                 {% else %}
                 <tr>
-                  <td colspan="5">No current recently offline rakes found.</td>
+                  <td colspan="6">No current recently offline rakes found.</td>
                 </tr>
                 {% endfor %}
               </tbody>
@@ -366,6 +421,7 @@
                   <th><span class="th-key" title="Mobile No">MOB</span>Mobile No</th>
                   <th><span class="th-key" title="Last Update">LU</span>Last Update</th>
                   <th><span class="th-key" title="Offline Duration">OFF</span>Offline Hours</th>
+                  <th><span class="th-key" title="Remark">RMK</span>Remark</th>
                 </tr>
               </thead>
               <tbody>
@@ -376,10 +432,26 @@
                   <td>{{ row.phone }}</td>
                   <td>{{ row.lastupdate_label }}</td>
                   <td>{{ row.offline_duration }}</td>
+                  <td class="ssts-remark-cell">
+                    <div
+                      class="ssts-remark-editor"
+                      data-snapshot-id="{{ row.snapshot_id }}"
+                      data-save-url="/ssts-report/remark"
+                    >
+                      <input
+                        type="text"
+                        class="ssts-remark-input"
+                        value="{{ row.remark }}"
+                        placeholder="Add remark"
+                      />
+                      <button type="button" class="ghost small ssts-remark-save">Save</button>
+                      <span class="ssts-remark-status" aria-live="polite"></span>
+                    </div>
+                  </td>
                 </tr>
                 {% else %}
                 <tr>
-                  <td colspan="5">No previous-day offline snapshot available yet.</td>
+                  <td colspan="6">No previous-day offline snapshot available yet.</td>
                 </tr>
                 {% endfor %}
               </tbody>
@@ -403,6 +475,7 @@
                   <th><span class="th-key" title="Mobile No">MOB</span>Mobile No</th>
                   <th><span class="th-key" title="Last Update">LU</span>Last Update</th>
                   <th><span class="th-key" title="Offline Duration">OFF</span>Offline Hours</th>
+                  <th><span class="th-key" title="Remark">RMK</span>Remark</th>
                 </tr>
               </thead>
               <tbody>
@@ -413,10 +486,26 @@
                   <td>{{ row.phone }}</td>
                   <td>{{ row.lastupdate_label }}</td>
                   <td>{{ row.offline_duration }}</td>
+                  <td class="ssts-remark-cell">
+                    <div
+                      class="ssts-remark-editor"
+                      data-snapshot-id="{{ row.snapshot_id }}"
+                      data-save-url="/ssts-report/remark"
+                    >
+                      <input
+                        type="text"
+                        class="ssts-remark-input"
+                        value="{{ row.remark }}"
+                        placeholder="Add remark"
+                      />
+                      <button type="button" class="ghost small ssts-remark-save">Save</button>
+                      <span class="ssts-remark-status" aria-live="polite"></span>
+                    </div>
+                  </td>
                 </tr>
                 {% else %}
                 <tr>
-                  <td colspan="5">No previous-day recently offline rakes found.</td>
+                  <td colspan="6">No previous-day recently offline rakes found.</td>
                 </tr>
                 {% endfor %}
               </tbody>
@@ -427,7 +516,7 @@
 
       <section class="card collapsible ssts-recovery-section" id="recently-online-table">
         <details open>
-          <summary>Recently Came Online (Previously Offline &gt; 5 Hours)</summary>
+          <summary>Recently Back Online (Previously Offline &gt; 5 Hours)</summary>
           <div class="table-wrap">
             <table class="employee-table paged" data-exportable="true" data-export-name="recently_back_online">
               <thead>
@@ -438,6 +527,7 @@
                   <th><span class="th-key" title="Current Offline Duration">COFF</span>Current Offline Hours</th>
                   <th><span class="th-key" title="Previous Offline Duration">POFF</span>Previous Offline Hours</th>
                   <th><span class="th-key" title="Previous Snapshot">PSNAP</span>Previous Snapshot</th>
+                  <th><span class="th-key" title="Remark">RMK</span>Remark</th>
                 </tr>
               </thead>
               <tbody>
@@ -449,10 +539,26 @@
                   <td>{{ row.offline_duration }}</td>
                   <td>{{ row.previous_offline_duration }}</td>
                   <td>{{ row.previous_seen }}</td>
+                  <td class="ssts-remark-cell">
+                    <div
+                      class="ssts-remark-editor"
+                      data-snapshot-id="{{ row.snapshot_id }}"
+                      data-save-url="/ssts-report/remark"
+                    >
+                      <input
+                        type="text"
+                        class="ssts-remark-input"
+                        value="{{ row.remark }}"
+                        placeholder="Add remark"
+                      />
+                      <button type="button" class="ghost small ssts-remark-save">Save</button>
+                      <span class="ssts-remark-status" aria-live="polite"></span>
+                    </div>
+                  </td>
                 </tr>
                 {% else %}
                 <tr>
-                  <td colspan="6">No recent online recovery detected yet.</td>
+                  <td colspan="7">No recent online recovery detected yet.</td>
                 </tr>
                 {% endfor %}
               </tbody>
@@ -462,6 +568,72 @@
       </section>
     </main>
   </div>
+  <script>
+    (() => {
+      const remarkEditors = document.querySelectorAll('.ssts-remark-editor');
+      remarkEditors.forEach((editor) => {
+        const input = editor.querySelector('.ssts-remark-input');
+        const saveButton = editor.querySelector('.ssts-remark-save');
+        const status = editor.querySelector('.ssts-remark-status');
+        const saveUrl = editor.dataset.saveUrl;
+        const snapshotId = Number(editor.dataset.snapshotId || '0');
+
+        const setStatus = (message, state = '') => {
+          if (!status) return;
+          status.textContent = message;
+          status.dataset.state = state;
+        };
+
+        const saveRemark = async () => {
+          if (!input || !saveButton || !saveUrl || !snapshotId) return;
+          const previousLabel = saveButton.textContent;
+          saveButton.disabled = true;
+          saveButton.textContent = 'Saving...';
+          setStatus('');
+          try {
+            const response = await fetch(saveUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                snapshot_id: snapshotId,
+                remark: input.value,
+              }),
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+              throw new Error(payload.detail || 'Could not save remark.');
+            }
+            input.value = payload.remark || '';
+            input.defaultValue = payload.remark || '';
+            setStatus('Saved', 'saved');
+          } catch (error) {
+            setStatus(error && error.message ? error.message : 'Could not save remark.', 'error');
+          } finally {
+            saveButton.disabled = false;
+            saveButton.textContent = previousLabel;
+          }
+        };
+
+        if (saveButton) {
+          saveButton.addEventListener('click', saveRemark);
+        }
+
+        if (input) {
+          input.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              saveRemark();
+            }
+          });
+          input.addEventListener('input', () => {
+            if (status && status.dataset.state === 'saved') {
+              setStatus('');
+            }
+          });
+        }
+      });
+    })();
+  </script>
   <script src="/static/table-pager.js?v={{ asset_ver }}"></script>
   <script src="/static/table-export.js?v={{ asset_ver }}"></script>
   <script src="/static/sidebar-toggle.js?v={{ asset_ver }}"></script>
