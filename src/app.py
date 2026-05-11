@@ -1823,12 +1823,14 @@ def build_ssts_report_context(
                         "name": row.name,
                         "uniqueid": row.uniqueid or "",
                         "remark": row.remark or "",
+                        "lastupdate": row.lastupdate,
                         "lastupdate_label": _format_ist(row.lastupdate, include_seconds=True),
                         "points": [],
                     },
                 )
                 rake["name"] = row.name
                 rake["uniqueid"] = row.uniqueid or ""
+                rake["lastupdate"] = row.lastupdate
                 rake["lastupdate_label"] = _format_ist(row.lastupdate, include_seconds=True)
                 if row.remark:
                     rake["remark"] = row.remark
@@ -1869,20 +1871,50 @@ def build_ssts_report_context(
                     )
                 current_state = point_state
                 segment_start = point_time
-            last_point_time = points[-1]["time"] + timedelta(minutes=SSTS_REFRESH_INTERVAL_MINUTES)
-            segment_end = min(day_end, last_point_time)
-            duration_minutes = max(0, int((segment_end - segment_start).total_seconds() // 60))
+            lastupdate_time = _ensure_utc(rake.get("lastupdate"))
+            if analysis_day_value == current_reference_time.astimezone(IST).date():
+                reference_end = min(day_end, current_reference_time)
+            else:
+                last_point_time = points[-1]["time"] + timedelta(minutes=SSTS_REFRESH_INTERVAL_MINUTES)
+                reference_end = min(day_end, last_point_time)
+
+            current_segment_start = segment_start
+            current_segment_end = reference_end
+            followup_offline_start: datetime | None = None
+
+            if lastupdate_time is not None:
+                bounded_lastupdate = min(reference_end, max(day_start, lastupdate_time))
+                if current_state == "offline":
+                    current_segment_start = min(current_segment_start, bounded_lastupdate)
+                elif current_state == "online" and current_segment_start < bounded_lastupdate < reference_end:
+                    current_segment_end = bounded_lastupdate
+                    followup_offline_start = bounded_lastupdate
+
+            duration_minutes = max(0, int((current_segment_end - current_segment_start).total_seconds() // 60))
             if duration_minutes >= SSTS_OFFLINE_THRESHOLD_MINUTES:
                 segments.append(
                     {
                         "state": current_state,
-                        "start_label": _format_ist_time(segment_start),
-                        "end_label": _format_ist_time(segment_end - timedelta(minutes=1)),
+                        "start_label": _format_ist_time(current_segment_start),
+                        "end_label": _format_ist_time(current_segment_end - timedelta(minutes=1)),
                         "duration_label": _format_duration(duration_minutes) or "",
                         "width_percent": round((duration_minutes / (24 * 60)) * 100, 2),
-                        "summary_label": f"{_format_ist_time(segment_start)} to {_format_ist_time(segment_end - timedelta(minutes=1))} {'offline' if current_state == 'offline' else 'online'}",
+                        "summary_label": f"{_format_ist_time(current_segment_start)} to {_format_ist_time(current_segment_end - timedelta(minutes=1))} {'offline' if current_state == 'offline' else 'online'}",
                     }
                 )
+            if followup_offline_start is not None and followup_offline_start < reference_end:
+                offline_duration_minutes = max(0, int((reference_end - followup_offline_start).total_seconds() // 60))
+                if offline_duration_minutes >= SSTS_OFFLINE_THRESHOLD_MINUTES:
+                    segments.append(
+                        {
+                            "state": "offline",
+                            "start_label": _format_ist_time(followup_offline_start),
+                            "end_label": _format_ist_time(reference_end - timedelta(minutes=1)),
+                            "duration_label": _format_duration(offline_duration_minutes) or "",
+                            "width_percent": round((offline_duration_minutes / (24 * 60)) * 100, 2),
+                            "summary_label": f"{_format_ist_time(followup_offline_start)} to {_format_ist_time(reference_end - timedelta(minutes=1))} offline",
+                        }
+                    )
             offline_periods = sum(1 for segment in segments if segment["state"] == "offline")
             online_periods = sum(1 for segment in segments if segment["state"] == "online")
             selected_analysis_rows.append(
