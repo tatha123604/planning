@@ -909,26 +909,34 @@ ul { padding-left: 18px; margin: 6px 0; }
   padding: 0;
   background: transparent;
   border: 0;
-  display: grid;
-  grid-template-columns: minmax(180px, 220px) max-content;
-  align-items: end;
-  justify-content: start;
-  column-gap: 14px;
-  row-gap: 10px;
+  display: block;
 }
 .pf-report-filter .filter-field {
   min-width: 0;
+  flex: 0 1 auto;
 }
 .pf-report-filter .filter-field label {
   margin-bottom: 6px;
 }
+.pf-control-cluster {
+  width: 100%;
+  max-width: 420px;
+}
+.pf-control-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  flex-wrap: nowrap;
+}
 .pf-report-filter .filter-field input {
   min-width: 0;
+  flex: 1 1 auto;
 }
 .pf-form-actions {
   display: flex;
   align-items: flex-end;
   justify-content: flex-start;
+  flex: 0 0 auto;
 }
 .pf-report-filter button {
   align-self: flex-end;
@@ -2657,14 +2665,11 @@ table .summary-link {
     flex-basis: 100%;
     min-width: 0;
   }
-  .pf-report-filter {
-    grid-template-columns: 1fr;
+  .pf-control-row {
+    flex-wrap: nowrap;
   }
   .pf-form-actions {
-    align-items: stretch;
-  }
-  .pf-report-filter button {
-    width: 100%;
+    align-items: flex-end;
   }
 }
 
@@ -2814,8 +2819,11 @@ table .summary-link {
   }
   .requirements-filter-row { justify-content: stretch; }
   .requirements-filter-card { width: 100%; }
-  .pf-report-filter {
-    grid-template-columns: 1fr;
+  .pf-control-cluster {
+    max-width: none;
+  }
+  .pf-control-row {
+    flex-wrap: wrap;
   }
   .pf-form-actions {
     align-items: stretch;

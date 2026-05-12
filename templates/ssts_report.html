@@ -879,12 +879,14 @@
         <div class="pf-report-shell">
           <form class="detail-date-filter report-filter-row pf-report-filter" method="post" action="/ssts-report/pf-analysis/start" id="pf-analysis-form">
             <input type="hidden" name="report_tab" value="pf_entering" />
-            <div class="filter-field">
+            <div class="filter-field pf-control-cluster">
               <label for="pf-day-select">Report Date</label>
-              <input id="pf-day-select" type="date" name="pf_day" value="{{ pf_report_day }}" />
-            </div>
-            <div class="pf-form-actions">
-              <button type="submit" id="pf-analysis-button">Analysis</button>
+              <div class="pf-control-row">
+                <input id="pf-day-select" type="date" name="pf_day" value="{{ pf_report_day }}" />
+                <div class="pf-form-actions">
+                  <button type="submit" id="pf-analysis-button">Analysis</button>
+                </div>
+              </div>
             </div>
           </form>
           <div
