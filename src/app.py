@@ -1,11 +1,22 @@
 from __future__ import annotations
 
+<<<<<<< HEAD
 from datetime import date, datetime, timedelta
+=======
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import date, datetime, timedelta, timezone
+>>>>>>> 71da6a5 (Add SSTS PF entering report tab)
 import math
 from io import BytesIO
 from pathlib import Path
 from typing import Optional
 import re
+<<<<<<< HEAD
+=======
+from urllib import error as urlerror
+from urllib import parse as urlparse
+from urllib import request as urlrequest
+>>>>>>> 71da6a5 (Add SSTS PF entering report tab)
 
 from fastapi import Depends, FastAPI, Form, Request, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
@@ -63,6 +74,23 @@ ADMIN_PASS = "sdah1234"
 _AUTH_COOKIE = "session"
 _ALLOWED_PATHS = {"/login", "/logout", "/health"}
 _ALLOWED_PREFIXES = ("/static", "/openapi.json", "/docs", "/redoc")
+<<<<<<< HEAD
+=======
+SSTS_WEB_URL = "http://164.52.197.129/devices"
+SSTS_API_BASE_URL = "http://164.52.197.129:3000"
+SSTS_API_LOGIN_URL = f"{SSTS_API_BASE_URL}/auth/login/"
+SSTS_API_DEVICE_URL = f"{SSTS_API_BASE_URL}/device"
+SSTS_API_TRAINS_REPORT_URL = f"{SSTS_API_BASE_URL}/train/tr/reportforperiod"
+SSTS_API_PUNCT_URL = f"{SSTS_API_BASE_URL}/timetable/tc/punct"
+SSTS_API_USER = os.getenv("SSTS_API_USER", "srdeeopsdah@gmail.com")
+SSTS_API_PASSWORD = os.getenv("SSTS_API_PASSWORD", "sdah1234")
+SSTS_OFFLINE_THRESHOLD_MINUTES = 120
+SSTS_RECENTLY_ONLINE_THRESHOLD_MINUTES = 5
+SSTS_PREVIOUSLY_OFFLINE_THRESHOLD_MINUTES = 300
+SSTS_RECENT_OFFLINE_MAX_MINUTES = 24 * 60
+SSTS_REFRESH_INTERVAL_MINUTES = 30
+IST = timezone(timedelta(hours=5, minutes=30))
+>>>>>>> 71da6a5 (Add SSTS PF entering report tab)
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -174,6 +202,523 @@ def build_cli_distribution(employees: list[Employee]) -> list[dict[str, int | st
     ]
 
 
+<<<<<<< HEAD
+=======
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _ensure_utc(dt: datetime | None) -> datetime | None:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _format_ist(dt: datetime | None, *, include_seconds: bool = False) -> str:
+    dt_utc = _ensure_utc(dt)
+    if dt_utc is None:
+        return "No signal"
+    fmt = "%d-%m-%Y %H:%M:%S IST" if include_seconds else "%d-%m-%Y %H:%M IST"
+    return dt_utc.astimezone(IST).strftime(fmt)
+
+
+def _format_duration(minutes: int | None) -> str | None:
+    if minutes is None:
+        return None
+    total_minutes = max(0, int(minutes))
+    hours = total_minutes // 60
+    mins = total_minutes % 60
+    if hours > 0:
+        return f"{hours}h {mins}m"
+    return f"{mins}m"
+
+
+def _parse_ssts_timestamp(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        # The SSTS API sends timestamps with a trailing "Z", but the original
+        # dashboard treats them as local server wall time. Preserve that wall
+        # time in IST so our report matches the source system exactly.
+        normalized = value.strip().replace("T", " ")
+        if normalized.endswith("Z"):
+            normalized = normalized[:-1]
+        parsed = datetime.fromisoformat(normalized)
+        if parsed.tzinfo is not None:
+            parsed = parsed.replace(tzinfo=None)
+        return parsed.replace(tzinfo=IST).astimezone(timezone.utc)
+    except ValueError:
+        return None
+
+
+def _minutes_since(now_utc: datetime, lastupdate: datetime | None) -> int | None:
+    if not lastupdate:
+        return None
+    diff = now_utc - _ensure_utc(lastupdate)
+    return max(0, int(diff.total_seconds() // 60))
+
+
+def _ssts_is_offline(snapshot: SstsDeviceSnapshot) -> bool:
+    return (snapshot.offline_minutes or 0) > SSTS_OFFLINE_THRESHOLD_MINUTES
+
+
+def _ssts_is_recently_offline(snapshot: SstsDeviceSnapshot) -> bool:
+    minutes = snapshot.offline_minutes or 0
+    return SSTS_OFFLINE_THRESHOLD_MINUTES < minutes < SSTS_RECENT_OFFLINE_MAX_MINUTES
+
+
+def _ssts_is_online_now(snapshot: SstsDeviceSnapshot) -> bool:
+    minutes = snapshot.offline_minutes
+    if minutes is None:
+        return False
+    return minutes <= SSTS_RECENTLY_ONLINE_THRESHOLD_MINUTES
+
+
+def _snapshot_to_row(snapshot: SstsDeviceSnapshot) -> dict[str, object]:
+    return {
+        "device_id": snapshot.device_id,
+        "name": snapshot.name,
+        "uniqueid": snapshot.uniqueid or "",
+        "phone": snapshot.phone or "",
+        "contact": snapshot.contact or "",
+        "lastupdate": snapshot.lastupdate,
+        "lastupdate_label": _format_ist(snapshot.lastupdate, include_seconds=True),
+        "offline_minutes": snapshot.offline_minutes,
+        "offline_hours": round((snapshot.offline_minutes or 0) / 60, 1) if snapshot.offline_minutes is not None else None,
+        "offline_duration": _format_duration(snapshot.offline_minutes),
+    }
+
+
+def _ssts_sort_key(snapshot: SstsDeviceSnapshot) -> tuple[int, int, str]:
+    return (
+        -(snapshot.offline_minutes or -1),
+        snapshot.device_id,
+        snapshot.name.lower(),
+    )
+
+
+def _ssts_post_json(url: str, payload: dict[str, object], headers: dict[str, str] | None = None) -> dict[str, object]:
+    body = json.dumps(payload).encode("utf-8")
+    request_headers = {"Content-Type": "application/json", "User-Agent": "Mozilla/5.0"}
+    if headers:
+        request_headers.update(headers)
+    req = urlrequest.Request(url, data=body, headers=request_headers)
+    with urlrequest.urlopen(req, timeout=30) as response:
+        return json.loads(response.read().decode("utf-8", "replace"))
+
+
+def _ssts_get_json(url: str, headers: dict[str, str] | None = None) -> object:
+    request_headers = {"User-Agent": "Mozilla/5.0"}
+    if headers:
+        request_headers.update(headers)
+    req = urlrequest.Request(url, headers=request_headers)
+    with urlrequest.urlopen(req, timeout=30) as response:
+        return json.loads(response.read().decode("utf-8", "replace"))
+
+
+def _ssts_get_json_with_params(
+    url: str,
+    params: dict[str, object],
+    headers: dict[str, str] | None = None,
+) -> object:
+    encoded = urlparse.urlencode(
+        {key: value for key, value in params.items() if value not in (None, "")},
+        doseq=True,
+    )
+    full_url = f"{url}?{encoded}" if encoded else url
+    return _ssts_get_json(full_url, headers=headers)
+
+
+def fetch_ssts_token() -> str:
+    login_payload = {"username": SSTS_API_USER, "password": SSTS_API_PASSWORD}
+    login_data = _ssts_post_json(SSTS_API_LOGIN_URL, login_payload)
+    token = str(login_data.get("token") or "").strip()
+    if not token:
+        raise RuntimeError("SSTS login succeeded but token was missing.")
+    return token
+
+
+def fetch_ssts_devices() -> list[dict[str, object]]:
+    token = fetch_ssts_token()
+    devices = _ssts_get_json(SSTS_API_DEVICE_URL, headers={"Authorization": token})
+    if not isinstance(devices, list):
+        raise RuntimeError("Unexpected SSTS device response format.")
+    return [item for item in devices if isinstance(item, dict)]
+
+
+def fetch_ssts_trains_report(report_day: date, token: str) -> list[dict[str, object]]:
+    response = _ssts_get_json_with_params(
+        SSTS_API_TRAINS_REPORT_URL,
+        {"train_date": report_day.isoformat()},
+        headers={"Authorization": token},
+    )
+    if not isinstance(response, list):
+        raise RuntimeError("Unexpected SSTS trains report format.")
+    return [item for item in response if isinstance(item, dict)]
+
+
+def _format_time_value(value: object) -> str:
+    if value in (None, ""):
+        return ""
+    try:
+        text = str(value)
+        if "T" in text:
+            parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+            if parsed.tzinfo is not None:
+                parsed = parsed.astimezone(IST)
+            return parsed.strftime("%H:%M:%S")
+    except ValueError:
+        pass
+    return str(value)
+
+
+def _build_pf_report_rows_for_train(
+    train: dict[str, object],
+    report_day: date,
+    token: str,
+) -> list[dict[str, object]]:
+    base_row = {
+        "report_date": report_day.strftime("%d-%m-%Y"),
+        "train_no": str(train.get("train_no") or ""),
+        "rake_no": str(train.get("device_name") or ""),
+        "device_id": train.get("device_id"),
+        "org": str(train.get("org") or ""),
+        "dest": str(train.get("dest") or ""),
+    }
+    params = {
+        "train_date": report_day.isoformat(),
+        "train_no": train.get("train_no"),
+        "device_id": train.get("device_id"),
+        "org": train.get("org"),
+        "dep": train.get("dep"),
+        "dest": train.get("dest"),
+        "arr": train.get("arr"),
+        "recalc": "true",
+    }
+    try:
+        response = _ssts_get_json_with_params(
+            SSTS_API_PUNCT_URL,
+            params,
+            headers={"Authorization": token},
+        )
+    except (urlerror.URLError, RuntimeError, ValueError, json.JSONDecodeError):
+        response = []
+    if not isinstance(response, list) or not response:
+        return [
+            {
+                **base_row,
+                "station": "",
+                "srl_no": "",
+                "sch_arr": "",
+                "sch_dep": _format_time_value(train.get("dep")),
+                "act_arr": _format_time_value(train.get("act_arr")),
+                "act_dep": _format_time_value(train.get("act_dep")),
+                "geofence_enter_speed": "",
+                "pf_enter_speed": "",
+                "pf_distance": "",
+                "remarks": "",
+                "status_message": "Data not found or Device might be Offline",
+            }
+        ]
+    detail_rows: list[dict[str, object]] = []
+    for item in response:
+        if not isinstance(item, dict):
+            continue
+        detail_rows.append(
+            {
+                **base_row,
+                "station": str(item.get("stn_code") or ""),
+                "srl_no": item.get("srl_no") or "",
+                "sch_arr": _format_time_value(item.get("sch_arr")),
+                "sch_dep": _format_time_value(item.get("sch_dep")),
+                "act_arr": _format_time_value(item.get("act_arr")),
+                "act_dep": _format_time_value(item.get("act_dep")),
+                "geofence_enter_speed": item.get("geofence_enter_speed")
+                if item.get("geofence_enter_speed") is not None
+                else "",
+                "pf_enter_speed": item.get("pf_enter_speed") if item.get("pf_enter_speed") is not None else "",
+                "pf_distance": item.get("pf_distance") if item.get("pf_distance") is not None else "",
+                "remarks": str(item.get("remarks") or ""),
+                "status_message": "",
+            }
+        )
+    return detail_rows or [
+        {
+            **base_row,
+            "station": "",
+            "srl_no": "",
+            "sch_arr": "",
+            "sch_dep": _format_time_value(train.get("dep")),
+            "act_arr": _format_time_value(train.get("act_arr")),
+            "act_dep": _format_time_value(train.get("act_dep")),
+            "geofence_enter_speed": "",
+            "pf_enter_speed": "",
+            "pf_distance": "",
+            "remarks": "",
+            "status_message": "Data not found or Device might be Offline",
+        }
+    ]
+
+
+def build_ssts_pf_entering_context(report_day: date) -> dict[str, object]:
+    token = fetch_ssts_token()
+    trains = fetch_ssts_trains_report(report_day, token)
+    rows: list[dict[str, object]] = []
+    missing_count = 0
+    if trains:
+        with ThreadPoolExecutor(max_workers=6) as executor:
+            future_map = {
+                executor.submit(_build_pf_report_rows_for_train, train, report_day, token): train
+                for train in trains
+            }
+            for future in as_completed(future_map):
+                train_rows = future.result()
+                rows.extend(train_rows)
+                if any(row.get("status_message") for row in train_rows):
+                    missing_count += 1
+    rows.sort(
+        key=lambda row: (
+            str(row.get("train_no") or ""),
+            999999 if row.get("srl_no") in ("", None) else int(row.get("srl_no") or 0),
+            str(row.get("station") or ""),
+        )
+    )
+    return {
+        "pf_report_day": report_day.isoformat(),
+        "pf_report_day_label": report_day.strftime("%d-%m-%Y"),
+        "pf_report_rows": rows,
+        "pf_report_total_trains": len(trains),
+        "pf_report_total_rows": len(rows),
+        "pf_report_missing_count": missing_count,
+    }
+
+
+def refresh_ssts_snapshot(session: Session, force: bool = False) -> dict[str, object]:
+    now_utc = _utc_now()
+    latest_run = session.exec(select(SstsSnapshotRun).order_by(SstsSnapshotRun.observed_at.desc())).first()
+    if latest_run and not force:
+        latest_run_time = _ensure_utc(latest_run.observed_at)
+        age_minutes = int((now_utc - latest_run_time).total_seconds() // 60)
+        if age_minutes < SSTS_REFRESH_INTERVAL_MINUTES and latest_run.fetch_status == "ok":
+            return {
+                "status": "cached",
+                "observed_at": latest_run.observed_at,
+                "source_count": latest_run.source_count,
+                "message": f"Using last sync from {_format_ist(latest_run_time)}.",
+            }
+    observed_at = now_utc.replace(second=0, microsecond=0)
+    try:
+        devices = fetch_ssts_devices()
+        run = SstsSnapshotRun(
+            observed_at=observed_at,
+            source_count=len(devices),
+            fetch_status="ok",
+        )
+        session.add(run)
+        session.commit()
+        session.refresh(run)
+        snapshots: list[SstsDeviceSnapshot] = []
+        for device in devices:
+            lastupdate = _parse_ssts_timestamp(str(device.get("lastupdate") or ""))
+            snapshots.append(
+                SstsDeviceSnapshot(
+                    run_id=run.id or 0,
+                    observed_at=observed_at,
+                    observed_day=observed_at.date(),
+                    device_id=int(device.get("id") or 0),
+                    name=str(device.get("name") or "Unknown"),
+                    uniqueid=str(device.get("uniqueid") or "") or None,
+                    phone=str(device.get("phone") or "") or None,
+                    contact=str(device.get("contact") or "") or None,
+                    lastupdate=lastupdate,
+                    offline_minutes=_minutes_since(observed_at, lastupdate),
+                    attributes=str(device.get("attributes") or "") or None,
+                )
+            )
+        session.add_all(snapshots)
+        session.commit()
+        return {
+            "status": "fetched",
+            "observed_at": observed_at,
+            "source_count": len(snapshots),
+            "message": f"Fetched {len(snapshots)} rakes from SSTS.",
+        }
+    except (urlerror.URLError, HTTPException, RuntimeError, ValueError, json.JSONDecodeError) as exc:
+        run = SstsSnapshotRun(
+            observed_at=observed_at,
+            source_count=0,
+            fetch_status="error",
+            fetch_error=str(exc),
+        )
+        session.add(run)
+        session.commit()
+        return {
+            "status": "error",
+            "observed_at": observed_at,
+            "source_count": 0,
+            "message": f"SSTS sync failed: {exc}",
+        }
+
+
+def _distinct_ssts_runs(session: Session) -> list[SstsSnapshotRun]:
+    return list(session.exec(select(SstsSnapshotRun).order_by(SstsSnapshotRun.observed_at.desc())).all())
+
+
+def _snapshots_for_run(session: Session, run_id: int) -> list[SstsDeviceSnapshot]:
+    snapshots = session.exec(
+        select(SstsDeviceSnapshot)
+        .where(SstsDeviceSnapshot.run_id == run_id)
+        .order_by(SstsDeviceSnapshot.name)
+    ).all()
+    return list(snapshots)
+
+
+def build_ssts_report_context(session: Session, selected_day: date | None = None) -> dict[str, object]:
+    runs = _distinct_ssts_runs(session)
+    latest_run = next((run for run in runs if run.fetch_status == "ok"), None)
+    if not latest_run:
+        return {
+            "latest_run": None,
+            "latest_rows": [],
+            "current_offline": [],
+            "current_recently_offline": [],
+            "previous_day_offline": [],
+            "previous_day_recently_offline": [],
+            "recently_online": [],
+            "daily_summary": [],
+            "selected_day": None,
+            "selected_day_label": None,
+            "selected_day_run": None,
+            "selected_day_recent_offline_rows": [],
+            "selected_day_recently_online_rows": [],
+        }
+
+    latest_snapshots = _snapshots_for_run(session, latest_run.id or 0)
+    latest_map = {row.device_id: row for row in latest_snapshots}
+    latest_run_time = _ensure_utc(latest_run.observed_at)
+    previous_day_cutoff = latest_run_time - timedelta(days=1)
+    previous_day_run = next(
+        (run for run in runs if run.fetch_status == "ok" and _ensure_utc(run.observed_at) <= previous_day_cutoff),
+        None,
+    )
+    previous_day_snapshots = _snapshots_for_run(session, previous_day_run.id or 0) if previous_day_run else []
+
+    current_offline = [_snapshot_to_row(row) for row in sorted(latest_snapshots, key=_ssts_sort_key) if _ssts_is_offline(row)]
+    current_recently_offline = [
+        _snapshot_to_row(row)
+        for row in sorted(latest_snapshots, key=_ssts_sort_key)
+        if _ssts_is_recently_offline(row)
+    ]
+    previous_day_offline = [
+        _snapshot_to_row(row)
+        for row in sorted(previous_day_snapshots, key=_ssts_sort_key)
+        if _ssts_is_offline(row)
+    ]
+    previous_day_recently_offline = [
+        _snapshot_to_row(row)
+        for row in sorted(previous_day_snapshots, key=_ssts_sort_key)
+        if _ssts_is_recently_offline(row)
+    ]
+
+    recovery_runs = [run for run in runs if run.fetch_status == "ok" and _ensure_utc(run.observed_at) <= latest_run_time]
+    snapshots_by_run = {run.id: _snapshots_for_run(session, run.id or 0) for run in recovery_runs}
+    history_by_device: dict[int, list[SstsDeviceSnapshot]] = {}
+    recently_online_by_run_id: dict[int, int] = {}
+    recently_online_info_by_run_device: dict[tuple[int, int], dict[str, object]] = {}
+    for run in sorted(recovery_runs, key=lambda item: item.observed_at):
+        current_rows = snapshots_by_run.get(run.id, [])
+        recovered_count = 0
+        for row in current_rows:
+            history = history_by_device.setdefault(row.device_id, [])
+            if _ssts_is_online_now(row) and history:
+                previous_row = history[-1]
+                if (previous_row.offline_minutes or 0) > SSTS_PREVIOUSLY_OFFLINE_THRESHOLD_MINUTES:
+                    recovered_count += 1
+                    recently_online_info_by_run_device[(run.id or 0, row.device_id)] = {
+                        "previous_offline_hours": round((previous_row.offline_minutes or 0) / 60, 1),
+                        "previous_offline_duration": _format_duration(previous_row.offline_minutes),
+                        "previous_seen": _format_ist(previous_row.observed_at),
+                    }
+            history.append(row)
+        recently_online_by_run_id[run.id or 0] = recovered_count
+
+    latest_by_day: dict[date, SstsSnapshotRun] = {}
+    for run in runs:
+        if run.fetch_status != "ok":
+            continue
+        latest_by_day.setdefault(run.observed_at.date(), run)
+    daily_summary = []
+    for day, run in sorted(latest_by_day.items(), key=lambda item: item[0], reverse=True)[:7]:
+        rows = _snapshots_for_run(session, run.id or 0)
+        offline_count = sum(1 for row in rows if _ssts_is_offline(row))
+        recent_offline_count = sum(1 for row in rows if _ssts_is_recently_offline(row))
+        daily_summary.append(
+            {
+                "day": day.strftime("%d-%m-%Y"),
+                "day_iso": day.isoformat(),
+                "observed_at": _format_ist(run.observed_at),
+                "total_rakes": len(rows),
+                "offline_count": offline_count,
+                "recent_offline_count": recent_offline_count,
+                "recently_online_count": recently_online_by_run_id.get(run.id or 0, 0),
+            }
+        )
+
+    recently_online = []
+    for device_id, latest_row in latest_map.items():
+        if not _ssts_is_online_now(latest_row):
+            continue
+        history = history_by_device.get(device_id, [])
+        if len(history) < 2:
+            continue
+        previous_row = history[-2]
+        if (previous_row.offline_minutes or 0) > SSTS_PREVIOUSLY_OFFLINE_THRESHOLD_MINUTES:
+            row = _snapshot_to_row(latest_row)
+            row.update(recently_online_info_by_run_device.get((latest_run.id or 0, device_id), {}))
+            recently_online.append(row)
+    recently_online.sort(key=lambda row: (-float(row.get("previous_offline_hours") or 0), str(row.get("name") or "").lower()))
+
+    available_days = [item["day_iso"] for item in daily_summary]
+    selected_day_value = selected_day if selected_day in latest_by_day else None
+    if selected_day_value is None and available_days:
+        selected_day_value = date.fromisoformat(str(available_days[0]))
+    selected_day_run = latest_by_day.get(selected_day_value) if selected_day_value else None
+    selected_day_recent_offline_rows = []
+    selected_day_recently_online_rows = []
+    if selected_day_run:
+        selected_run_id = selected_day_run.id or 0
+        for row in sorted(snapshots_by_run.get(selected_run_id, []), key=_ssts_sort_key):
+            detail = _snapshot_to_row(row)
+            if _ssts_is_recently_offline(row):
+                detail["status"] = "Offline 2 Hours to 1 Day"
+                selected_day_recent_offline_rows.append(detail)
+                continue
+            if _ssts_is_online_now(row) and (selected_run_id, row.device_id) in recently_online_info_by_run_device:
+                detail["status"] = "Recently Back Online"
+                detail.update(recently_online_info_by_run_device[(selected_run_id, row.device_id)])
+                selected_day_recently_online_rows.append(detail)
+
+    return {
+        "latest_run": latest_run,
+        "latest_rows": [_snapshot_to_row(row) for row in sorted(latest_snapshots, key=_ssts_sort_key)],
+        "current_offline": current_offline,
+        "current_recently_offline": current_recently_offline,
+        "previous_day_run": previous_day_run,
+        "previous_day_offline": previous_day_offline,
+        "previous_day_recently_offline": previous_day_recently_offline,
+        "recently_online": recently_online,
+        "daily_summary": daily_summary,
+        "selected_day": selected_day_value.isoformat() if selected_day_value else None,
+        "selected_day_label": selected_day_value.strftime("%d-%m-%Y") if selected_day_value else None,
+        "selected_day_run": selected_day_run,
+        "selected_day_recent_offline_rows": selected_day_recent_offline_rows,
+        "selected_day_recently_online_rows": selected_day_recently_online_rows,
+    }
+
+
+>>>>>>> 71da6a5 (Add SSTS PF entering report tab)
 @app.on_event("startup")
 def on_startup() -> None:
     init_db()
@@ -613,6 +1158,75 @@ def reports_page(
     return response
 
 
+<<<<<<< HEAD
+=======
+@app.get("/ssts-report")
+def ssts_report_page(
+    request: Request,
+    force: int = 0,
+    report_tab: str = "online_offline",
+    selected_day: str | None = None,
+    detail_view: str | None = None,
+    pf_day: str | None = None,
+    session: Session = Depends(get_session),
+):
+    sync_result = refresh_ssts_snapshot(session, force=bool(force))
+    active_report_tab = report_tab if report_tab in {"online_offline", "pf_entering"} else "online_offline"
+    selected_day_value: date | None = None
+    if selected_day:
+        try:
+            selected_day_value = date.fromisoformat(selected_day)
+        except ValueError:
+            selected_day_value = None
+    pf_day_value = selected_day_value or date.today()
+    if pf_day:
+        try:
+            pf_day_value = date.fromisoformat(pf_day)
+        except ValueError:
+            pf_day_value = selected_day_value or date.today()
+    context = build_ssts_report_context(session, selected_day=selected_day_value)
+    pf_context = {
+        "pf_report_day": pf_day_value.isoformat(),
+        "pf_report_day_label": pf_day_value.strftime("%d-%m-%Y"),
+        "pf_report_rows": [],
+        "pf_report_total_trains": 0,
+        "pf_report_total_rows": 0,
+        "pf_report_missing_count": 0,
+        "pf_report_error": None,
+    }
+    try:
+        pf_context.update(build_ssts_pf_entering_context(pf_day_value))
+    except (urlerror.URLError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
+        pf_context["pf_report_error"] = f"Unable to load PF entering report: {exc}"
+    latest_run = context.get("latest_run")
+    latest_summary = {
+        "total_rakes": len(context.get("latest_rows", [])),
+        "offline_count": len(context.get("current_offline", [])),
+        "recent_offline_count": len(context.get("current_recently_offline", [])),
+        "recently_offline_count": len(context.get("current_recently_offline", [])),
+        "recently_online_count": len(context.get("recently_online", [])),
+    }
+    return templates.TemplateResponse(
+        "ssts_report.html",
+        {
+            "request": request,
+            "active_page": "ssts_report",
+            "active_report_tab": active_report_tab,
+            "ssts_web_url": SSTS_WEB_URL,
+            "latest_run": latest_run,
+            "latest_summary": latest_summary,
+            "ssts_sync_status": sync_result.get("status"),
+            "ssts_sync_message": sync_result.get("message"),
+            "ssts_sync_observed_at": sync_result.get("observed_at"),
+            "IST": IST,
+            "active_detail_view": detail_view if detail_view in {"recent_offline", "recently_online"} else None,
+            **context,
+            **pf_context,
+        },
+    )
+
+
+>>>>>>> 71da6a5 (Add SSTS PF entering report tab)
 @app.get("/reports/cli-distribution.xlsx")
 def download_cli_distribution(session: Session = Depends(get_session)):
     employees = session.exec(select(Employee)).all()
