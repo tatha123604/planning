@@ -881,7 +881,10 @@ ul { padding-left: 18px; margin: 6px 0; }
   margin: 12px 0 16px;
 }
 .pf-report-filter {
-  margin-bottom: 18px;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
 }
 .pf-report-filter .filter-field {
   flex: 0 1 170px;
@@ -890,6 +893,11 @@ ul { padding-left: 18px; margin: 6px 0; }
 .pf-report-filter button {
   align-self: flex-end;
   flex: 0 0 auto;
+}
+.pf-report-shell {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 12px;
 }
 .pf-summary-strip {
   clear: both;
@@ -901,11 +909,12 @@ ul { padding-left: 18px; margin: 6px 0; }
   min-height: 34px;
 }
 .pf-progress-panel {
-  margin: 6px 0 18px;
+  margin: 0;
   padding: 14px 16px;
   border-radius: 16px;
   border: 1px solid rgba(123, 215, 255, 0.18);
-  background: rgba(9, 16, 31, 0.72);
+  background: linear-gradient(180deg, rgba(9, 16, 31, 0.78), rgba(12, 24, 42, 0.72));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
 }
 .pf-progress-panel.is-hidden {
   display: none;
@@ -920,6 +929,8 @@ ul { padding-left: 18px; margin: 6px 0; }
 }
 .pf-progress-head strong {
   color: #eefaff;
+  font-size: 14px;
+  letter-spacing: 0.01em;
 }
 .pf-progress-head span {
   color: #bfe8ff;
@@ -947,6 +958,9 @@ ul { padding-left: 18px; margin: 6px 0; }
 }
 .pf-train-detail-card {
   margin-top: 18px;
+}
+.pf-train-detail-card h2 {
+  margin-bottom: 10px;
 }
 .report-filter-row {
   align-items: end;

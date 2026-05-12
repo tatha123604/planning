@@ -876,26 +876,36 @@
             <p>Select a date, run analysis, then review only the rows where Geofence Enter Speed or PF Enter Speed is above 40.</p>
           </div>
         </div>
-        <form class="detail-date-filter report-filter-row pf-report-filter" method="post" action="/ssts-report/pf-analysis/start" id="pf-analysis-form">
-          <input type="hidden" name="report_tab" value="pf_entering" />
-          <div class="filter-field">
-            <label for="pf-day-select">Report Date</label>
-            <input id="pf-day-select" type="date" name="pf_day" value="{{ pf_report_day }}" />
-          </div>
-          <button type="submit" id="pf-analysis-button">Analysis</button>
-        </form>
-        <div
-          class="pf-progress-panel {% if pf_analysis_status not in ['pending', 'running'] %}is-hidden{% endif %}"
-          id="pf-progress-panel"
-          data-status="{{ pf_analysis_status }}"
-          data-task-id="{{ pf_analysis_task_id }}"
-        >
-          <div class="pf-progress-head">
-            <strong>PF Speed Analysis Running</strong>
-            <span id="pf-progress-label">{{ pf_analysis_message or 'Preparing analysis...' }}</span>
-          </div>
-          <div class="pf-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
-            <span id="pf-progress-fill" style="width: {% if pf_analysis_status == 'completed' %}100{% else %}12{% endif %}%;"></span>
+        <div class="pf-report-shell">
+          <form class="detail-date-filter report-filter-row pf-report-filter" method="post" action="/ssts-report/pf-analysis/start" id="pf-analysis-form">
+            <input type="hidden" name="report_tab" value="pf_entering" />
+            <div class="filter-field">
+              <label for="pf-day-select">Report Date</label>
+              <input id="pf-day-select" type="date" name="pf_day" value="{{ pf_report_day }}" />
+            </div>
+            <button type="submit" id="pf-analysis-button">Analysis</button>
+          </form>
+          <div
+            class="pf-progress-panel {% if pf_analysis_status == 'idle' %}is-hidden{% endif %}"
+            id="pf-progress-panel"
+            data-status="{{ pf_analysis_status }}"
+            data-task-id="{{ pf_analysis_task_id }}"
+          >
+            <div class="pf-progress-head">
+              <strong>
+                {% if pf_analysis_status == 'completed' %}
+                PF Speed Analysis Complete
+                {% elif pf_analysis_status == 'error' %}
+                PF Speed Analysis Failed
+                {% else %}
+                PF Speed Analysis Running
+                {% endif %}
+              </strong>
+              <span id="pf-progress-label">{{ pf_analysis_message or 'Preparing analysis...' }}</span>
+            </div>
+            <div class="pf-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+              <span id="pf-progress-fill" style="width: {% if pf_analysis_status == 'completed' %}100{% elif pf_analysis_status == 'error' %}100{% else %}12{% endif %}%;"></span>
+            </div>
           </div>
         </div>
         {% if pf_report_error %}
