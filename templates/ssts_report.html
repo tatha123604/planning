@@ -321,12 +321,14 @@
           </div>
         </div>
         <form class="detail-date-filter" method="get" action="/ssts-report">
-          <label for="detail-day-select">Selected Date</label>
-          <select id="detail-day-select" name="selected_day" onchange="this.form.submit()">
-            {% for row in daily_summary %}
-            <option value="{{ row.day_iso }}" {% if selected_day == row.day_iso %}selected{% endif %}>{{ row.day }} | {{ row.observed_at }}</option>
-            {% endfor %}
-          </select>
+          <div class="filter-field">
+            <label for="detail-day-select">Selected Date</label>
+            <select id="detail-day-select" name="selected_day" onchange="this.form.submit()">
+              {% for row in daily_summary %}
+              <option value="{{ row.day_iso }}" {% if selected_day == row.day_iso %}selected{% endif %}>{{ row.day }} | {{ row.observed_at }}</option>
+              {% endfor %}
+            </select>
+          </div>
           {% if selected_analysis_day %}
           <input type="hidden" name="analysis_day" value="{{ selected_analysis_day }}" />
           {% endif %}
@@ -804,8 +806,10 @@
           {% if selected_day %}
           <input type="hidden" name="selected_day" value="{{ selected_day }}" />
           {% endif %}
-          <label for="pf-day-select">Report Date</label>
-          <input id="pf-day-select" type="date" name="pf_day" value="{{ pf_report_day }}" />
+          <div class="filter-field">
+            <label for="pf-day-select">Report Date</label>
+            <input id="pf-day-select" type="date" name="pf_day" value="{{ pf_report_day }}" />
+          </div>
           <button type="submit">Load PF Report</button>
         </form>
         {% if pf_report_error %}

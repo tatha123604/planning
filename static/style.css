@@ -149,11 +149,21 @@ p { margin: 0; color: #9aa3b9; }
   gap: 10px;
   flex-wrap: wrap;
   margin: 6px 0 18px;
+  padding: 6px;
+  width: fit-content;
+  max-width: 100%;
+  border-radius: 18px;
+  background: rgba(8, 14, 28, 0.58);
+  border: 1px solid rgba(255,255,255,0.08);
 }
 .report-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   text-decoration: none;
   color: #cfe7f7;
   padding: 10px 14px;
+  min-height: 42px;
   border-radius: 999px;
   border: 1px solid rgba(255,255,255,0.12);
   background: rgba(255,255,255,0.04);
@@ -874,9 +884,6 @@ ul { padding-left: 18px; margin: 6px 0; }
   align-items: end;
   gap: 12px;
   margin-bottom: 14px;
-}
-.report-filter-row label {
-  flex: 0 0 180px;
 }
 .status-error {
   margin-top: 10px;
@@ -1744,18 +1751,33 @@ ul { padding-left: 18px; margin: 6px 0; }
 }
 .detail-date-filter {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 12px;
   flex-wrap: wrap;
   margin: 0 0 16px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(9, 16, 31, 0.62);
+  border: 1px solid rgba(123, 215, 255, 0.14);
 }
-.detail-date-filter label {
+.detail-date-filter .filter-field {
+  display: flex;
+  flex: 0 1 280px;
+  min-width: 220px;
+  flex-direction: column;
+  gap: 6px;
+}
+.detail-date-filter .filter-field label {
+  display: block;
   font-weight: 700;
   color: #eaf6ff;
+  font-size: 13px;
+  letter-spacing: 0.02em;
 }
-.detail-date-filter select {
-  min-width: 280px;
-  max-width: 100%;
+.detail-date-filter .filter-field input,
+.detail-date-filter .filter-field select {
+  width: 100%;
+  min-width: 0;
 }
 .detail-panels {
   display: grid;
@@ -2453,6 +2475,22 @@ ul { padding-left: 18px; margin: 6px 0; }
 }
 #employees-card details[open] > summary {
   box-shadow: inset 0 0 0 1px rgba(255, 228, 92, 0.18), 0 14px 30px rgba(255, 228, 92, 0.12);
+}
+
+@media (max-width: 900px) {
+  .report-tabs {
+    width: 100%;
+  }
+  .report-tab {
+    flex: 1 1 220px;
+  }
+  .detail-date-filter {
+    align-items: stretch;
+  }
+  .detail-date-filter .filter-field {
+    flex-basis: 100%;
+    min-width: 0;
+  }
 }
 
 .sidebar { transition: width 0.25s ease, padding 0.25s ease, opacity 0.25s ease, flex-basis 0.25s ease; }
