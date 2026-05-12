@@ -884,13 +884,17 @@ ul { padding-left: 18px; margin: 6px 0; }
   margin-bottom: 18px;
 }
 .pf-report-filter .filter-field {
-  flex-basis: 190px;
+  flex: 0 1 170px;
+  min-width: 150px;
 }
 .pf-report-filter button {
   align-self: flex-end;
+  flex: 0 0 auto;
 }
 .pf-summary-strip {
-  margin-top: 6px;
+  clear: both;
+  width: 100%;
+  margin-top: 8px;
   margin-bottom: 18px;
 }
 .pf-summary-strip .summary-chip {
