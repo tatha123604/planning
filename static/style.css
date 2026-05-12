@@ -900,6 +900,54 @@ ul { padding-left: 18px; margin: 6px 0; }
 .pf-summary-strip .summary-chip {
   min-height: 34px;
 }
+.pf-progress-panel {
+  margin: 6px 0 18px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(123, 215, 255, 0.18);
+  background: rgba(9, 16, 31, 0.72);
+}
+.pf-progress-panel.is-hidden {
+  display: none;
+}
+.pf-progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.pf-progress-head strong {
+  color: #eefaff;
+}
+.pf-progress-head span {
+  color: #bfe8ff;
+  font-size: 13px;
+}
+.pf-progress-bar {
+  width: 100%;
+  height: 14px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(123, 215, 255, 0.18);
+}
+.pf-progress-bar span {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #12bde7, #66e1b6);
+  transition: width 0.35s ease;
+}
+.pf-analysis-grid {
+  display: grid;
+  gap: 18px;
+}
+.pf-train-detail-card {
+  margin-top: 18px;
+}
 .report-filter-row {
   align-items: end;
   gap: 12px;
