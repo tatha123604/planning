@@ -4,106 +4,20 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SSTS Report | SDAH Crew Planner</title>
-  <link rel="stylesheet" href="/static/style.css?v={{ asset_ver }}&ssts=20260512d" />
-  <link rel="icon" type="image/svg+xml" href="/static/indian-railways-mark.svg" />
-  <style>
-    .summary-link,
-    .summary-link:link,
-    .summary-link:visited {
-      display: inline-flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      min-width: 44px !important;
-      min-height: 34px !important;
-      padding: 6px 12px !important;
-      border-radius: 999px !important;
-      background: linear-gradient(135deg, rgba(123, 215, 255, 0.28), rgba(18, 189, 231, 0.18)) !important;
-      border: 1px solid rgba(123, 215, 255, 0.36) !important;
-      color: #f3fbff !important;
-      text-decoration: none !important;
-      font-weight: 800 !important;
-      box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 10px 24px rgba(18, 189, 231, 0.12) !important;
-    }
-    .timeline-card {
-      min-width: 220px !important;
-      display: grid !important;
-      gap: 7px !important;
-    }
-    .timeline-scale {
-      display: flex !important;
-      justify-content: space-between !important;
-      font-size: 11px !important;
-      font-weight: 700 !important;
-      color: #d6ecfb !important;
-    }
-    .timeline-bar {
-      display: flex !important;
-      overflow: hidden !important;
-      min-height: 20px !important;
-      height: 20px !important;
-      border-radius: 999px !important;
-      background:
-        linear-gradient(90deg, rgba(255,255,255,0.12) 0 1px, transparent 1px 50%),
-        linear-gradient(90deg, rgba(255,255,255,0.12) 0 1px, transparent 1px 100%),
-        linear-gradient(180deg, rgba(14, 25, 44, 0.98), rgba(9, 17, 31, 0.94)) !important;
-      background-size: 50% 100%, 100% 100%, auto !important;
-      border: 1px solid rgba(123, 215, 255, 0.28) !important;
-      box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), inset 0 -1px 0 rgba(0,0,0,0.26) !important;
-    }
-    .timeline-segment {
-      display: block !important;
-      min-width: 2px !important;
-      height: 100% !important;
-    }
-    .timeline-segment-online {
-      background: linear-gradient(135deg, #7cf0c3, #69d6ff) !important;
-    }
-    .timeline-segment-offline {
-      background: linear-gradient(135deg, #ff8f8f, #ffbf7a) !important;
-    }
-    .timeline-legend {
-      display: flex !important;
-      gap: 12px !important;
-      flex-wrap: wrap !important;
-      font-size: 11px !important;
-      color: #d6ebff !important;
-    }
-    .timeline-dot {
-      width: 8px !important;
-      height: 8px !important;
-      border-radius: 50% !important;
-      display: inline-block !important;
-    }
-    .timeline-dot-online { background: #73efbf !important; }
-    .timeline-dot-offline { background: #ff9d84 !important; }
-  </style>
+  <link rel="icon" type="image/svg+xml" href="/static/ssts-favicon.svg?v={{ asset_ver }}" />
+  <link rel="stylesheet" href="/static/style.css?v={{ asset_ver }}" />
 </head>
 <body>
-  <button type="button" class="sidebar-toggle-btn" aria-label="Toggle sidebar">&#8249;</button>
   <div class="layout">
     <aside class="sidebar">
       <div class="brand">
-        <img class="brand-mark" src="/static/indian-railways-mark.svg" alt="Indian Railways" />
+        <div class="dot"></div>
         <span>SDAH Crew Planner</span>
       </div>
       <nav class="side-links">
         <a class="{{ 'active' if active_page == 'dashboard' else '' }}" href="/">Dashboard</a>
         <a class="{{ 'active' if active_page == 'employees' else '' }}" href="/employees">Employees</a>
         <a class="{{ 'active' if active_page == 'uploads' else '' }}" href="/uploads">Uploads</a>
-        <a class="{{ 'active' if active_page == 'cli' else '' }}" href="/cli">CLI</a>
-        <a class="{{ 'active' if active_page == 'cli_distribution_planner' else '' }}" href="/cli-distribution-planner">CLI Distribution Planner (Experimental)</a>
-        <a class="{{ 'active' if active_page == 'top_performer' else '' }} long-nav-label" href="/top-performer">
-          <span>Top Performer</span>
-          <span>(Based On SSTS)</span>
-        </a>
-        <details class="side-group" {% if active_page in ['cli_matrix', 'non_continuous_duty', 'sub_non_continuous_duty'] %}open{% endif %}>
-          <summary>CMS REPORTS</summary>
-          <div class="side-sub-links">
-            <a class="{{ 'active' if active_page == 'cli_matrix' else '' }}" href="/cli-matrix">CLI Matrix</a>
-            <a class="{{ 'active' if active_page == 'non_continuous_duty' else '' }}" href="/non-continuous-duty">NON SUB NON CONT DUTY</a>
-            <a class="{{ 'active' if active_page == 'sub_non_continuous_duty' else '' }}" href="/sub-non-continuous-duty">SUB NON CONT DUTY</a>
-          </div>
-        </details>
         <a class="{{ 'active' if active_page == 'requirements' else '' }}" href="/requirements">Requirements</a>
         <a class="{{ 'active' if active_page == 'reports' else '' }}" href="/reports">Reports</a>
         <a class="{{ 'active' if active_page == 'ssts_report' else '' }}" href="/ssts-report">SSTS Report</a>
@@ -116,7 +30,6 @@
         <div>
           <h1>SSTS Report</h1>
           <p>Live rake health from <a href="{{ ssts_web_url }}" target="_blank" rel="noreferrer">SSTS Rakes</a>, with snapshot history for offline and recovery tracking.</p>
-          <p><strong>SSTS UI Build:</strong> 2026-05-12 / codex-final / 35598ce</p>
           {% if ssts_sync_message %}
           <p>{{ ssts_sync_message }}</p>
           {% endif %}
@@ -144,107 +57,80 @@
       </nav>
 
       {% set total_rakes = latest_summary.total_rakes or 0 %}
-      {% set online_now_count = latest_summary.online_now_count or 0 %}
       {% set offline_count = latest_summary.offline_count or 0 %}
       {% set recent_offline_count = latest_summary.recent_offline_count or latest_summary.recently_offline_count or 0 %}
-      {% set recently_offline_count = recent_offline_count %}
       {% set recently_online_count = latest_summary.recently_online_count or 0 %}
-      {% set online_now_ratio = ((online_now_count / total_rakes) * 100) if total_rakes else 0 %}
-      {% set offline_ratio = ((offline_count / total_rakes) * 100) if total_rakes else 0 %}
-      {% set recently_offline_ratio = ((recently_offline_count / offline_count) * 100) if offline_count else 0 %}
-      {% set recently_online_ratio = ((recently_online_count / online_now_count) * 100) if online_now_count else 0 %}
+      {% set online_count = total_rakes - offline_count if total_rakes >= offline_count else 0 %}
 
       {% if active_report_tab == 'online_offline' %}
       <section class="grid">
-        <div class="metric-card-link">
-          <article class="card metric-card">
+        <article class="card metric-card">
+          <div class="metric-card-body">
             <span class="metric-label">Latest Snapshot</span>
             <strong class="metric-value">
               {% if latest_run %}
-                {{ latest_run_label }}
+                {{ latest_run.observed_at.astimezone(IST).strftime("%d-%m-%Y %H:%M IST") }}
               {% else %}
                 Not synced yet
               {% endif %}
             </strong>
-            <p>{{ sync_state.message }}</p>
-            <span class="metric-card-footer metric-card-footer-placeholder" aria-hidden="true"></span>
-          </article>
-        </div>
-        <div class="metric-card-link">
-          <article class="card metric-card metric-card-total metric-card-clickable">
+            <p>Showing the latest stored snapshot only.</p>
+          </div>
+        </article>
+        <article class="card metric-card metric-card-total">
+          <div class="metric-card-body">
             <span class="metric-label">Total Rakes</span>
             <strong class="metric-value">{{ latest_summary.total_rakes }}</strong>
-            <div class="metric-level metric-level-total">
-              <div class="metric-level-split">
-                <div class="metric-level-split-online" style="width: {{ online_now_ratio }}%;"></div>
-                <div class="metric-level-split-offline" style="width: {{ offline_ratio }}%;"></div>
-              </div>
+            <div class="metric-level metric-level-total" style="--level-fill: 100%;">
+              <div class="metric-level-fill"></div>
             </div>
             <div class="metric-meter-notes">
-              <span>Online {{ online_now_count }}</span>
+              <span>Online now {{ online_count }}</span>
               <span>Offline {{ offline_count }}</span>
               <span>Offline 2h to 1 Day {{ recent_offline_count }}</span>
             </div>
             <p>Latest successfully stored snapshot.</p>
-            <span class="metric-card-footer metric-card-footer-placeholder" aria-hidden="true"></span>
-          </article>
-        </div>
-        <a class="metric-card-link" href="#online-now-table">
-          <article class="card metric-card metric-card-online metric-card-clickable">
-            <span class="metric-label">Online Now</span>
-            <strong class="metric-value">{{ latest_summary.online_now_count }}</strong>
-            <div class="metric-level metric-level-online" style="--level-fill: {{ online_now_ratio }}%;">
-              <div class="metric-level-fill"></div>
-            </div>
-            <div class="metric-meter-notes">
-              <span>{{ "%.1f"|format(online_now_ratio) }}% of total rakes</span>
-            </div>
-            <p>Rakes currently active within your offline threshold.</p>
-            <span class="metric-card-footer">Open table</span>
-          </article>
-        </a>
-        <a class="metric-card-link" href="#offline-now-table">
-          <article class="card metric-card metric-card-offline metric-card-clickable">
+          </div>
+        </article>
+        <article class="card metric-card">
+          <div class="metric-card-body">
             <span class="metric-label">Offline &gt; 2 Hours</span>
             <strong class="metric-value">{{ latest_summary.offline_count }}</strong>
-            <div class="metric-level metric-level-offline" style="--level-fill: {{ offline_ratio }}%;">
+            <div class="metric-level metric-level-offline" style="--level-fill: {{ ((offline_count / total_rakes) * 100) if total_rakes else 0 }}%;">
               <div class="metric-level-fill"></div>
             </div>
             <div class="metric-meter-notes">
-              <span>{{ "%.1f"|format(offline_ratio) }}% of total rakes</span>
+              <span>{{ "%.1f"|format(((offline_count / total_rakes) * 100) if total_rakes else 0) }}% of total rakes</span>
             </div>
             <p>Rakes currently considered offline by your rule.</p>
-            <span class="metric-card-footer">Open table</span>
-          </article>
-        </a>
-        <a class="metric-card-link" href="#recently-offline-table">
-          <article class="card metric-card metric-card-recent-offline metric-card-clickable">
+          </div>
+        </article>
+        <article class="card metric-card">
+          <div class="metric-card-body">
             <span class="metric-label">Offline 2h to 1 Day</span>
             <strong class="metric-value">{{ recent_offline_count }}</strong>
-            <div class="metric-level metric-level-recent-offline" style="--level-fill: {{ recently_offline_ratio }}%;">
+            <div class="metric-level metric-level-offline" style="--level-fill: {{ ((recent_offline_count / total_rakes) * 100) if total_rakes else 0 }}%;">
               <div class="metric-level-fill"></div>
             </div>
             <div class="metric-meter-notes">
-              <span>{{ "%.1f"|format(recently_offline_ratio) }}% of offline rakes</span>
+              <span>{{ "%.1f"|format(((recent_offline_count / total_rakes) * 100) if total_rakes else 0) }}% of total rakes</span>
             </div>
-            <p>Rakes offline between 2 hours and 1 day.</p>
-            <span class="metric-card-footer">Open table</span>
-          </article>
-        </a>
-        <a class="metric-card-link" href="#recently-online-table">
-          <article class="card metric-card metric-card-recovery metric-card-clickable">
-            <span class="metric-label">Recently Back Online</span>
+            <p>Rakes offline between 2 hours and 1 day in the latest snapshot.</p>
+          </div>
+        </article>
+        <article class="card metric-card">
+          <div class="metric-card-body">
+            <span class="metric-label">Recently Came Online</span>
             <strong class="metric-value">{{ latest_summary.recently_online_count }}</strong>
-            <div class="metric-level metric-level-recovery" style="--level-fill: {{ recently_online_ratio }}%;">
+            <div class="metric-level metric-level-recovery" style="--level-fill: {{ ((recently_online_count / total_rakes) * 100) if total_rakes else 0 }}%;">
               <div class="metric-level-fill"></div>
             </div>
             <div class="metric-meter-notes">
-              <span>{{ "%.1f"|format(recently_online_ratio) }}% of online rakes</span>
+              <span>{{ "%.1f"|format(((recently_online_count / total_rakes) * 100) if total_rakes else 0) }}% recovery window</span>
             </div>
-            <p>Was offline for more than 5 hours in the previous snapshot and is no longer offline.</p>
-            <span class="metric-card-footer">Open table</span>
-          </article>
-        </a>
+            <p>Was offline for more than 5 hours, now active in the latest snapshot.</p>
+          </div>
+        </article>
       </section>
 
       <section class="card">
@@ -258,11 +144,11 @@
           <table class="paged" data-exportable="true" data-export-name="daily_offline_summary">
             <thead>
               <tr>
-                <th><span class="th-key" title="Date">DT</span>Date</th>
-                <th><span class="th-key" title="Snapshot Time">SNAP</span>Snapshot Time</th>
-                <th><span class="th-key" title="Total Rakes">TOT</span>Total Rakes</th>
-                <th><span class="th-key" title="Offline > 2 Hours">OFF2H</span>Offline &gt; 2h</th>
-                <th><span class="th-key" title="Offline 2 Hours to 1 Day">OFF1D</span>Offline 2h to 1 Day</th>
+                <th>Date</th>
+                <th>Snapshot Time</th>
+                <th>Total Rakes</th>
+                <th>Offline &gt; 2h</th>
+                <th>Offline 2h to 1 Day</th>
                 <th>Recently Back Online (Previously Offline &gt; 5 Hours)</th>
               </tr>
             </thead>
@@ -294,93 +180,6 @@
         </div>
       </section>
 
-      <section class="card">
-        <div class="card-head-inline">
-          <div>
-            <h2>Detailed Analysis</h2>
-            {% if selected_analysis_day_label %}
-            <p>Graphical day-wise rake timeline for {{ selected_analysis_day_label }}, showing ordered online/offline periods longer than 2 hours.</p>
-            {% else %}
-            <p>Select a date to view each rake's ordered online/offline timeline for periods longer than 2 hours.</p>
-            {% endif %}
-          </div>
-        </div>
-        <form class="detail-date-filter" method="get" action="/ssts-report">
-          <div class="filter-field">
-            <label for="analysis-day-select">Analysis Date</label>
-            <select id="analysis-day-select" name="analysis_day" onchange="this.form.submit()">
-              {% for row in analysis_day_options %}
-              <option value="{{ row.day_iso }}" {% if selected_analysis_day == row.day_iso %}selected{% endif %}>{{ row.day }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          {% if selected_day %}
-          <input type="hidden" name="selected_day" value="{{ selected_day }}" />
-          {% endif %}
-          {% if active_detail_view %}
-          <input type="hidden" name="detail_view" value="{{ active_detail_view }}" />
-          {% endif %}
-          <noscript><button class="ghost small" type="submit">Load Date</button></noscript>
-        </form>
-        <div class="table-wrap">
-          <table class="employee-table paged" data-exportable="true" data-export-name="ssts_detailed_analysis_{{ selected_analysis_day or 'latest' }}">
-            <thead>
-              <tr>
-                <th>Rake No</th>
-                <th>Device ID</th>
-                <th>Last Update</th>
-                <th>Graphical Representation</th>
-                <th>Ordered Summary</th>
-                <th>Offline &gt; 2h Periods</th>
-                <th>Online &gt; 2h Periods</th>
-                <th>Remark</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for row in selected_analysis_rows %}
-              <tr>
-                <td>{{ row.name }}</td>
-                <td>{{ row.uniqueid }}</td>
-                <td>{{ row.lastupdate_label }}</td>
-                <td>
-                  <div class="timeline-card">
-                    <div class="timeline-scale">
-                      <span>00:00</span>
-                      <span>12:00</span>
-                      <span>24:00</span>
-                    </div>
-                    <div class="timeline-bar">
-                      {% for segment in row.segments %}
-                      <span class="timeline-segment timeline-segment-{{ segment.state }}" style="width: {{ segment.width_percent }}%;" title="{{ segment.summary_label }} ({{ segment.duration_label }})"></span>
-                      {% endfor %}
-                    </div>
-                    <div class="timeline-legend">
-                      <span class="timeline-legend-item"><i class="timeline-dot timeline-dot-online"></i>Online</span>
-                      <span class="timeline-legend-item"><i class="timeline-dot timeline-dot-offline"></i>Offline</span>
-                    </div>
-                  </div>
-                </td>
-                <td>
-                  {% if row.timeline_summary %}
-                  <div class="timeline-summary-list">{{ row.timeline_summary }}</div>
-                  {% else %}
-                  <span class="timeline-empty">No online/offline period longer than 2 hours found for this date.</span>
-                  {% endif %}
-                </td>
-                <td>{{ row.offline_periods }}</td>
-                <td>{{ row.online_periods }}</td>
-                <td>{{ row.remark }}</td>
-              </tr>
-              {% else %}
-              <tr>
-                <td colspan="8">No detailed analysis available yet.</td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
       <section class="card" id="daily-detail">
         <div class="card-head-inline">
           <div>
@@ -404,9 +203,6 @@
               {% endfor %}
             </select>
           </div>
-          {% if selected_analysis_day %}
-          <input type="hidden" name="analysis_day" value="{{ selected_analysis_day }}" />
-          {% endif %}
           {% if active_detail_view %}
           <input type="hidden" name="detail_view" value="{{ active_detail_view }}" />
           {% endif %}
@@ -431,7 +227,6 @@
                     <th>Last Update</th>
                     <th>Offline Hours</th>
                     <th>Status</th>
-                    <th>Remark</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -446,31 +241,15 @@
                       <td>{{ row.lastupdate_label }}</td>
                       <td>{{ row.offline_duration }}</td>
                       <td>{{ row.status }}</td>
-                      <td class="ssts-remark-cell">
-                        <div
-                          class="ssts-remark-editor"
-                          data-snapshot-id="{{ row.snapshot_id }}"
-                          data-save-url="/ssts-report/remark"
-                        >
-                          <input
-                            type="text"
-                            class="ssts-remark-input"
-                            value="{{ row.remark }}"
-                            placeholder="Add remark"
-                          />
-                          <button type="button" class="ghost small ssts-remark-save">Save</button>
-                          <span class="ssts-remark-status" aria-live="polite"></span>
-                        </div>
-                      </td>
                     </tr>
                     {% else %}
                     <tr>
-                      <td colspan="9">No Offline 2h to 1 Day data for the selected date.</td>
+                      <td colspan="8">No Offline 2h to 1 Day data for the selected date.</td>
                     </tr>
                     {% endfor %}
                   {% else %}
                   <tr>
-                    <td colspan="9">This table stays hidden until you click an "Offline 2h to 1 Day" value in the summary table.</td>
+                    <td colspan="8">This table stays hidden until you click an "Offline 2h to 1 Day" value in the summary table.</td>
                   </tr>
                   {% endif %}
                 </tbody>
@@ -497,7 +276,6 @@
                     <th>Status</th>
                     <th>Previous Offline Hours</th>
                     <th>Previous Snapshot</th>
-                    <th>Remark</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -514,31 +292,15 @@
                       <td>{{ row.status }}</td>
                       <td>{{ row.previous_offline_duration or '' }}</td>
                       <td>{{ row.previous_seen or '' }}</td>
-                      <td class="ssts-remark-cell">
-                        <div
-                          class="ssts-remark-editor"
-                          data-snapshot-id="{{ row.snapshot_id }}"
-                          data-save-url="/ssts-report/remark"
-                        >
-                          <input
-                            type="text"
-                            class="ssts-remark-input"
-                            value="{{ row.remark }}"
-                            placeholder="Add remark"
-                          />
-                          <button type="button" class="ghost small ssts-remark-save">Save</button>
-                          <span class="ssts-remark-status" aria-live="polite"></span>
-                        </div>
-                      </td>
                     </tr>
                     {% else %}
                     <tr>
-                      <td colspan="11">No Recently Back Online data for the selected date.</td>
+                      <td colspan="10">No Recently Back Online data for the selected date.</td>
                     </tr>
                     {% endfor %}
                   {% else %}
                   <tr>
-                    <td colspan="11">This table stays hidden until you click a "Recently Back Online" value in the summary table.</td>
+                    <td colspan="10">This table stays hidden until you click a "Recently Back Online" value in the summary table.</td>
                   </tr>
                   {% endif %}
                 </tbody>
@@ -548,73 +310,19 @@
         </div>
       </section>
 
-      <section class="card collapsible ssts-online-section" id="online-now-table">
-        <details open>
-          <summary>Online Now</summary>
-          <div class="table-wrap">
-            <table class="employee-table paged">
-              <thead>
-                <tr>
-                  <th><span class="th-key" title="Rake No">RK</span>Rake No</th>
-                  <th><span class="th-key" title="Device ID">DID</span>Device ID</th>
-                  <th><span class="th-key" title="Mobile No">MOB</span>Mobile No</th>
-                  <th><span class="th-key" title="Cars">CRS</span>Cars</th>
-                  <th><span class="th-key" title="Last Update">LU</span>Last Update</th>
-                  <th><span class="th-key" title="Status">ST</span>Status</th>
-                  <th><span class="th-key" title="Remark">RMK</span>Remark</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for row in online_now %}
-                <tr>
-                  <td>{{ row.name }}</td>
-                  <td>{{ row.uniqueid }}</td>
-                  <td>{{ row.phone }}</td>
-                  <td>{{ row.contact }}</td>
-                  <td>{{ row.lastupdate_label }}</td>
-                  <td>{{ row.offline_duration }}</td>
-                  <td class="ssts-remark-cell">
-                    <div
-                      class="ssts-remark-editor"
-                      data-snapshot-id="{{ row.snapshot_id }}"
-                      data-save-url="/ssts-report/remark"
-                    >
-                      <input
-                        type="text"
-                        class="ssts-remark-input"
-                        value="{{ row.remark }}"
-                        placeholder="Add remark"
-                      />
-                      <button type="button" class="ghost small ssts-remark-save">Save</button>
-                      <span class="ssts-remark-status" aria-live="polite"></span>
-                    </div>
-                  </td>
-                </tr>
-                {% else %}
-                <tr>
-                  <td colspan="7">No online rakes found in the latest snapshot.</td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        </details>
-      </section>
-
-      <section class="card collapsible ssts-offline-section" id="offline-now-table">
+      <section class="card collapsible">
         <details open>
           <summary>Current Offline Rakes (Last Update &gt; 2 Hours)</summary>
           <div class="table-wrap">
             <table class="employee-table paged" data-exportable="true" data-export-name="current_offline_rakes">
               <thead>
                 <tr>
-                  <th><span class="th-key" title="Rake No">RK</span>Rake No</th>
-                  <th><span class="th-key" title="Device ID">DID</span>Device ID</th>
-                  <th><span class="th-key" title="Mobile No">MOB</span>Mobile No</th>
-                  <th><span class="th-key" title="Cars">CRS</span>Cars</th>
-                  <th><span class="th-key" title="Last Update">LU</span>Last Update</th>
-                  <th><span class="th-key" title="Offline Duration">OFF</span>Offline Hours</th>
-                  <th><span class="th-key" title="Remark">RMK</span>Remark</th>
+                  <th>Rake No</th>
+                  <th>Device ID</th>
+                  <th>Mobile No</th>
+                  <th>Cars</th>
+                  <th>Last Update</th>
+                  <th>Offline Hours</th>
                 </tr>
               </thead>
               <tbody>
@@ -626,26 +334,10 @@
                   <td>{{ row.contact }}</td>
                   <td>{{ row.lastupdate_label }}</td>
                   <td>{{ row.offline_duration }}</td>
-                  <td class="ssts-remark-cell">
-                    <div
-                      class="ssts-remark-editor"
-                      data-snapshot-id="{{ row.snapshot_id }}"
-                      data-save-url="/ssts-report/remark"
-                    >
-                      <input
-                        type="text"
-                        class="ssts-remark-input"
-                        value="{{ row.remark }}"
-                        placeholder="Add remark"
-                      />
-                      <button type="button" class="ghost small ssts-remark-save">Save</button>
-                      <span class="ssts-remark-status" aria-live="polite"></span>
-                    </div>
-                  </td>
                 </tr>
                 {% else %}
                 <tr>
-                  <td colspan="7">No current offline rakes.</td>
+                  <td colspan="6">No current offline rakes.</td>
                 </tr>
                 {% endfor %}
               </tbody>
@@ -654,22 +346,20 @@
         </details>
       </section>
 
-      <section class="card collapsible ssts-recent-offline-section" id="recently-offline-table">
+      <section class="card collapsible">
         <details open>
           <summary>Current Recently Offline Rakes (2 Hours to 1 Day)</summary>
           {% if latest_run %}
-          <p>Reference snapshot: {{ latest_run_label }}</p>
+          <p>Reference snapshot: {{ latest_run.observed_at.astimezone(IST).strftime("%d-%m-%Y %H:%M IST") }}</p>
           {% endif %}
           <div class="table-wrap">
             <table class="employee-table paged" data-exportable="true" data-export-name="current_recently_offline_rakes">
               <thead>
                 <tr>
-                  <th><span class="th-key" title="Rake No">RK</span>Rake No</th>
-                  <th><span class="th-key" title="Device ID">DID</span>Device ID</th>
-                  <th><span class="th-key" title="Mobile No">MOB</span>Mobile No</th>
-                  <th><span class="th-key" title="Last Update">LU</span>Last Update</th>
-                  <th><span class="th-key" title="Offline Duration">OFF</span>Offline Hours</th>
-                  <th><span class="th-key" title="Remark">RMK</span>Remark</th>
+                  <th>Rake No</th>
+                  <th>Device ID</th>
+                  <th>Last Update</th>
+                  <th>Offline Hours</th>
                 </tr>
               </thead>
               <tbody>
@@ -677,29 +367,12 @@
                 <tr>
                   <td>{{ row.name }}</td>
                   <td>{{ row.uniqueid }}</td>
-                  <td>{{ row.phone }}</td>
                   <td>{{ row.lastupdate_label }}</td>
                   <td>{{ row.offline_duration }}</td>
-                  <td class="ssts-remark-cell">
-                    <div
-                      class="ssts-remark-editor"
-                      data-snapshot-id="{{ row.snapshot_id }}"
-                      data-save-url="/ssts-report/remark"
-                    >
-                      <input
-                        type="text"
-                        class="ssts-remark-input"
-                        value="{{ row.remark }}"
-                        placeholder="Add remark"
-                      />
-                      <button type="button" class="ghost small ssts-remark-save">Save</button>
-                      <span class="ssts-remark-status" aria-live="polite"></span>
-                    </div>
-                  </td>
                 </tr>
                 {% else %}
                 <tr>
-                  <td colspan="6">No current recently offline rakes found.</td>
+                  <td colspan="4">No current recently offline rakes found.</td>
                 </tr>
                 {% endfor %}
               </tbody>
@@ -711,19 +384,17 @@
       <section class="card collapsible">
         <details open>
           <summary>Last Day Offline Rakes (Previous-Day Snapshot, Last Update &gt; 2 Hours)</summary>
-          {% if previous_day_run_label %}
-          <p>Reference snapshot: {{ previous_day_run_label }}</p>
+          {% if previous_day_run %}
+          <p>Reference snapshot: {{ previous_day_run.observed_at.astimezone(IST).strftime("%d-%m-%Y %H:%M IST") }}</p>
           {% endif %}
           <div class="table-wrap">
             <table class="employee-table paged" data-exportable="true" data-export-name="last_day_offline_rakes">
               <thead>
                 <tr>
-                  <th><span class="th-key" title="Rake No">RK</span>Rake No</th>
-                  <th><span class="th-key" title="Device ID">DID</span>Device ID</th>
-                  <th><span class="th-key" title="Mobile No">MOB</span>Mobile No</th>
-                  <th><span class="th-key" title="Last Update">LU</span>Last Update</th>
-                  <th><span class="th-key" title="Offline Duration">OFF</span>Offline Hours</th>
-                  <th><span class="th-key" title="Remark">RMK</span>Remark</th>
+                  <th>Rake No</th>
+                  <th>Device ID</th>
+                  <th>Last Update</th>
+                  <th>Offline Hours</th>
                 </tr>
               </thead>
               <tbody>
@@ -731,29 +402,12 @@
                 <tr>
                   <td>{{ row.name }}</td>
                   <td>{{ row.uniqueid }}</td>
-                  <td>{{ row.phone }}</td>
                   <td>{{ row.lastupdate_label }}</td>
                   <td>{{ row.offline_duration }}</td>
-                  <td class="ssts-remark-cell">
-                    <div
-                      class="ssts-remark-editor"
-                      data-snapshot-id="{{ row.snapshot_id }}"
-                      data-save-url="/ssts-report/remark"
-                    >
-                      <input
-                        type="text"
-                        class="ssts-remark-input"
-                        value="{{ row.remark }}"
-                        placeholder="Add remark"
-                      />
-                      <button type="button" class="ghost small ssts-remark-save">Save</button>
-                      <span class="ssts-remark-status" aria-live="polite"></span>
-                    </div>
-                  </td>
                 </tr>
                 {% else %}
                 <tr>
-                  <td colspan="6">No previous-day offline snapshot available yet.</td>
+                  <td colspan="4">No previous-day offline snapshot available yet.</td>
                 </tr>
                 {% endfor %}
               </tbody>
@@ -765,19 +419,17 @@
       <section class="card collapsible">
         <details open>
           <summary>Previous-Day Recently Offline Rakes (2 Hours to 1 Day)</summary>
-          {% if previous_day_run_label %}
-          <p>Reference snapshot: {{ previous_day_run_label }}</p>
+          {% if previous_day_run %}
+          <p>Reference snapshot: {{ previous_day_run.observed_at.astimezone(IST).strftime("%d-%m-%Y %H:%M IST") }}</p>
           {% endif %}
           <div class="table-wrap">
             <table class="employee-table paged" data-exportable="true" data-export-name="previous_day_recently_offline_rakes">
               <thead>
                 <tr>
-                  <th><span class="th-key" title="Rake No">RK</span>Rake No</th>
-                  <th><span class="th-key" title="Device ID">DID</span>Device ID</th>
-                  <th><span class="th-key" title="Mobile No">MOB</span>Mobile No</th>
-                  <th><span class="th-key" title="Last Update">LU</span>Last Update</th>
-                  <th><span class="th-key" title="Offline Duration">OFF</span>Offline Hours</th>
-                  <th><span class="th-key" title="Remark">RMK</span>Remark</th>
+                  <th>Rake No</th>
+                  <th>Device ID</th>
+                  <th>Last Update</th>
+                  <th>Offline Hours</th>
                 </tr>
               </thead>
               <tbody>
@@ -785,29 +437,12 @@
                 <tr>
                   <td>{{ row.name }}</td>
                   <td>{{ row.uniqueid }}</td>
-                  <td>{{ row.phone }}</td>
                   <td>{{ row.lastupdate_label }}</td>
                   <td>{{ row.offline_duration }}</td>
-                  <td class="ssts-remark-cell">
-                    <div
-                      class="ssts-remark-editor"
-                      data-snapshot-id="{{ row.snapshot_id }}"
-                      data-save-url="/ssts-report/remark"
-                    >
-                      <input
-                        type="text"
-                        class="ssts-remark-input"
-                        value="{{ row.remark }}"
-                        placeholder="Add remark"
-                      />
-                      <button type="button" class="ghost small ssts-remark-save">Save</button>
-                      <span class="ssts-remark-status" aria-live="polite"></span>
-                    </div>
-                  </td>
                 </tr>
                 {% else %}
                 <tr>
-                  <td colspan="6">No previous-day recently offline rakes found.</td>
+                  <td colspan="4">No previous-day recently offline rakes found.</td>
                 </tr>
                 {% endfor %}
               </tbody>
@@ -816,20 +451,19 @@
         </details>
       </section>
 
-      <section class="card collapsible ssts-recovery-section" id="recently-online-table">
+      <section class="card collapsible">
         <details open>
-          <summary>Recently Back Online (Previously Offline &gt; 5 Hours)</summary>
+          <summary>Recently Came Online (Previously Offline &gt; 5 Hours)</summary>
           <div class="table-wrap">
             <table class="employee-table paged" data-exportable="true" data-export-name="recently_back_online">
               <thead>
                 <tr>
-                  <th><span class="th-key" title="Rake No">RK</span>Rake No</th>
-                  <th><span class="th-key" title="Device ID">DID</span>Device ID</th>
-                  <th><span class="th-key" title="Current Last Update">CLU</span>Current Last Update</th>
-                  <th><span class="th-key" title="Current Offline Duration">COFF</span>Current Offline Hours</th>
-                  <th><span class="th-key" title="Previous Offline Duration">POFF</span>Previous Offline Hours</th>
-                  <th><span class="th-key" title="Previous Snapshot">PSNAP</span>Previous Snapshot</th>
-                  <th><span class="th-key" title="Remark">RMK</span>Remark</th>
+                  <th>Rake No</th>
+                  <th>Device ID</th>
+                  <th>Current Last Update</th>
+                  <th>Current Offline Hours</th>
+                  <th>Previous Offline Hours</th>
+                  <th>Previous Snapshot</th>
                 </tr>
               </thead>
               <tbody>
@@ -841,26 +475,10 @@
                   <td>{{ row.offline_duration }}</td>
                   <td>{{ row.previous_offline_duration }}</td>
                   <td>{{ row.previous_seen }}</td>
-                  <td class="ssts-remark-cell">
-                    <div
-                      class="ssts-remark-editor"
-                      data-snapshot-id="{{ row.snapshot_id }}"
-                      data-save-url="/ssts-report/remark"
-                    >
-                      <input
-                        type="text"
-                        class="ssts-remark-input"
-                        value="{{ row.remark }}"
-                        placeholder="Add remark"
-                      />
-                      <button type="button" class="ghost small ssts-remark-save">Save</button>
-                      <span class="ssts-remark-status" aria-live="polite"></span>
-                    </div>
-                  </td>
                 </tr>
                 {% else %}
                 <tr>
-                  <td colspan="7">No recent online recovery detected yet.</td>
+                  <td colspan="6">No recent online recovery detected yet.</td>
                 </tr>
                 {% endfor %}
               </tbody>
@@ -873,60 +491,31 @@
         <div class="card-head-inline">
           <div>
             <h2>SSTS PF entering Report</h2>
-            <p>Select a date, run analysis, then review only the rows where Geofence Enter Speed or PF Enter Speed is above 40.</p>
+            <p>Day-wise each train with station-wise geofence and PF entering speed details.</p>
           </div>
         </div>
-        <div class="pf-report-shell">
-          <form class="detail-date-filter report-filter-row pf-report-filter" method="post" action="/ssts-report/pf-analysis/start" id="pf-analysis-form">
-            <input type="hidden" name="report_tab" value="pf_entering" />
-            <div class="filter-field pf-control-cluster">
-              <label for="pf-day-select">Report Date</label>
-              <div class="pf-control-row">
-                <input id="pf-day-select" type="date" name="pf_day" value="{{ pf_report_day }}" />
-                <div class="pf-form-actions">
-                  <button type="submit" id="pf-analysis-button">Analysis</button>
-                </div>
-              </div>
-            </div>
-          </form>
-          <div
-            class="pf-progress-panel {% if pf_analysis_status == 'idle' %}is-hidden{% endif %}"
-            id="pf-progress-panel"
-            data-status="{{ pf_analysis_status }}"
-            data-task-id="{{ pf_analysis_task_id }}"
-          >
-            <div class="pf-progress-head">
-              <strong>
-                {% if pf_analysis_status == 'completed' %}
-                PF Speed Analysis Complete
-                {% elif pf_analysis_status == 'error' %}
-                PF Speed Analysis Failed
-                {% else %}
-                PF Speed Analysis Running
-                {% endif %}
-              </strong>
-              <span id="pf-progress-label">{{ pf_analysis_message or 'Preparing analysis...' }}</span>
-            </div>
-            <div class="pf-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
-              <span id="pf-progress-fill" style="width: {% if pf_analysis_status == 'completed' %}100{% elif pf_analysis_status == 'error' %}100{% else %}12{% endif %}%;"></span>
-            </div>
+        <form class="detail-date-filter report-filter-row" method="get" action="/ssts-report">
+          <input type="hidden" name="report_tab" value="pf_entering" />
+          {% if selected_day %}
+          <input type="hidden" name="selected_day" value="{{ selected_day }}" />
+          {% endif %}
+          <div class="filter-field">
+            <label for="pf-day-select">Report Date</label>
+            <input id="pf-day-select" type="date" name="pf_day" value="{{ pf_report_day }}" />
           </div>
-        </div>
+          <button type="submit">Load PF Report</button>
+        </form>
         {% if pf_report_error %}
         <p class="status-error">{{ pf_report_error }}</p>
-        {% elif pf_analysis_status == 'idle' %}
-        <p class="hint pf-idle-hint" id="pf-idle-hint">Pick a date and press <strong>Analysis</strong> to generate the 40+ speed report.</p>
         {% else %}
-        <div class="summary-strip pf-summary-strip">
+        <div class="summary-strip">
           <span class="summary-chip">Date {{ pf_report_day_label }}</span>
-          <span class="summary-chip">40+ Trains {{ pf_analysis_total_trains }}</span>
-          <span class="summary-chip">40+ Rows {{ pf_analysis_total_rows }}</span>
-          <span class="summary-chip">Source Trains {{ pf_analysis_source_total_trains }}</span>
-          <span class="summary-chip">Missing Data {{ pf_analysis_missing_count }}</span>
+          <span class="summary-chip">Total Trains {{ pf_report_total_trains }}</span>
+          <span class="summary-chip">Rendered Rows {{ pf_report_total_rows }}</span>
+          <span class="summary-chip">Missing Data {{ pf_report_missing_count }}</span>
         </div>
-        <section class="pf-analysis-grid">
-          <div class="table-wrap">
-          <table class="employee-table paged" data-exportable="true" data-export-name="ssts_pf_summary_{{ pf_report_day }}">
+        <div class="table-wrap">
+          <table class="employee-table paged" data-exportable="true" data-export-name="ssts_pf_entering_report_{{ pf_report_day }}">
             <thead>
               <tr>
                 <th>Date</th>
@@ -935,282 +524,55 @@
                 <th>Device ID</th>
                 <th>ORG</th>
                 <th>DEST</th>
-                <th>40+ Count</th>
-                <th>Max Geofence</th>
-                <th>Max PF</th>
+                <th>Srl</th>
+                <th>Station</th>
+                <th>Sch Arr</th>
+                <th>Act Arr</th>
+                <th>Sch Dep</th>
+                <th>Act Dep</th>
+                <th>Geofence Enter Speed</th>
+                <th>PF Enter Speed</th>
+                <th>PF Distance</th>
+                <th>Status</th>
+                <th>Remarks</th>
               </tr>
             </thead>
             <tbody>
-              {% for row in pf_analysis_summary_rows %}
-              <tr>
+              {% for row in pf_report_rows %}
+              <tr class="{% if row.status_message %}warn{% else %}ok{% endif %}">
                 <td>{{ row.report_date }}</td>
-                <td>
-                  <a class="summary-link" href="/ssts-report?report_tab=pf_entering&pf_task_id={{ pf_analysis_task_id }}&pf_train={{ row.train_no }}#pf-train-detail">
-                    {{ row.train_no }}
-                  </a>
-                </td>
+                <td>{{ row.train_no }}</td>
                 <td>{{ row.rake_no }}</td>
                 <td>{{ row.device_id }}</td>
                 <td>{{ row.org }}</td>
                 <td>{{ row.dest }}</td>
-                <td>{{ row.occurrence_count }}</td>
-                <td>{{ row.max_geofence_enter_speed }}</td>
-                <td>{{ row.max_pf_enter_speed }}</td>
+                <td>{{ row.srl_no }}</td>
+                <td>{{ row.station }}</td>
+                <td>{{ row.sch_arr }}</td>
+                <td>{{ row.act_arr }}</td>
+                <td>{{ row.sch_dep }}</td>
+                <td>{{ row.act_dep }}</td>
+                <td>{{ row.geofence_enter_speed }}</td>
+                <td>{{ row.pf_enter_speed }}</td>
+                <td>{{ row.pf_distance }}</td>
+                <td>{{ row.status_message or 'OK' }}</td>
+                <td>{{ row.remarks }}</td>
               </tr>
               {% else %}
               <tr>
-                <td colspan="9">No 40+ speed train found for the selected date.</td>
+                <td colspan="17">No PF entering data found for the selected date.</td>
               </tr>
               {% endfor %}
             </tbody>
           </table>
-          </div>
-        </section>
-        <section class="card pf-train-detail-card" id="pf-train-detail">
-          <div class="card-head-inline">
-            <div>
-              <h2>Train Detail</h2>
-              {% if pf_analysis_selected_train %}
-              <p>Showing only the 40+ speed hits for train {{ pf_analysis_selected_train }}.</p>
-              {% else %}
-              <p>Click a train number from the summary table to view the exact rows where speed crossed 40.</p>
-              {% endif %}
-            </div>
-          </div>
-          <div class="table-wrap">
-            <table class="employee-table paged" data-exportable="true" data-export-name="ssts_pf_detail_{{ pf_analysis_selected_train or 'none' }}_{{ pf_report_day }}">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Train No</th>
-                  <th>Rake No</th>
-                  <th>Device ID</th>
-                  <th>ORG</th>
-                  <th>DEST</th>
-                  <th>Srl</th>
-                  <th>Station</th>
-                  <th>Sch Arr</th>
-                  <th>Act Arr</th>
-                  <th>Sch Dep</th>
-                  <th>Act Dep</th>
-                  <th>Geofence Enter Speed</th>
-                  <th>PF Enter Speed</th>
-                  <th>PF Distance</th>
-                  <th>Remarks</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for row in pf_analysis_selected_rows %}
-                <tr>
-                  <td>{{ row.report_date }}</td>
-                  <td>{{ row.train_no }}</td>
-                  <td>{{ row.rake_no }}</td>
-                  <td>{{ row.device_id }}</td>
-                  <td>{{ row.org }}</td>
-                  <td>{{ row.dest }}</td>
-                  <td>{{ row.srl_no }}</td>
-                  <td>{{ row.station }}</td>
-                  <td>{{ row.sch_arr }}</td>
-                  <td>{{ row.act_arr }}</td>
-                  <td>{{ row.sch_dep }}</td>
-                  <td>{{ row.act_dep }}</td>
-                  <td>{{ row.geofence_enter_speed }}</td>
-                  <td>{{ row.pf_enter_speed }}</td>
-                  <td>{{ row.pf_distance }}</td>
-                  <td>{{ row.remarks }}</td>
-                </tr>
-                {% else %}
-                <tr>
-                  <td colspan="16">No train selected yet, or this train has no 40+ speed rows.</td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        </section>
+        </div>
         {% endif %}
       </section>
       {% endif %}
     </main>
   </div>
-  <script>
-    (() => {
-      const remarkEditors = document.querySelectorAll('.ssts-remark-editor');
-      remarkEditors.forEach((editor) => {
-        const input = editor.querySelector('.ssts-remark-input');
-        const saveButton = editor.querySelector('.ssts-remark-save');
-        const status = editor.querySelector('.ssts-remark-status');
-        const saveUrl = editor.dataset.saveUrl;
-        const snapshotId = Number(editor.dataset.snapshotId || '0');
-
-        const setStatus = (message, state = '') => {
-          if (!status) return;
-          status.textContent = message;
-          status.dataset.state = state;
-        };
-
-        const saveRemark = async () => {
-          if (!input || !saveButton || !saveUrl || !snapshotId) return;
-          const previousLabel = saveButton.textContent;
-          saveButton.disabled = true;
-          saveButton.textContent = 'Saving...';
-          setStatus('');
-          try {
-            const response = await fetch(saveUrl, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                snapshot_id: snapshotId,
-                remark: input.value,
-              }),
-            });
-            const payload = await response.json().catch(() => ({}));
-            if (!response.ok) {
-              throw new Error(payload.detail || 'Could not save remark.');
-            }
-            input.value = payload.remark || '';
-            input.defaultValue = payload.remark || '';
-            setStatus('Saved', 'saved');
-          } catch (error) {
-            setStatus(error && error.message ? error.message : 'Could not save remark.', 'error');
-          } finally {
-            saveButton.disabled = false;
-            saveButton.textContent = previousLabel;
-          }
-        };
-
-        if (saveButton) {
-          saveButton.addEventListener('click', saveRemark);
-        }
-
-        if (input) {
-          input.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter') {
-              event.preventDefault();
-              saveRemark();
-            }
-          });
-          input.addEventListener('input', () => {
-            if (status && status.dataset.state === 'saved') {
-              setStatus('');
-            }
-          });
-        }
-      });
-    })();
-
-    (() => {
-      const form = document.getElementById('pf-analysis-form');
-      const panel = document.getElementById('pf-progress-panel');
-      const progressFill = document.getElementById('pf-progress-fill');
-      const progressLabel = document.getElementById('pf-progress-label');
-      const button = document.getElementById('pf-analysis-button');
-      const idleHint = document.getElementById('pf-idle-hint');
-      if (!form || !panel || !progressFill || !progressLabel || !button) return;
-
-      let pollTimer = null;
-
-      const setProgress = (percent, message) => {
-        const safePercent = Math.max(0, Math.min(100, Number(percent || 0)));
-        progressFill.style.width = `${safePercent}%`;
-        panel.querySelector('.pf-progress-bar')?.setAttribute('aria-valuenow', String(safePercent));
-        if (message) {
-          progressLabel.textContent = message;
-        }
-      };
-
-      const setPanelStatus = (status) => {
-        panel.dataset.status = status;
-      };
-
-      const stopPolling = () => {
-        if (pollTimer) {
-          window.clearTimeout(pollTimer);
-          pollTimer = null;
-        }
-      };
-
-      const setIdleHintHidden = (hidden) => {
-        if (!idleHint) return;
-        idleHint.classList.toggle('is-hidden', hidden);
-      };
-
-      const pollStatus = async (taskId, resultUrl) => {
-        try {
-          const response = await fetch(`/ssts-report/pf-analysis/status?task_id=${encodeURIComponent(taskId)}`);
-          const payload = await response.json();
-          if (!response.ok) {
-            throw new Error(payload.detail || 'Could not read PF analysis status.');
-          }
-          setProgress(payload.progress, payload.message);
-          if (payload.status === 'completed') {
-            setPanelStatus('completed');
-            window.location.href = resultUrl || payload.result_url || `/ssts-report?report_tab=pf_entering&pf_task_id=${encodeURIComponent(taskId)}`;
-            return;
-          }
-          if (payload.status === 'error') {
-            setPanelStatus('error');
-            button.disabled = false;
-            button.textContent = 'Analysis';
-            progressLabel.textContent = payload.message || 'Analysis failed.';
-            setIdleHintHidden(false);
-            return;
-          }
-          setPanelStatus('running');
-          pollTimer = window.setTimeout(() => pollStatus(taskId, resultUrl || payload.result_url), 1200);
-        } catch (error) {
-          setPanelStatus('error');
-          button.disabled = false;
-          button.textContent = 'Analysis';
-          progressLabel.textContent = error && error.message ? error.message : 'Could not start PF analysis.';
-          setIdleHintHidden(false);
-        }
-      };
-
-      form.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        stopPolling();
-        button.disabled = true;
-        button.textContent = 'Starting...';
-        panel.classList.remove('is-hidden');
-        setPanelStatus('running');
-        setIdleHintHidden(true);
-        setProgress(6, 'Starting PF analysis...');
-        try {
-          const response = await fetch(form.action, {
-            method: 'POST',
-            body: new FormData(form),
-          });
-          const payload = await response.json();
-          if (!response.ok) {
-            throw new Error(payload.detail || 'Could not start PF analysis.');
-          }
-          button.textContent = 'Running...';
-          pollStatus(payload.task_id, payload.result_url);
-        } catch (error) {
-          setPanelStatus('error');
-          button.disabled = false;
-          button.textContent = 'Analysis';
-          progressLabel.textContent = error && error.message ? error.message : 'Could not start PF analysis.';
-          setIdleHintHidden(false);
-        }
-      });
-
-      const initialTaskId = panel.dataset.taskId || '';
-      const initialStatus = panel.dataset.status || '';
-      if (initialStatus === 'pending' || initialStatus === 'running' || initialStatus === 'completed') {
-        setIdleHintHidden(true);
-      }
-      if (initialTaskId && (initialStatus === 'pending' || initialStatus === 'running')) {
-        panel.classList.remove('is-hidden');
-        button.disabled = true;
-        button.textContent = 'Running...';
-        pollStatus(initialTaskId, `/ssts-report?report_tab=pf_entering&pf_task_id=${encodeURIComponent(initialTaskId)}`);
-      }
-    })();
-  </script>
-  <script src="/static/table-pager.js?v={{ asset_ver }}&ssts=20260512d"></script>
-  <script src="/static/table-export.js?v={{ asset_ver }}&ssts=20260512d"></script>
-  <script src="/static/sidebar-toggle.js?v={{ asset_ver }}&ssts=20260512d"></script>
+  <script src="/static/table-pager.js?v={{ asset_ver }}"></script>
+  <script src="/static/table-export.js?v={{ asset_ver }}"></script>
+  <script src="/static/sidebar-toggle.js?v={{ asset_ver }}"></script>
 </body>
 </html>
