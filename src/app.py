@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, timedelta, timezone
 import math
 from io import BytesIO
@@ -9,6 +10,7 @@ from pathlib import Path
 from typing import Optional
 import re
 from urllib import error as urlerror
+from urllib import parse as urlparse
 from urllib import request as urlrequest
 
 from fastapi import Depends, FastAPI, Form, Request, UploadFile, File, HTTPException
@@ -69,6 +71,8 @@ SSTS_WEB_URL = "http://164.52.197.129/devices"
 SSTS_API_BASE_URL = "http://164.52.197.129:3000"
 SSTS_API_LOGIN_URL = f"{SSTS_API_BASE_URL}/auth/login/"
 SSTS_API_DEVICE_URL = f"{SSTS_API_BASE_URL}/device"
+SSTS_API_TRAINS_REPORT_URL = f"{SSTS_API_BASE_URL}/train/tr/reportforperiod"
+SSTS_API_PUNCT_URL = f"{SSTS_API_BASE_URL}/timetable/tc/punct"
 SSTS_API_USER = os.getenv("SSTS_API_USER", "srdeeopsdah@gmail.com")
 SSTS_API_PASSWORD = os.getenv("SSTS_API_PASSWORD", "sdah1234")
 SSTS_OFFLINE_THRESHOLD_MINUTES = 120
@@ -302,16 +306,181 @@ def _ssts_get_json(url: str, headers: dict[str, str] | None = None) -> object:
         return json.loads(response.read().decode("utf-8", "replace"))
 
 
-def fetch_ssts_devices() -> list[dict[str, object]]:
+def _ssts_get_json_with_params(
+    url: str,
+    params: dict[str, object],
+    headers: dict[str, str] | None = None,
+) -> object:
+    encoded = urlparse.urlencode(
+        {key: value for key, value in params.items() if value not in (None, "")},
+        doseq=True,
+    )
+    full_url = f"{url}?{encoded}" if encoded else url
+    return _ssts_get_json(full_url, headers=headers)
+
+
+def fetch_ssts_token() -> str:
     login_payload = {"username": SSTS_API_USER, "password": SSTS_API_PASSWORD}
     login_data = _ssts_post_json(SSTS_API_LOGIN_URL, login_payload)
     token = str(login_data.get("token") or "").strip()
     if not token:
         raise RuntimeError("SSTS login succeeded but token was missing.")
+    return token
+
+
+def fetch_ssts_devices() -> list[dict[str, object]]:
+    token = fetch_ssts_token()
     devices = _ssts_get_json(SSTS_API_DEVICE_URL, headers={"Authorization": token})
     if not isinstance(devices, list):
         raise RuntimeError("Unexpected SSTS device response format.")
     return [item for item in devices if isinstance(item, dict)]
+
+
+def fetch_ssts_trains_report(report_day: date, token: str) -> list[dict[str, object]]:
+    response = _ssts_get_json_with_params(
+        SSTS_API_TRAINS_REPORT_URL,
+        {"train_date": report_day.isoformat()},
+        headers={"Authorization": token},
+    )
+    if not isinstance(response, list):
+        raise RuntimeError("Unexpected SSTS trains report format.")
+    return [item for item in response if isinstance(item, dict)]
+
+
+def _format_time_value(value: object) -> str:
+    if value in (None, ""):
+        return ""
+    try:
+        text = str(value)
+        if "T" in text:
+            parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+            if parsed.tzinfo is not None:
+                parsed = parsed.astimezone(IST)
+            return parsed.strftime("%H:%M:%S")
+    except ValueError:
+        pass
+    return str(value)
+
+
+def _build_pf_report_rows_for_train(
+    train: dict[str, object],
+    report_day: date,
+    token: str,
+) -> list[dict[str, object]]:
+    base_row = {
+        "report_date": report_day.strftime("%d-%m-%Y"),
+        "train_no": str(train.get("train_no") or ""),
+        "rake_no": str(train.get("device_name") or ""),
+        "device_id": train.get("device_id"),
+        "org": str(train.get("org") or ""),
+        "dest": str(train.get("dest") or ""),
+    }
+    params = {
+        "train_date": report_day.isoformat(),
+        "train_no": train.get("train_no"),
+        "device_id": train.get("device_id"),
+        "org": train.get("org"),
+        "dep": train.get("dep"),
+        "dest": train.get("dest"),
+        "arr": train.get("arr"),
+        "recalc": "true",
+    }
+    try:
+        response = _ssts_get_json_with_params(
+            SSTS_API_PUNCT_URL,
+            params,
+            headers={"Authorization": token},
+        )
+    except (urlerror.URLError, RuntimeError, ValueError, json.JSONDecodeError):
+        response = []
+    if not isinstance(response, list) or not response:
+        return [
+            {
+                **base_row,
+                "station": "",
+                "srl_no": "",
+                "sch_arr": "",
+                "sch_dep": _format_time_value(train.get("dep")),
+                "act_arr": _format_time_value(train.get("act_arr")),
+                "act_dep": _format_time_value(train.get("act_dep")),
+                "geofence_enter_speed": "",
+                "pf_enter_speed": "",
+                "pf_distance": "",
+                "remarks": "",
+                "status_message": "Data not found or Device might be Offline",
+            }
+        ]
+    detail_rows: list[dict[str, object]] = []
+    for item in response:
+        if not isinstance(item, dict):
+            continue
+        detail_rows.append(
+            {
+                **base_row,
+                "station": str(item.get("stn_code") or ""),
+                "srl_no": item.get("srl_no") or "",
+                "sch_arr": _format_time_value(item.get("sch_arr")),
+                "sch_dep": _format_time_value(item.get("sch_dep")),
+                "act_arr": _format_time_value(item.get("act_arr")),
+                "act_dep": _format_time_value(item.get("act_dep")),
+                "geofence_enter_speed": item.get("geofence_enter_speed")
+                if item.get("geofence_enter_speed") is not None
+                else "",
+                "pf_enter_speed": item.get("pf_enter_speed") if item.get("pf_enter_speed") is not None else "",
+                "pf_distance": item.get("pf_distance") if item.get("pf_distance") is not None else "",
+                "remarks": str(item.get("remarks") or ""),
+                "status_message": "",
+            }
+        )
+    return detail_rows or [
+        {
+            **base_row,
+            "station": "",
+            "srl_no": "",
+            "sch_arr": "",
+            "sch_dep": _format_time_value(train.get("dep")),
+            "act_arr": _format_time_value(train.get("act_arr")),
+            "act_dep": _format_time_value(train.get("act_dep")),
+            "geofence_enter_speed": "",
+            "pf_enter_speed": "",
+            "pf_distance": "",
+            "remarks": "",
+            "status_message": "Data not found or Device might be Offline",
+        }
+    ]
+
+
+def build_ssts_pf_entering_context(report_day: date) -> dict[str, object]:
+    token = fetch_ssts_token()
+    trains = fetch_ssts_trains_report(report_day, token)
+    rows: list[dict[str, object]] = []
+    missing_count = 0
+    if trains:
+        with ThreadPoolExecutor(max_workers=6) as executor:
+            future_map = {
+                executor.submit(_build_pf_report_rows_for_train, train, report_day, token): train
+                for train in trains
+            }
+            for future in as_completed(future_map):
+                train_rows = future.result()
+                rows.extend(train_rows)
+                if any(row.get("status_message") for row in train_rows):
+                    missing_count += 1
+    rows.sort(
+        key=lambda row: (
+            str(row.get("train_no") or ""),
+            999999 if row.get("srl_no") in ("", None) else int(row.get("srl_no") or 0),
+            str(row.get("station") or ""),
+        )
+    )
+    return {
+        "pf_report_day": report_day.isoformat(),
+        "pf_report_day_label": report_day.strftime("%d-%m-%Y"),
+        "pf_report_rows": rows,
+        "pf_report_total_trains": len(trains),
+        "pf_report_total_rows": len(rows),
+        "pf_report_missing_count": missing_count,
+    }
 
 
 def refresh_ssts_snapshot(session: Session, force: bool = False) -> dict[str, object]:
@@ -980,18 +1149,40 @@ def reports_page(
 def ssts_report_page(
     request: Request,
     force: int = 0,
+    report_tab: str = "online_offline",
     selected_day: str | None = None,
     detail_view: str | None = None,
+    pf_day: str | None = None,
     session: Session = Depends(get_session),
 ):
     sync_result = refresh_ssts_snapshot(session, force=bool(force))
+    active_report_tab = report_tab if report_tab in {"online_offline", "pf_entering"} else "online_offline"
     selected_day_value: date | None = None
     if selected_day:
         try:
             selected_day_value = date.fromisoformat(selected_day)
         except ValueError:
             selected_day_value = None
+    pf_day_value = selected_day_value or date.today()
+    if pf_day:
+        try:
+            pf_day_value = date.fromisoformat(pf_day)
+        except ValueError:
+            pf_day_value = selected_day_value or date.today()
     context = build_ssts_report_context(session, selected_day=selected_day_value)
+    pf_context = {
+        "pf_report_day": pf_day_value.isoformat(),
+        "pf_report_day_label": pf_day_value.strftime("%d-%m-%Y"),
+        "pf_report_rows": [],
+        "pf_report_total_trains": 0,
+        "pf_report_total_rows": 0,
+        "pf_report_missing_count": 0,
+        "pf_report_error": None,
+    }
+    try:
+        pf_context.update(build_ssts_pf_entering_context(pf_day_value))
+    except (urlerror.URLError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
+        pf_context["pf_report_error"] = f"Unable to load PF entering report: {exc}"
     latest_run = context.get("latest_run")
     latest_summary = {
         "total_rakes": len(context.get("latest_rows", [])),
@@ -1005,6 +1196,7 @@ def ssts_report_page(
         {
             "request": request,
             "active_page": "ssts_report",
+            "active_report_tab": active_report_tab,
             "ssts_web_url": SSTS_WEB_URL,
             "latest_run": latest_run,
             "latest_summary": latest_summary,
@@ -1014,6 +1206,7 @@ def ssts_report_page(
             "IST": IST,
             "active_detail_view": detail_view if detail_view in {"recent_offline", "recently_online"} else None,
             **context,
+            **pf_context,
         },
     )
 

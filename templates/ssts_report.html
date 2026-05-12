@@ -41,12 +41,28 @@
         </div>
       </header>
 
+      <nav class="report-tabs" aria-label="SSTS report tabs">
+        <a
+          class="report-tab {{ 'active' if active_report_tab == 'online_offline' else '' }}"
+          href="/ssts-report?report_tab=online_offline{% if selected_day %}&selected_day={{ selected_day }}{% endif %}{% if active_detail_view %}&detail_view={{ active_detail_view }}{% endif %}{% if pf_report_day %}&pf_day={{ pf_report_day }}{% endif %}"
+        >
+          online/offline Analysis Report
+        </a>
+        <a
+          class="report-tab {{ 'active' if active_report_tab == 'pf_entering' else '' }}"
+          href="/ssts-report?report_tab=pf_entering{% if selected_day %}&selected_day={{ selected_day }}{% endif %}{% if pf_report_day %}&pf_day={{ pf_report_day }}{% endif %}"
+        >
+          SSTS PF entering Report
+        </a>
+      </nav>
+
       {% set total_rakes = latest_summary.total_rakes or 0 %}
       {% set offline_count = latest_summary.offline_count or 0 %}
       {% set recent_offline_count = latest_summary.recent_offline_count or latest_summary.recently_offline_count or 0 %}
       {% set recently_online_count = latest_summary.recently_online_count or 0 %}
       {% set online_count = total_rakes - offline_count if total_rakes >= offline_count else 0 %}
 
+      {% if active_report_tab == 'online_offline' %}
       <section class="grid">
         <article class="card metric-card">
           <div class="metric-card-body">
@@ -468,6 +484,87 @@
           </div>
         </details>
       </section>
+      {% else %}
+      <section class="card">
+        <div class="card-head-inline">
+          <div>
+            <h2>SSTS PF entering Report</h2>
+            <p>Day-wise each train with station-wise geofence and PF entering speed details.</p>
+          </div>
+        </div>
+        <form class="detail-date-filter report-filter-row" method="get" action="/ssts-report">
+          <input type="hidden" name="report_tab" value="pf_entering" />
+          {% if selected_day %}
+          <input type="hidden" name="selected_day" value="{{ selected_day }}" />
+          {% endif %}
+          <label for="pf-day-select">Report Date</label>
+          <input id="pf-day-select" type="date" name="pf_day" value="{{ pf_report_day }}" />
+          <button type="submit">Load PF Report</button>
+        </form>
+        {% if pf_report_error %}
+        <p class="status-error">{{ pf_report_error }}</p>
+        {% else %}
+        <div class="summary-strip">
+          <span class="summary-chip">Date {{ pf_report_day_label }}</span>
+          <span class="summary-chip">Total Trains {{ pf_report_total_trains }}</span>
+          <span class="summary-chip">Rendered Rows {{ pf_report_total_rows }}</span>
+          <span class="summary-chip">Missing Data {{ pf_report_missing_count }}</span>
+        </div>
+        <div class="table-wrap">
+          <table class="employee-table paged" data-exportable="true" data-export-name="ssts_pf_entering_report_{{ pf_report_day }}">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Train No</th>
+                <th>Rake No</th>
+                <th>Device ID</th>
+                <th>ORG</th>
+                <th>DEST</th>
+                <th>Srl</th>
+                <th>Station</th>
+                <th>Sch Arr</th>
+                <th>Act Arr</th>
+                <th>Sch Dep</th>
+                <th>Act Dep</th>
+                <th>Geofence Enter Speed</th>
+                <th>PF Enter Speed</th>
+                <th>PF Distance</th>
+                <th>Status</th>
+                <th>Remarks</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in pf_report_rows %}
+              <tr class="{% if row.status_message %}warn{% else %}ok{% endif %}">
+                <td>{{ row.report_date }}</td>
+                <td>{{ row.train_no }}</td>
+                <td>{{ row.rake_no }}</td>
+                <td>{{ row.device_id }}</td>
+                <td>{{ row.org }}</td>
+                <td>{{ row.dest }}</td>
+                <td>{{ row.srl_no }}</td>
+                <td>{{ row.station }}</td>
+                <td>{{ row.sch_arr }}</td>
+                <td>{{ row.act_arr }}</td>
+                <td>{{ row.sch_dep }}</td>
+                <td>{{ row.act_dep }}</td>
+                <td>{{ row.geofence_enter_speed }}</td>
+                <td>{{ row.pf_enter_speed }}</td>
+                <td>{{ row.pf_distance }}</td>
+                <td>{{ row.status_message or 'OK' }}</td>
+                <td>{{ row.remarks }}</td>
+              </tr>
+              {% else %}
+              <tr>
+                <td colspan="17">No PF entering data found for the selected date.</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endif %}
+      </section>
+      {% endif %}
     </main>
   </div>
   <script src="/static/table-pager.js?v={{ asset_ver }}"></script>
