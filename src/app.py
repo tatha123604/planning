@@ -9,9 +9,11 @@ import os
 from pathlib import Path
 from typing import Optional
 import re
+import threading
 from urllib import error as urlerror
 from urllib import parse as urlparse
 from urllib import request as urlrequest
+from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Form, Request, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
@@ -49,7 +51,7 @@ def format_dmy(value):
     except Exception:
         return str(value)
 templates.env.filters["dmy"] = format_dmy
-ASSET_VER = "v20260511a"
+ASSET_VER = "v20260512b"
 templates.env.globals["asset_ver"] = ASSET_VER
 
 
@@ -80,7 +82,12 @@ SSTS_RECENTLY_ONLINE_THRESHOLD_MINUTES = 5
 SSTS_PREVIOUSLY_OFFLINE_THRESHOLD_MINUTES = 300
 SSTS_RECENT_OFFLINE_MAX_MINUTES = 24 * 60
 SSTS_REFRESH_INTERVAL_MINUTES = 30
+SSTS_PF_REPORT_CACHE_TTL_MINUTES = 20
+SSTS_PF_ANALYSIS_TASK_TTL_MINUTES = 180
 IST = timezone(timedelta(hours=5, minutes=30))
+_SSTS_PF_REPORT_CACHE: dict[str, tuple[datetime, dict[str, object]]] = {}
+_SSTS_PF_ANALYSIS_TASKS: dict[str, dict[str, object]] = {}
+_SSTS_PF_ANALYSIS_LOCK = threading.Lock()
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -451,6 +458,14 @@ def _build_pf_report_rows_for_train(
 
 
 def build_ssts_pf_entering_context(report_day: date) -> dict[str, object]:
+    cache_key = report_day.isoformat()
+    cached_entry = _SSTS_PF_REPORT_CACHE.get(cache_key)
+    now_utc = _utc_now()
+    if cached_entry:
+        cached_at, cached_payload = cached_entry
+        if (now_utc - cached_at) < timedelta(minutes=SSTS_PF_REPORT_CACHE_TTL_MINUTES):
+            return dict(cached_payload)
+
     token = fetch_ssts_token()
     trains = fetch_ssts_trains_report(report_day, token)
     rows: list[dict[str, object]] = []
@@ -473,7 +488,7 @@ def build_ssts_pf_entering_context(report_day: date) -> dict[str, object]:
             str(row.get("station") or ""),
         )
     )
-    return {
+    payload = {
         "pf_report_day": report_day.isoformat(),
         "pf_report_day_label": report_day.strftime("%d-%m-%Y"),
         "pf_report_rows": rows,
@@ -481,6 +496,163 @@ def build_ssts_pf_entering_context(report_day: date) -> dict[str, object]:
         "pf_report_total_rows": len(rows),
         "pf_report_missing_count": missing_count,
     }
+    _SSTS_PF_REPORT_CACHE[cache_key] = (now_utc, payload)
+    stale_keys = [
+        key
+        for key, (cached_at, _) in _SSTS_PF_REPORT_CACHE.items()
+        if (now_utc - cached_at) >= timedelta(minutes=SSTS_PF_REPORT_CACHE_TTL_MINUTES)
+    ]
+    for stale_key in stale_keys:
+        _SSTS_PF_REPORT_CACHE.pop(stale_key, None)
+    return dict(payload)
+
+
+def _pf_speed_value(value: object) -> float | None:
+    if value in (None, ""):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _cleanup_ssts_pf_analysis_tasks() -> None:
+    now_utc = _utc_now()
+    stale_ids: list[str] = []
+    with _SSTS_PF_ANALYSIS_LOCK:
+        for task_id, payload in _SSTS_PF_ANALYSIS_TASKS.items():
+            updated_at = payload.get("updated_at")
+            if not isinstance(updated_at, datetime):
+                stale_ids.append(task_id)
+                continue
+            if (now_utc - updated_at) >= timedelta(minutes=SSTS_PF_ANALYSIS_TASK_TTL_MINUTES):
+                stale_ids.append(task_id)
+        for task_id in stale_ids:
+            _SSTS_PF_ANALYSIS_TASKS.pop(task_id, None)
+
+
+def _set_ssts_pf_analysis_task(task_id: str, **values: object) -> None:
+    with _SSTS_PF_ANALYSIS_LOCK:
+        payload = _SSTS_PF_ANALYSIS_TASKS.setdefault(task_id, {})
+        payload.update(values)
+        payload["updated_at"] = _utc_now()
+
+
+def _get_ssts_pf_analysis_task(task_id: str | None) -> dict[str, object] | None:
+    if not task_id:
+        return None
+    _cleanup_ssts_pf_analysis_tasks()
+    with _SSTS_PF_ANALYSIS_LOCK:
+        payload = _SSTS_PF_ANALYSIS_TASKS.get(task_id)
+        if not payload:
+            return None
+        return dict(payload)
+
+
+def _build_ssts_pf_speed_analysis_result(report_day: date) -> dict[str, object]:
+    raw_context = build_ssts_pf_entering_context(report_day)
+    filtered_rows: list[dict[str, object]] = []
+    for row in raw_context.get("pf_report_rows", []):
+        if not isinstance(row, dict):
+            continue
+        geofence_speed = _pf_speed_value(row.get("geofence_enter_speed"))
+        pf_speed = _pf_speed_value(row.get("pf_enter_speed"))
+        if (geofence_speed is not None and geofence_speed > 40) or (pf_speed is not None and pf_speed > 40):
+            filtered_rows.append(dict(row))
+
+    filtered_rows.sort(
+        key=lambda row: (
+            str(row.get("train_no") or ""),
+            999999 if row.get("srl_no") in ("", None) else int(row.get("srl_no") or 0),
+            str(row.get("station") or ""),
+        )
+    )
+
+    summary_by_train: dict[str, dict[str, object]] = {}
+    detail_rows_by_train: dict[str, list[dict[str, object]]] = {}
+    for row in filtered_rows:
+        train_no = str(row.get("train_no") or "").strip()
+        if not train_no:
+            continue
+        detail_rows_by_train.setdefault(train_no, []).append(row)
+        summary = summary_by_train.setdefault(
+            train_no,
+            {
+                "report_date": str(row.get("report_date") or report_day.strftime("%d-%m-%Y")),
+                "train_no": train_no,
+                "rake_no": str(row.get("rake_no") or ""),
+                "device_id": row.get("device_id") or "",
+                "org": str(row.get("org") or ""),
+                "dest": str(row.get("dest") or ""),
+                "occurrence_count": 0,
+                "max_geofence_enter_speed": "",
+                "max_pf_enter_speed": "",
+            },
+        )
+        summary["occurrence_count"] = int(summary.get("occurrence_count") or 0) + 1
+        geofence_speed = _pf_speed_value(row.get("geofence_enter_speed"))
+        pf_speed = _pf_speed_value(row.get("pf_enter_speed"))
+        if geofence_speed is not None:
+            current_max = _pf_speed_value(summary.get("max_geofence_enter_speed"))
+            if current_max is None or geofence_speed > current_max:
+                summary["max_geofence_enter_speed"] = int(geofence_speed) if geofence_speed.is_integer() else geofence_speed
+        if pf_speed is not None:
+            current_max = _pf_speed_value(summary.get("max_pf_enter_speed"))
+            if current_max is None or pf_speed > current_max:
+                summary["max_pf_enter_speed"] = int(pf_speed) if pf_speed.is_integer() else pf_speed
+
+    summary_rows = sorted(
+        summary_by_train.values(),
+        key=lambda row: (-int(row.get("occurrence_count") or 0), str(row.get("train_no") or "")),
+    )
+
+    return {
+        "pf_report_day": report_day.isoformat(),
+        "pf_report_day_label": report_day.strftime("%d-%m-%Y"),
+        "pf_analysis_summary_rows": summary_rows,
+        "pf_analysis_detail_rows_by_train": detail_rows_by_train,
+        "pf_analysis_total_trains": len(summary_rows),
+        "pf_analysis_total_rows": len(filtered_rows),
+        "pf_analysis_source_total_trains": int(raw_context.get("pf_report_total_trains") or 0),
+        "pf_analysis_source_total_rows": int(raw_context.get("pf_report_total_rows") or 0),
+        "pf_analysis_missing_count": int(raw_context.get("pf_report_missing_count") or 0),
+    }
+
+
+def _run_ssts_pf_analysis_task(task_id: str, report_day: date) -> None:
+    try:
+        _set_ssts_pf_analysis_task(
+            task_id,
+            status="running",
+            progress=8,
+            message="Preparing PF analysis...",
+        )
+        _set_ssts_pf_analysis_task(
+            task_id,
+            progress=24,
+            message="Fetching train-wise PF data...",
+        )
+        result = _build_ssts_pf_speed_analysis_result(report_day)
+        _set_ssts_pf_analysis_task(
+            task_id,
+            progress=88,
+            message="Building 40+ speed summary...",
+        )
+        _set_ssts_pf_analysis_task(
+            task_id,
+            status="completed",
+            progress=100,
+            message="Analysis complete.",
+            result=result,
+        )
+    except Exception as exc:
+        _set_ssts_pf_analysis_task(
+            task_id,
+            status="error",
+            progress=100,
+            message=f"Analysis failed: {exc}",
+            error=str(exc),
+        )
 
 
 def refresh_ssts_snapshot(session: Session, force: bool = False) -> dict[str, object]:
@@ -1153,6 +1325,8 @@ def ssts_report_page(
     selected_day: str | None = None,
     detail_view: str | None = None,
     pf_day: str | None = None,
+    pf_task_id: str | None = None,
+    pf_train: str | None = None,
     session: Session = Depends(get_session),
 ):
     sync_result = refresh_ssts_snapshot(session, force=bool(force))
@@ -1174,15 +1348,48 @@ def ssts_report_page(
         "pf_report_day": pf_day_value.isoformat(),
         "pf_report_day_label": pf_day_value.strftime("%d-%m-%Y"),
         "pf_report_rows": [],
-        "pf_report_total_trains": 0,
-        "pf_report_total_rows": 0,
-        "pf_report_missing_count": 0,
+        "pf_analysis_summary_rows": [],
+        "pf_analysis_selected_rows": [],
+        "pf_analysis_selected_train": "",
+        "pf_analysis_total_trains": 0,
+        "pf_analysis_total_rows": 0,
+        "pf_analysis_source_total_trains": 0,
+        "pf_analysis_source_total_rows": 0,
+        "pf_analysis_missing_count": 0,
+        "pf_analysis_status": "idle",
+        "pf_analysis_task_id": pf_task_id or "",
+        "pf_analysis_message": "",
         "pf_report_error": None,
     }
-    try:
-        pf_context.update(build_ssts_pf_entering_context(pf_day_value))
-    except (urlerror.URLError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
-        pf_context["pf_report_error"] = f"Unable to load PF entering report: {exc}"
+    if active_report_tab == "pf_entering":
+        task_payload = _get_ssts_pf_analysis_task(pf_task_id)
+        if task_payload:
+            pf_context["pf_analysis_status"] = str(task_payload.get("status") or "idle")
+            pf_context["pf_analysis_message"] = str(task_payload.get("message") or "")
+            pf_context["pf_analysis_task_id"] = pf_task_id or ""
+            if task_payload.get("report_day"):
+                pf_context["pf_report_day"] = str(task_payload.get("report_day"))
+                try:
+                    pf_day_value = date.fromisoformat(str(task_payload.get("report_day")))
+                    pf_context["pf_report_day_label"] = pf_day_value.strftime("%d-%m-%Y")
+                except ValueError:
+                    pass
+            if task_payload.get("status") == "completed":
+                result = task_payload.get("result")
+                if isinstance(result, dict):
+                    pf_context.update({key: value for key, value in result.items() if key != "pf_analysis_detail_rows_by_train"})
+                    detail_rows_by_train = result.get("pf_analysis_detail_rows_by_train")
+                    if isinstance(detail_rows_by_train, dict):
+                        selected_train_value = pf_train or (
+                            str(pf_context["pf_analysis_summary_rows"][0].get("train_no") or "")
+                            if pf_context["pf_analysis_summary_rows"]
+                            else ""
+                        )
+                        pf_context["pf_analysis_selected_train"] = selected_train_value
+                        selected_rows = detail_rows_by_train.get(selected_train_value, [])
+                        pf_context["pf_analysis_selected_rows"] = selected_rows if isinstance(selected_rows, list) else []
+            elif task_payload.get("status") == "error":
+                pf_context["pf_report_error"] = str(task_payload.get("message") or "PF analysis failed.")
     latest_run = context.get("latest_run")
     latest_summary = {
         "total_rakes": len(context.get("latest_rows", [])),
@@ -1208,6 +1415,50 @@ def ssts_report_page(
             **context,
             **pf_context,
         },
+    )
+
+
+@app.post("/ssts-report/pf-analysis/start")
+async def start_ssts_pf_analysis(pf_day: str = Form(...)):
+    try:
+        report_day = date.fromisoformat(pf_day)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid PF analysis date.") from exc
+
+    task_id = uuid4().hex
+    _set_ssts_pf_analysis_task(
+        task_id,
+        status="pending",
+        progress=2,
+        message="Queued for analysis...",
+        report_day=report_day.isoformat(),
+        result=None,
+    )
+    worker = threading.Thread(target=_run_ssts_pf_analysis_task, args=(task_id, report_day), daemon=True)
+    worker.start()
+    return JSONResponse(
+        {
+            "task_id": task_id,
+            "status": "pending",
+            "status_url": f"/ssts-report/pf-analysis/status?task_id={task_id}",
+            "result_url": f"/ssts-report?report_tab=pf_entering&pf_task_id={task_id}",
+        }
+    )
+
+
+@app.get("/ssts-report/pf-analysis/status")
+def ssts_pf_analysis_status(task_id: str):
+    task_payload = _get_ssts_pf_analysis_task(task_id)
+    if not task_payload:
+        raise HTTPException(status_code=404, detail="PF analysis task not found.")
+    return JSONResponse(
+        {
+            "task_id": task_id,
+            "status": str(task_payload.get("status") or "idle"),
+            "progress": int(task_payload.get("progress") or 0),
+            "message": str(task_payload.get("message") or ""),
+            "result_url": f"/ssts-report?report_tab=pf_entering&pf_task_id={task_id}",
+        }
     )
 
 
