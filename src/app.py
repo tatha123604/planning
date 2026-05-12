@@ -6514,10 +6514,11 @@ def ssts_report_page(
         "pf_report_missing_count": 0,
         "pf_report_error": None,
     }
-    try:
-        pf_context.update(build_ssts_pf_entering_context(pf_day_value))
-    except (urlerror.URLError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
-        pf_context["pf_report_error"] = f"Unable to load PF entering report: {exc}"
+    if active_report_tab == "pf_entering":
+        try:
+            pf_context.update(build_ssts_pf_entering_context(pf_day_value))
+        except (urlerror.URLError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
+            pf_context["pf_report_error"] = f"Unable to load PF entering report: {exc}"
     latest_run = context.get("latest_run")
     latest_summary = {
         "total_rakes": len(context.get("latest_rows", [])),
