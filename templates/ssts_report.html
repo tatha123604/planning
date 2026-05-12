@@ -233,12 +233,14 @@
           </div>
         </div>
         <form class="detail-date-filter" method="get" action="/ssts-report">
-          <label for="analysis-day-select">Analysis Date</label>
-          <select id="analysis-day-select" name="analysis_day" onchange="this.form.submit()">
-            {% for row in analysis_day_options %}
-            <option value="{{ row.day_iso }}" {% if selected_analysis_day == row.day_iso %}selected{% endif %}>{{ row.day }}</option>
-            {% endfor %}
-          </select>
+          <div class="filter-field">
+            <label for="analysis-day-select">Analysis Date</label>
+            <select id="analysis-day-select" name="analysis_day" onchange="this.form.submit()">
+              {% for row in analysis_day_options %}
+              <option value="{{ row.day_iso }}" {% if selected_analysis_day == row.day_iso %}selected{% endif %}>{{ row.day }}</option>
+              {% endfor %}
+            </select>
+          </div>
           {% if selected_day %}
           <input type="hidden" name="selected_day" value="{{ selected_day }}" />
           {% endif %}
