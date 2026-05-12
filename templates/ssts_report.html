@@ -883,7 +883,9 @@
               <label for="pf-day-select">Report Date</label>
               <input id="pf-day-select" type="date" name="pf_day" value="{{ pf_report_day }}" />
             </div>
-            <button type="submit" id="pf-analysis-button">Analysis</button>
+            <div class="pf-form-actions">
+              <button type="submit" id="pf-analysis-button">Analysis</button>
+            </div>
           </form>
           <div
             class="pf-progress-panel {% if pf_analysis_status == 'idle' %}is-hidden{% endif %}"
@@ -911,7 +913,7 @@
         {% if pf_report_error %}
         <p class="status-error">{{ pf_report_error }}</p>
         {% elif pf_analysis_status == 'idle' %}
-        <p class="hint">Pick a date and press <strong>Analysis</strong> to generate the 40+ speed report.</p>
+        <p class="hint pf-idle-hint" id="pf-idle-hint">Pick a date and press <strong>Analysis</strong> to generate the 40+ speed report.</p>
         {% else %}
         <div class="summary-strip pf-summary-strip">
           <span class="summary-chip">Date {{ pf_report_day_label }}</span>
@@ -1101,6 +1103,7 @@
       const progressFill = document.getElementById('pf-progress-fill');
       const progressLabel = document.getElementById('pf-progress-label');
       const button = document.getElementById('pf-analysis-button');
+      const idleHint = document.getElementById('pf-idle-hint');
       if (!form || !panel || !progressFill || !progressLabel || !button) return;
 
       let pollTimer = null;
@@ -1121,6 +1124,11 @@
         }
       };
 
+      const setIdleHintHidden = (hidden) => {
+        if (!idleHint) return;
+        idleHint.classList.toggle('is-hidden', hidden);
+      };
+
       const pollStatus = async (taskId, resultUrl) => {
         try {
           const response = await fetch(`/ssts-report/pf-analysis/status?task_id=${encodeURIComponent(taskId)}`);
@@ -1137,6 +1145,7 @@
             button.disabled = false;
             button.textContent = 'Analysis';
             progressLabel.textContent = payload.message || 'Analysis failed.';
+            setIdleHintHidden(false);
             return;
           }
           pollTimer = window.setTimeout(() => pollStatus(taskId, resultUrl || payload.result_url), 1200);
@@ -1144,6 +1153,7 @@
           button.disabled = false;
           button.textContent = 'Analysis';
           progressLabel.textContent = error && error.message ? error.message : 'Could not start PF analysis.';
+          setIdleHintHidden(false);
         }
       };
 
@@ -1153,6 +1163,7 @@
         button.disabled = true;
         button.textContent = 'Starting...';
         panel.classList.remove('is-hidden');
+        setIdleHintHidden(true);
         setProgress(6, 'Starting PF analysis...');
         try {
           const response = await fetch(form.action, {
@@ -1169,11 +1180,15 @@
           button.disabled = false;
           button.textContent = 'Analysis';
           progressLabel.textContent = error && error.message ? error.message : 'Could not start PF analysis.';
+          setIdleHintHidden(false);
         }
       });
 
       const initialTaskId = panel.dataset.taskId || '';
       const initialStatus = panel.dataset.status || '';
+      if (initialStatus === 'pending' || initialStatus === 'running' || initialStatus === 'completed') {
+        setIdleHintHidden(true);
+      }
       if (initialTaskId && (initialStatus === 'pending' || initialStatus === 'running')) {
         panel.classList.remove('is-hidden');
         button.disabled = true;
