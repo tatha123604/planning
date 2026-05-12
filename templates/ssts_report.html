@@ -6,6 +6,77 @@
   <title>SSTS Report | SDAH Crew Planner</title>
   <link rel="stylesheet" href="/static/style.css?v={{ asset_ver }}&ssts=20260512d" />
   <link rel="icon" type="image/svg+xml" href="/static/indian-railways-mark.svg" />
+  <style>
+    .summary-link,
+    .summary-link:link,
+    .summary-link:visited {
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      min-width: 44px !important;
+      min-height: 34px !important;
+      padding: 6px 12px !important;
+      border-radius: 999px !important;
+      background: linear-gradient(135deg, rgba(123, 215, 255, 0.28), rgba(18, 189, 231, 0.18)) !important;
+      border: 1px solid rgba(123, 215, 255, 0.36) !important;
+      color: #f3fbff !important;
+      text-decoration: none !important;
+      font-weight: 800 !important;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 10px 24px rgba(18, 189, 231, 0.12) !important;
+    }
+    .timeline-card {
+      min-width: 220px !important;
+      display: grid !important;
+      gap: 7px !important;
+    }
+    .timeline-scale {
+      display: flex !important;
+      justify-content: space-between !important;
+      font-size: 11px !important;
+      font-weight: 700 !important;
+      color: #d6ecfb !important;
+    }
+    .timeline-bar {
+      display: flex !important;
+      overflow: hidden !important;
+      min-height: 20px !important;
+      height: 20px !important;
+      border-radius: 999px !important;
+      background:
+        linear-gradient(90deg, rgba(255,255,255,0.12) 0 1px, transparent 1px 50%),
+        linear-gradient(90deg, rgba(255,255,255,0.12) 0 1px, transparent 1px 100%),
+        linear-gradient(180deg, rgba(14, 25, 44, 0.98), rgba(9, 17, 31, 0.94)) !important;
+      background-size: 50% 100%, 100% 100%, auto !important;
+      border: 1px solid rgba(123, 215, 255, 0.28) !important;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), inset 0 -1px 0 rgba(0,0,0,0.26) !important;
+    }
+    .timeline-segment {
+      display: block !important;
+      min-width: 2px !important;
+      height: 100% !important;
+    }
+    .timeline-segment-online {
+      background: linear-gradient(135deg, #7cf0c3, #69d6ff) !important;
+    }
+    .timeline-segment-offline {
+      background: linear-gradient(135deg, #ff8f8f, #ffbf7a) !important;
+    }
+    .timeline-legend {
+      display: flex !important;
+      gap: 12px !important;
+      flex-wrap: wrap !important;
+      font-size: 11px !important;
+      color: #d6ebff !important;
+    }
+    .timeline-dot {
+      width: 8px !important;
+      height: 8px !important;
+      border-radius: 50% !important;
+      display: inline-block !important;
+    }
+    .timeline-dot-online { background: #73efbf !important; }
+    .timeline-dot-offline { background: #ff9d84 !important; }
+  </style>
 </head>
 <body>
   <div class="layout">
