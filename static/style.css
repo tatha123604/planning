@@ -880,6 +880,22 @@ ul { padding-left: 18px; margin: 6px 0; }
   flex-wrap: wrap;
   margin: 12px 0 16px;
 }
+.pf-report-filter {
+  margin-bottom: 18px;
+}
+.pf-report-filter .filter-field {
+  flex-basis: 190px;
+}
+.pf-report-filter button {
+  align-self: flex-end;
+}
+.pf-summary-strip {
+  margin-top: 6px;
+  margin-bottom: 18px;
+}
+.pf-summary-strip .summary-chip {
+  min-height: 34px;
+}
 .report-filter-row {
   align-items: end;
   gap: 12px;

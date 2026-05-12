@@ -800,8 +800,10 @@ SSTS_OFFLINE_THRESHOLD_MINUTES = 120
 SSTS_PREVIOUSLY_OFFLINE_THRESHOLD_MINUTES = 300
 SSTS_RECENT_OFFLINE_MAX_MINUTES = 24 * 60
 SSTS_REFRESH_INTERVAL_MINUTES = 30
+SSTS_PF_REPORT_CACHE_TTL_MINUTES = 20
 SSTS_EXCLUDED_RAKE_NAMES = {"TEST1", "TEST2"}
 IST = timezone(timedelta(hours=5, minutes=30))
+_SSTS_PF_REPORT_CACHE: dict[str, tuple[datetime, dict[str, object]]] = {}
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -1730,6 +1732,14 @@ def _build_pf_report_rows_for_train(
 
 
 def build_ssts_pf_entering_context(report_day: date) -> dict[str, object]:
+    cache_key = report_day.isoformat()
+    cached_entry = _SSTS_PF_REPORT_CACHE.get(cache_key)
+    now_utc = _utc_now()
+    if cached_entry:
+        cached_at, cached_payload = cached_entry
+        if (now_utc - cached_at) < timedelta(minutes=SSTS_PF_REPORT_CACHE_TTL_MINUTES):
+            return dict(cached_payload)
+
     token = fetch_ssts_token()
     trains = fetch_ssts_trains_report(report_day, token)
     rows: list[dict[str, object]] = []
@@ -1752,7 +1762,7 @@ def build_ssts_pf_entering_context(report_day: date) -> dict[str, object]:
             str(row.get("station") or ""),
         )
     )
-    return {
+    payload = {
         "pf_report_day": report_day.isoformat(),
         "pf_report_day_label": report_day.strftime("%d-%m-%Y"),
         "pf_report_rows": rows,
@@ -1760,6 +1770,15 @@ def build_ssts_pf_entering_context(report_day: date) -> dict[str, object]:
         "pf_report_total_rows": len(rows),
         "pf_report_missing_count": missing_count,
     }
+    _SSTS_PF_REPORT_CACHE[cache_key] = (now_utc, payload)
+    stale_keys = [
+        key
+        for key, (cached_at, _) in _SSTS_PF_REPORT_CACHE.items()
+        if (now_utc - cached_at) >= timedelta(minutes=SSTS_PF_REPORT_CACHE_TTL_MINUTES)
+    ]
+    for stale_key in stale_keys:
+        _SSTS_PF_REPORT_CACHE.pop(stale_key, None)
+    return dict(payload)
 
 
 def refresh_ssts_snapshot(session: Session, force: bool = False) -> dict[str, object]:

@@ -876,7 +876,7 @@
             <p>Day-wise each train with station-wise geofence and PF entering speed details.</p>
           </div>
         </div>
-        <form class="detail-date-filter report-filter-row" method="get" action="/ssts-report">
+        <form class="detail-date-filter report-filter-row pf-report-filter" method="get" action="/ssts-report">
           <input type="hidden" name="report_tab" value="pf_entering" />
           {% if selected_day %}
           <input type="hidden" name="selected_day" value="{{ selected_day }}" />
@@ -890,7 +890,7 @@
         {% if pf_report_error %}
         <p class="status-error">{{ pf_report_error }}</p>
         {% else %}
-        <div class="summary-strip">
+        <div class="summary-strip pf-summary-strip">
           <span class="summary-chip">Date {{ pf_report_day_label }}</span>
           <span class="summary-chip">Total Trains {{ pf_report_total_trains }}</span>
           <span class="summary-chip">Rendered Rows {{ pf_report_total_rows }}</span>
