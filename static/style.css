@@ -910,21 +910,31 @@ ul { padding-left: 18px; margin: 6px 0; }
   background: transparent;
   border: 0;
   display: grid;
-  grid-template-columns: minmax(180px, 220px) auto;
+  grid-template-columns: minmax(180px, 220px) max-content;
   align-items: end;
-  gap: 12px;
+  justify-content: start;
+  column-gap: 14px;
+  row-gap: 10px;
 }
 .pf-report-filter .filter-field {
+  min-width: 0;
+}
+.pf-report-filter .filter-field label {
+  margin-bottom: 6px;
+}
+.pf-report-filter .filter-field input {
   min-width: 0;
 }
 .pf-form-actions {
   display: flex;
   align-items: flex-end;
+  justify-content: flex-start;
 }
 .pf-report-filter button {
   align-self: flex-end;
   flex: 0 0 auto;
-  min-width: 110px;
+  min-width: 118px;
+  white-space: nowrap;
 }
 .pf-report-shell {
   display: grid;
@@ -983,8 +993,18 @@ ul { padding-left: 18px; margin: 6px 0; }
   height: 100%;
   width: 0;
   border-radius: inherit;
-  background: linear-gradient(90deg, #12bde7, #66e1b6);
+  background: linear-gradient(90deg, #12bde7, #66e1b6, #12bde7);
+  background-size: 200% 100%;
   transition: width 0.35s ease;
+}
+.pf-progress-panel[data-status="running"] .pf-progress-bar span {
+  animation: pf-progress-shimmer 1.2s linear infinite;
+}
+.pf-progress-panel[data-status="completed"] .pf-progress-bar span {
+  background: linear-gradient(90deg, #2dc7ff, #66e1b6);
+}
+.pf-progress-panel[data-status="error"] .pf-progress-bar span {
+  background: linear-gradient(90deg, #ff7b72, #ffb4a6);
 }
 .pf-analysis-grid {
   display: grid;
@@ -1001,6 +1021,14 @@ ul { padding-left: 18px; margin: 6px 0; }
 }
 .pf-idle-hint.is-hidden {
   display: none;
+}
+@keyframes pf-progress-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: 0 0;
+  }
 }
 .report-filter-row {
   align-items: end;
@@ -2786,6 +2814,15 @@ table .summary-link {
   }
   .requirements-filter-row { justify-content: stretch; }
   .requirements-filter-card { width: 100%; }
+  .pf-report-filter {
+    grid-template-columns: 1fr;
+  }
+  .pf-form-actions {
+    align-items: stretch;
+  }
+  .pf-report-filter button {
+    width: 100%;
+  }
   h1 { font-size: 22px; }
   h2 { font-size: 18px; }
   table { font-size: 13px; }

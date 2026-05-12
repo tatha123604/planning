@@ -1117,6 +1117,10 @@
         }
       };
 
+      const setPanelStatus = (status) => {
+        panel.dataset.status = status;
+      };
+
       const stopPolling = () => {
         if (pollTimer) {
           window.clearTimeout(pollTimer);
@@ -1138,18 +1142,22 @@
           }
           setProgress(payload.progress, payload.message);
           if (payload.status === 'completed') {
+            setPanelStatus('completed');
             window.location.href = resultUrl || payload.result_url || `/ssts-report?report_tab=pf_entering&pf_task_id=${encodeURIComponent(taskId)}`;
             return;
           }
           if (payload.status === 'error') {
+            setPanelStatus('error');
             button.disabled = false;
             button.textContent = 'Analysis';
             progressLabel.textContent = payload.message || 'Analysis failed.';
             setIdleHintHidden(false);
             return;
           }
+          setPanelStatus('running');
           pollTimer = window.setTimeout(() => pollStatus(taskId, resultUrl || payload.result_url), 1200);
         } catch (error) {
+          setPanelStatus('error');
           button.disabled = false;
           button.textContent = 'Analysis';
           progressLabel.textContent = error && error.message ? error.message : 'Could not start PF analysis.';
@@ -1163,6 +1171,7 @@
         button.disabled = true;
         button.textContent = 'Starting...';
         panel.classList.remove('is-hidden');
+        setPanelStatus('running');
         setIdleHintHidden(true);
         setProgress(6, 'Starting PF analysis...');
         try {
@@ -1177,6 +1186,7 @@
           button.textContent = 'Running...';
           pollStatus(payload.task_id, payload.result_url);
         } catch (error) {
+          setPanelStatus('error');
           button.disabled = false;
           button.textContent = 'Analysis';
           progressLabel.textContent = error && error.message ? error.message : 'Could not start PF analysis.';
