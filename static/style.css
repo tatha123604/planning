@@ -284,80 +284,11 @@ button:hover { filter: brightness(1.05); }
 .metric-card-total .metric-meter-notes {
   color: #fffbea;
 }
-.ssts-online-section,
-.ssts-recovery-section {
-  background: linear-gradient(135deg, rgba(15, 56, 40, 0.9), rgba(18, 82, 58, 0.74));
-  border-color: rgba(122, 239, 180, 0.22);
-}
-.ssts-offline-section {
-  background: linear-gradient(135deg, rgba(72, 22, 22, 0.92), rgba(108, 35, 35, 0.76));
-  border-color: rgba(255, 153, 153, 0.24);
-}
-.ssts-mixed-section {
-  background:
-    linear-gradient(135deg, rgba(18, 74, 52, 0.34), rgba(102, 31, 31, 0.34)),
-    rgba(17, 24, 39, 0.88);
-  border-color: rgba(123, 215, 255, 0.18);
-}
-.ssts-online-section .table-pager,
-.ssts-online-section .table-export-bar,
-.ssts-recovery-section .table-pager,
-.ssts-recovery-section .table-export-bar {
-  border-color: rgba(122, 239, 180, 0.24);
-  background: linear-gradient(135deg, rgba(14, 46, 35, 0.94), rgba(14, 70, 52, 0.76));
-}
-.ssts-offline-section .table-pager,
-.ssts-offline-section .table-export-bar {
-  border-color: rgba(255, 153, 153, 0.22);
-  background: linear-gradient(135deg, rgba(52, 18, 22, 0.94), rgba(86, 29, 36, 0.76));
-}
-.ssts-mixed-section .table-pager,
-.ssts-mixed-section .table-export-bar {
-  border-color: rgba(123, 215, 255, 0.18);
-  background:
-    linear-gradient(135deg, rgba(16, 50, 38, 0.88), rgba(66, 24, 30, 0.82)),
-    rgba(11, 25, 42, 0.92);
-}
-.ssts-online-section h2::before,
-.ssts-recovery-section h2::before {
-  background: linear-gradient(180deg, #8cf1c8, #2ccf8e);
-  box-shadow: 0 0 0 1px rgba(255,255,255,0.08), 0 8px 18px rgba(44, 207, 142, 0.24);
-}
-.ssts-offline-section h2::before {
-  background: linear-gradient(180deg, #ffb2a0, #ff6f6f);
-  box-shadow: 0 0 0 1px rgba(255,255,255,0.08), 0 8px 18px rgba(255, 111, 111, 0.24);
-}
-.ssts-mixed-section h2::before {
-  background: linear-gradient(180deg, #8cf1c8, #ff8f8f);
-  box-shadow: 0 0 0 1px rgba(255,255,255,0.08), 0 8px 18px rgba(123, 215, 255, 0.22);
-}
-.ssts-online-section details > summary {
-  background: linear-gradient(135deg, rgba(24, 80, 52, 0.9), rgba(19, 121, 88, 0.72));
-  border-color: rgba(122, 239, 180, 0.32);
-  color: #effff6;
-}
-.ssts-online-section details > summary:hover,
-.ssts-online-section details[open] > summary {
-  background: linear-gradient(135deg, rgba(32, 110, 70, 0.94), rgba(28, 144, 102, 0.78));
-  border-color: rgba(148, 247, 205, 0.46);
-  color: #f7fff9;
-}
 .ssts-online-section .employee-table thead th {
   background: linear-gradient(135deg, rgba(18, 87, 57, 0.98), rgba(15, 114, 82, 0.98));
 }
 .ssts-online-section .employee-table thead th:hover {
   background: linear-gradient(135deg, rgba(24, 102, 68, 0.99), rgba(18, 130, 94, 0.99));
-}
-.ssts-offline-section details > summary {
-  background: linear-gradient(135deg, rgba(98, 30, 30, 0.9), rgba(138, 47, 47, 0.72));
-  border-color: rgba(255, 153, 153, 0.3);
-  color: #fff3f3;
-}
-.ssts-offline-section details > summary:hover,
-.ssts-offline-section details[open] > summary {
-  background: linear-gradient(135deg, rgba(118, 34, 34, 0.94), rgba(156, 54, 54, 0.8));
-  border-color: rgba(255, 179, 179, 0.42);
-  color: #fff8f8;
 }
 .ssts-offline-section .employee-table thead th {
   background: linear-gradient(135deg, rgba(92, 24, 24, 0.98), rgba(126, 39, 39, 0.98));
