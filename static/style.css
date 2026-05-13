@@ -1069,22 +1069,35 @@ ul { padding-left: 18px; margin: 6px 0; }
   max-width: 736px;
 }
 .analysis-summary-card {
-  min-height: 148px;
+  min-height: 96px;
+  height: 96px;
 }
 .analysis-summary-card .metric-card-body {
-  gap: 10px;
-  padding: 14px 16px;
+  gap: 6px;
+  padding: 10px 14px;
+  justify-content: space-between;
+}
+.analysis-summary-card .metric-label {
+  font-size: 11px;
+}
+.analysis-summary-card .metric-value {
+  font-size: 1.35rem;
+}
+.analysis-summary-card p {
+  margin-top: 0;
+  font-size: 12px;
+  line-height: 1.3;
 }
 .analysis-summary-meta {
   display: inline-flex;
   align-items: center;
   align-self: flex-start;
-  padding: 6px 10px;
+  padding: 4px 8px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.14);
   border: 1px solid rgba(255, 255, 255, 0.16);
   color: rgba(255, 255, 255, 0.92);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
 }
@@ -1093,6 +1106,10 @@ ul { padding-left: 18px; margin: 6px 0; }
     grid-template-columns: 1fr;
     justify-content: stretch;
     max-width: none;
+  }
+  .analysis-summary-card {
+    min-height: 92px;
+    height: auto;
   }
 }
 .detail-date-filter {
