@@ -202,6 +202,93 @@
         </div>
       </section>
 
+      <section class="card">
+        <div class="card-head-inline">
+          <div>
+            <h2>Detailed Analysis</h2>
+            {% if selected_analysis_day_label %}
+            <p>Graphical day-wise rake timeline for {{ selected_analysis_day_label }}, showing ordered online/offline periods longer than 2 hours.</p>
+            {% else %}
+            <p>Select a date to view each rake's ordered online/offline timeline for periods longer than 2 hours.</p>
+            {% endif %}
+          </div>
+        </div>
+        <form class="detail-date-filter" method="get" action="/ssts-report">
+          <div class="filter-field">
+            <label for="analysis-day-select">Analysis Date</label>
+            <select id="analysis-day-select" name="analysis_day" onchange="this.form.submit()">
+              {% for row in analysis_day_options %}
+              <option value="{{ row.day_iso }}" {% if selected_analysis_day == row.day_iso %}selected{% endif %}>{{ row.day }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          {% if selected_day %}
+          <input type="hidden" name="selected_day" value="{{ selected_day }}" />
+          {% endif %}
+          {% if active_detail_view %}
+          <input type="hidden" name="detail_view" value="{{ active_detail_view }}" />
+          {% endif %}
+          <noscript><button class="ghost small" type="submit">Load Date</button></noscript>
+        </form>
+        <div class="table-wrap">
+          <table class="employee-table paged" data-exportable="true" data-export-name="ssts_detailed_analysis_{{ selected_analysis_day or 'latest' }}">
+            <thead>
+              <tr>
+                <th>Rake No</th>
+                <th>Device ID</th>
+                <th>Last Update</th>
+                <th>Graphical Representation</th>
+                <th>Ordered Summary</th>
+                <th>Offline &gt; 2h Periods</th>
+                <th>Online &gt; 2h Periods</th>
+                <th>Remark</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in selected_analysis_rows %}
+              <tr>
+                <td>{{ row.name }}</td>
+                <td>{{ row.uniqueid }}</td>
+                <td>{{ row.lastupdate_label }}</td>
+                <td>
+                  <div class="timeline-card">
+                    <div class="timeline-scale">
+                      <span>00:00</span>
+                      <span>12:00</span>
+                      <span>24:00</span>
+                    </div>
+                    <div class="timeline-bar">
+                      {% for segment in row.segments %}
+                      <span class="timeline-segment timeline-segment-{{ segment.state }}" style="width: {{ segment.width_percent }}%;" title="{{ segment.summary_label }} ({{ segment.duration_label }})"></span>
+                      {% endfor %}
+                    </div>
+                    <div class="timeline-legend">
+                      <span class="timeline-legend-item"><i class="timeline-dot timeline-dot-online"></i>Online</span>
+                      <span class="timeline-legend-item"><i class="timeline-dot timeline-dot-offline"></i>Offline</span>
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  {% if row.timeline_summary %}
+                  <div class="timeline-summary-list">{{ row.timeline_summary }}</div>
+                  {% else %}
+                  <div class="timeline-empty">No period above 2 hours.</div>
+                  {% endif %}
+                </td>
+                <td>{{ row.offline_periods }}</td>
+                <td>{{ row.online_periods }}</td>
+                <td>{{ row.remark }}</td>
+              </tr>
+              {% else %}
+              <tr>
+                <td colspan="8">No detailed analysis available yet.</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       <section class="card" id="daily-detail">
         <div class="card-head-inline">
           <div>
@@ -225,6 +312,9 @@
               {% endfor %}
             </select>
           </div>
+          {% if selected_analysis_day %}
+          <input type="hidden" name="analysis_day" value="{{ selected_analysis_day }}" />
+          {% endif %}
           {% if active_detail_view %}
           <input type="hidden" name="detail_view" value="{{ active_detail_view }}" />
           {% endif %}

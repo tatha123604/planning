@@ -220,6 +220,13 @@ def _format_ist(dt: datetime | None, *, include_seconds: bool = False) -> str:
     return dt_utc.astimezone(IST).strftime(fmt)
 
 
+def _format_ist_time(dt: datetime | None) -> str:
+    dt_utc = _ensure_utc(dt)
+    if dt_utc is None:
+        return ""
+    return dt_utc.astimezone(IST).strftime("%H:%M")
+
+
 def _format_duration(minutes: int | None) -> str | None:
     if minutes is None:
         return None
@@ -752,7 +759,11 @@ def _snapshots_for_run(session: Session, run_id: int) -> list[SstsDeviceSnapshot
     return [snapshot for snapshot in snapshots if not _ssts_is_excluded_rake_name(snapshot.name)]
 
 
-def build_ssts_report_context(session: Session, selected_day: date | None = None) -> dict[str, object]:
+def build_ssts_report_context(
+    session: Session,
+    selected_day: date | None = None,
+    analysis_day: date | None = None,
+) -> dict[str, object]:
     runs = _distinct_ssts_runs(session)
     latest_run = next((run for run in runs if run.fetch_status == "ok"), None)
     if not latest_run:
@@ -766,6 +777,10 @@ def build_ssts_report_context(session: Session, selected_day: date | None = None
             "previous_day_recently_offline": [],
             "recently_online": [],
             "daily_summary": [],
+            "analysis_day_options": [],
+            "selected_analysis_day": None,
+            "selected_analysis_day_label": None,
+            "selected_analysis_rows": [],
             "selected_day": None,
             "selected_day_label": None,
             "selected_day_run": None,
@@ -849,6 +864,119 @@ def build_ssts_report_context(session: Session, selected_day: date | None = None
             }
         )
 
+    analysis_day_options = [
+        {"day": row["day"], "day_iso": row["day_iso"]}
+        for row in daily_summary
+    ]
+    analysis_day_value = analysis_day if analysis_day in latest_by_day else None
+    if analysis_day_value is None:
+        analysis_day_value = selected_day if selected_day in latest_by_day else None
+    if analysis_day_value is None and analysis_day_options:
+        analysis_day_value = date.fromisoformat(str(analysis_day_options[0]["day_iso"]))
+
+    selected_analysis_rows: list[dict[str, object]] = []
+    if analysis_day_value is not None:
+        selected_day_runs = [
+            run
+            for run in runs
+            if run.fetch_status == "ok" and run.observed_at.date() == analysis_day_value
+        ]
+        selected_day_runs.sort(key=lambda item: item.observed_at)
+        day_rows_by_run = {
+            run.id or 0: _snapshots_for_run(session, run.id or 0)
+            for run in selected_day_runs
+        }
+        rake_points: dict[int, dict[str, object]] = {}
+        for run in selected_day_runs:
+            run_time = _ensure_utc(run.observed_at)
+            for row in day_rows_by_run.get(run.id or 0, []):
+                state = "offline" if _ssts_is_offline(row) else "online"
+                rake = rake_points.setdefault(
+                    row.device_id,
+                    {
+                        "device_id": row.device_id,
+                        "name": row.name,
+                        "uniqueid": row.uniqueid or "",
+                        "remark": row.remark or "",
+                        "lastupdate": row.lastupdate,
+                        "lastupdate_label": _format_ist(row.lastupdate, include_seconds=True),
+                        "points": [],
+                    },
+                )
+                rake["name"] = row.name
+                rake["uniqueid"] = row.uniqueid or ""
+                rake["lastupdate"] = row.lastupdate
+                rake["lastupdate_label"] = _format_ist(row.lastupdate, include_seconds=True)
+                if row.remark:
+                    rake["remark"] = row.remark
+                rake["points"].append({"time": run_time, "state": state})
+
+        day_start = datetime.combine(analysis_day_value, datetime.min.time(), tzinfo=IST).astimezone(timezone.utc)
+        day_end = day_start + timedelta(days=1)
+        for rake in rake_points.values():
+            points = sorted(
+                [point for point in rake.get("points", []) if point.get("time") is not None],
+                key=lambda point: point["time"],
+            )
+            if not points:
+                continue
+
+            segments: list[dict[str, object]] = []
+
+            def build_segment(state: str, start_time: datetime, end_time: datetime) -> dict[str, object]:
+                duration_minutes = max(0, int((end_time - start_time).total_seconds() // 60))
+                display_end = end_time - timedelta(minutes=1)
+                return {
+                    "state": state,
+                    "start_label": _format_ist_time(start_time),
+                    "end_label": _format_ist_time(display_end),
+                    "duration_label": _format_duration(duration_minutes) or "",
+                    "width_percent": round((duration_minutes / (24 * 60)) * 100, 2),
+                    "summary_label": f"{_format_ist_time(start_time)} to {_format_ist_time(display_end)} {'offline' if state == 'offline' else 'online'}",
+                }
+
+            current_state = str(points[0]["state"])
+            segment_start = max(day_start, points[0]["time"])
+            for point in points[1:]:
+                point_time = point["time"]
+                point_state = str(point["state"])
+                if point_state == current_state:
+                    continue
+                duration_minutes = max(0, int((point_time - segment_start).total_seconds() // 60))
+                if duration_minutes >= SSTS_OFFLINE_THRESHOLD_MINUTES:
+                    segments.append(build_segment(current_state, segment_start, point_time))
+                current_state = point_state
+                segment_start = point_time
+
+            reference_end = min(day_end, points[-1]["time"] + timedelta(minutes=SSTS_REFRESH_INTERVAL_MINUTES))
+            duration_minutes = max(0, int((reference_end - segment_start).total_seconds() // 60))
+            if duration_minutes >= SSTS_OFFLINE_THRESHOLD_MINUTES:
+                segments.append(build_segment(current_state, segment_start, reference_end))
+
+            offline_periods = sum(1 for segment in segments if segment["state"] == "offline")
+            online_periods = sum(1 for segment in segments if segment["state"] == "online")
+            selected_analysis_rows.append(
+                {
+                    "device_id": rake["device_id"],
+                    "name": rake["name"],
+                    "uniqueid": rake["uniqueid"],
+                    "lastupdate_label": rake["lastupdate_label"],
+                    "remark": rake["remark"],
+                    "segments": segments,
+                    "offline_periods": offline_periods,
+                    "online_periods": online_periods,
+                    "timeline_summary": ", ".join(str(segment["summary_label"]) for segment in segments),
+                }
+            )
+
+        selected_analysis_rows.sort(
+            key=lambda item: (
+                -int(item.get("offline_periods") or 0),
+                -int(item.get("online_periods") or 0),
+                str(item.get("name") or "").lower(),
+            )
+        )
+
     recently_online = []
     for device_id, latest_row in latest_map.items():
         if not _ssts_is_online_now(latest_row):
@@ -894,6 +1022,10 @@ def build_ssts_report_context(session: Session, selected_day: date | None = None
         "previous_day_recently_offline": previous_day_recently_offline,
         "recently_online": recently_online,
         "daily_summary": daily_summary,
+        "analysis_day_options": analysis_day_options,
+        "selected_analysis_day": analysis_day_value.isoformat() if analysis_day_value else None,
+        "selected_analysis_day_label": analysis_day_value.strftime("%d-%m-%Y") if analysis_day_value else None,
+        "selected_analysis_rows": selected_analysis_rows,
         "selected_day": selected_day_value.isoformat() if selected_day_value else None,
         "selected_day_label": selected_day_value.strftime("%d-%m-%Y") if selected_day_value else None,
         "selected_day_run": selected_day_run,
@@ -1347,6 +1479,7 @@ def ssts_report_page(
     force: int = 0,
     report_tab: str = "online_offline",
     selected_day: str | None = None,
+    analysis_day: str | None = None,
     detail_view: str | None = None,
     pf_day: str | None = None,
     pf_task_id: str | None = None,
@@ -1361,13 +1494,19 @@ def ssts_report_page(
             selected_day_value = date.fromisoformat(selected_day)
         except ValueError:
             selected_day_value = None
+    analysis_day_value: date | None = None
+    if analysis_day:
+        try:
+            analysis_day_value = date.fromisoformat(analysis_day)
+        except ValueError:
+            analysis_day_value = None
     pf_day_value = selected_day_value or date.today()
     if pf_day:
         try:
             pf_day_value = date.fromisoformat(pf_day)
         except ValueError:
             pf_day_value = selected_day_value or date.today()
-    context = build_ssts_report_context(session, selected_day=selected_day_value)
+    context = build_ssts_report_context(session, selected_day=selected_day_value, analysis_day=analysis_day_value)
     pf_context = {
         "pf_report_day": pf_day_value.isoformat(),
         "pf_report_day_label": pf_day_value.strftime("%d-%m-%Y"),
