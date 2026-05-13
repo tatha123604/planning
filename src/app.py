@@ -263,20 +263,27 @@ def _minutes_since(now_utc: datetime, lastupdate: datetime | None) -> int | None
     return max(0, int(diff.total_seconds() // 60))
 
 
-def _ssts_is_offline(snapshot: SstsDeviceSnapshot) -> bool:
-    return (snapshot.offline_minutes or 0) > SSTS_OFFLINE_THRESHOLD_MINUTES
+def _snapshot_offline_minutes(
+    snapshot: SstsDeviceSnapshot,
+    reference_time: datetime | None = None,
+) -> int | None:
+    reference_utc = _ensure_utc(reference_time or snapshot.observed_at)
+    if reference_utc is None:
+        return snapshot.offline_minutes
+    return _minutes_since(reference_utc, snapshot.lastupdate)
 
 
-def _ssts_is_recently_offline(snapshot: SstsDeviceSnapshot) -> bool:
-    minutes = snapshot.offline_minutes or 0
+def _ssts_is_offline(snapshot: SstsDeviceSnapshot, reference_time: datetime | None = None) -> bool:
+    return (_snapshot_offline_minutes(snapshot, reference_time) or 0) > SSTS_OFFLINE_THRESHOLD_MINUTES
+
+
+def _ssts_is_recently_offline(snapshot: SstsDeviceSnapshot, reference_time: datetime | None = None) -> bool:
+    minutes = _snapshot_offline_minutes(snapshot, reference_time) or 0
     return SSTS_OFFLINE_THRESHOLD_MINUTES < minutes < SSTS_RECENT_OFFLINE_MAX_MINUTES
 
 
-def _ssts_is_online_now(snapshot: SstsDeviceSnapshot) -> bool:
-    minutes = snapshot.offline_minutes
-    if minutes is None:
-        return False
-    return minutes <= SSTS_RECENTLY_ONLINE_THRESHOLD_MINUTES
+def _ssts_is_online_now(snapshot: SstsDeviceSnapshot, reference_time: datetime | None = None) -> bool:
+    return not _ssts_is_offline(snapshot, reference_time)
 
 
 def _ssts_normalize_rake_name(value: object | None) -> str:
@@ -287,7 +294,8 @@ def _ssts_is_excluded_rake_name(value: object | None) -> bool:
     return _ssts_normalize_rake_name(value) in SSTS_EXCLUDED_RAKE_NAMES
 
 
-def _snapshot_to_row(snapshot: SstsDeviceSnapshot) -> dict[str, object]:
+def _snapshot_to_row(snapshot: SstsDeviceSnapshot, reference_time: datetime | None = None) -> dict[str, object]:
+    offline_minutes = _snapshot_offline_minutes(snapshot, reference_time)
     return {
         "device_id": snapshot.device_id,
         "name": snapshot.name,
@@ -296,15 +304,16 @@ def _snapshot_to_row(snapshot: SstsDeviceSnapshot) -> dict[str, object]:
         "contact": snapshot.contact or "",
         "lastupdate": snapshot.lastupdate,
         "lastupdate_label": _format_ist(snapshot.lastupdate, include_seconds=True),
-        "offline_minutes": snapshot.offline_minutes,
-        "offline_hours": round((snapshot.offline_minutes or 0) / 60, 1) if snapshot.offline_minutes is not None else None,
-        "offline_duration": _format_duration(snapshot.offline_minutes),
+        "offline_minutes": offline_minutes,
+        "offline_hours": round((offline_minutes or 0) / 60, 1) if offline_minutes is not None else None,
+        "offline_duration": _format_duration(offline_minutes),
     }
 
 
-def _ssts_sort_key(snapshot: SstsDeviceSnapshot) -> tuple[int, int, str]:
+def _ssts_sort_key(snapshot: SstsDeviceSnapshot, reference_time: datetime | None = None) -> tuple[int, int, str]:
+    offline_minutes = _snapshot_offline_minutes(snapshot, reference_time)
     return (
-        -(snapshot.offline_minutes or -1),
+        -(offline_minutes or -1),
         snapshot.device_id,
         snapshot.name.lower(),
     )
@@ -791,6 +800,7 @@ def build_ssts_report_context(
     latest_snapshots = _snapshots_for_run(session, latest_run.id or 0)
     latest_map = {row.device_id: row for row in latest_snapshots}
     latest_run_time = _ensure_utc(latest_run.observed_at)
+    current_reference_time = _utc_now()
     previous_day_cutoff = latest_run_time - timedelta(days=1)
     previous_day_run = next(
         (run for run in runs if run.fetch_status == "ok" and _ensure_utc(run.observed_at) <= previous_day_cutoff),
@@ -799,15 +809,19 @@ def build_ssts_report_context(
     previous_day_snapshots = _snapshots_for_run(session, previous_day_run.id or 0) if previous_day_run else []
 
     online_now = [
-        _snapshot_to_row(row)
+        _snapshot_to_row(row, reference_time=current_reference_time)
         for row in sorted(latest_snapshots, key=lambda item: (item.name.lower(), item.device_id))
-        if _ssts_is_online_now(row)
+        if _ssts_is_online_now(row, reference_time=current_reference_time)
     ]
-    current_offline = [_snapshot_to_row(row) for row in sorted(latest_snapshots, key=_ssts_sort_key) if _ssts_is_offline(row)]
+    current_offline = [
+        _snapshot_to_row(row, reference_time=current_reference_time)
+        for row in sorted(latest_snapshots, key=lambda item: _ssts_sort_key(item, current_reference_time))
+        if _ssts_is_offline(row, reference_time=current_reference_time)
+    ]
     current_recently_offline = [
-        _snapshot_to_row(row)
-        for row in sorted(latest_snapshots, key=_ssts_sort_key)
-        if _ssts_is_recently_offline(row)
+        _snapshot_to_row(row, reference_time=current_reference_time)
+        for row in sorted(latest_snapshots, key=lambda item: _ssts_sort_key(item, current_reference_time))
+        if _ssts_is_recently_offline(row, reference_time=current_reference_time)
     ]
     previous_day_offline = [
         _snapshot_to_row(row)
@@ -948,10 +962,35 @@ def build_ssts_report_context(
                 current_state = point_state
                 segment_start = point_time
 
-            reference_end = min(day_end, points[-1]["time"] + timedelta(minutes=SSTS_REFRESH_INTERVAL_MINUTES))
-            duration_minutes = max(0, int((reference_end - segment_start).total_seconds() // 60))
+            lastupdate_time = _ensure_utc(rake.get("lastupdate"))
+            if analysis_day_value == current_reference_time.astimezone(IST).date():
+                reference_end = min(day_end, current_reference_time)
+            else:
+                reference_end = min(day_end, points[-1]["time"] + timedelta(minutes=SSTS_REFRESH_INTERVAL_MINUTES))
+
+            current_segment_start = segment_start
+            current_segment_end = reference_end
+            followup_offline_start: datetime | None = None
+
+            if lastupdate_time is not None:
+                bounded_lastupdate = min(reference_end, max(day_start, lastupdate_time))
+                if current_state == "offline":
+                    current_segment_start = min(current_segment_start, bounded_lastupdate)
+                elif current_state == "online" and current_segment_start < bounded_lastupdate < reference_end:
+                    current_segment_end = bounded_lastupdate
+                    followup_offline_start = bounded_lastupdate
+
+            duration_minutes = max(0, int((current_segment_end - current_segment_start).total_seconds() // 60))
             if duration_minutes >= SSTS_OFFLINE_THRESHOLD_MINUTES:
-                segments.append(build_segment(current_state, segment_start, reference_end))
+                display_end_time = current_segment_end
+                if current_state == "online" and lastupdate_time is not None:
+                    display_end_time = min(current_segment_end, max(current_segment_start, lastupdate_time))
+                segments.append(build_segment(current_state, current_segment_start, display_end_time))
+
+            if followup_offline_start is not None and followup_offline_start < reference_end:
+                offline_duration_minutes = max(0, int((reference_end - followup_offline_start).total_seconds() // 60))
+                if offline_duration_minutes >= SSTS_OFFLINE_THRESHOLD_MINUTES:
+                    segments.append(build_segment("offline", followup_offline_start, reference_end))
 
             offline_periods = sum(1 for segment in segments if segment["state"] == "offline")
             online_periods = sum(1 for segment in segments if segment["state"] == "online")
@@ -979,17 +1018,27 @@ def build_ssts_report_context(
 
     recently_online = []
     for device_id, latest_row in latest_map.items():
-        if not _ssts_is_online_now(latest_row):
+        if not _ssts_is_online_now(latest_row, reference_time=current_reference_time):
             continue
         history = history_by_device.get(device_id, [])
         if len(history) < 2:
             continue
+        recovery_row = history[-1]
         previous_row = history[-2]
+        if recovery_row.run_id != (latest_run.id or 0):
+            continue
         if (previous_row.offline_minutes or 0) > SSTS_PREVIOUSLY_OFFLINE_THRESHOLD_MINUTES:
-            row = _snapshot_to_row(latest_row)
-            row.update(recently_online_info_by_run_device.get((latest_run.id or 0, device_id), {}))
+            row = _snapshot_to_row(latest_row, reference_time=current_reference_time)
+            row["recovery_seen"] = _format_ist(recovery_row.observed_at)
+            row["recovery_lastupdate_label"] = _format_ist(recovery_row.lastupdate)
+            row["recovery_offline_duration"] = _format_duration(recovery_row.offline_minutes)
+            row["previous_offline_minutes"] = previous_row.offline_minutes or 0
+            row["previous_offline_duration"] = _format_duration(previous_row.offline_minutes)
+            row["previous_seen"] = _format_ist(previous_row.observed_at)
             recently_online.append(row)
-    recently_online.sort(key=lambda row: (-float(row.get("previous_offline_hours") or 0), str(row.get("name") or "").lower()))
+    recently_online.sort(
+        key=lambda row: (-int(row.get("previous_offline_minutes") or 0), str(row.get("name") or "").lower())
+    )
 
     available_days = [item["day_iso"] for item in daily_summary]
     selected_day_value = selected_day if selected_day in latest_by_day else None
@@ -1013,7 +1062,10 @@ def build_ssts_report_context(
 
     return {
         "latest_run": latest_run,
-        "latest_rows": [_snapshot_to_row(row) for row in sorted(latest_snapshots, key=_ssts_sort_key)],
+        "latest_rows": [
+            _snapshot_to_row(row, reference_time=current_reference_time)
+            for row in sorted(latest_snapshots, key=lambda item: _ssts_sort_key(item, current_reference_time))
+        ],
         "online_now": online_now,
         "current_offline": current_offline,
         "current_recently_offline": current_recently_offline,
