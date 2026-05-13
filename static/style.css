@@ -930,12 +930,19 @@ ul { padding-left: 18px; margin: 6px 0; }
 }
 .analysis-summary-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(2, minmax(260px, 360px));
+  justify-content: end;
   gap: 16px;
   margin: 10px 0 18px;
+  margin-left: auto;
+  max-width: 736px;
+}
+.analysis-summary-card {
+  min-height: 148px;
 }
 .analysis-summary-card .metric-card-body {
   gap: 10px;
+  padding: 14px 16px;
 }
 .analysis-summary-meta {
   display: inline-flex;
@@ -949,6 +956,13 @@ ul { padding-left: 18px; margin: 6px 0; }
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.04em;
+}
+@media (max-width: 900px) {
+  .analysis-summary-grid {
+    grid-template-columns: 1fr;
+    justify-content: stretch;
+    max-width: none;
+  }
 }
 .detail-date-filter {
   display: flex;
