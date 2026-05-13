@@ -84,6 +84,7 @@ SSTS_RECENT_OFFLINE_MAX_MINUTES = 24 * 60
 SSTS_REFRESH_INTERVAL_MINUTES = 30
 SSTS_PF_REPORT_CACHE_TTL_MINUTES = 20
 SSTS_PF_ANALYSIS_TASK_TTL_MINUTES = 180
+SSTS_EXCLUDED_RAKE_NAMES = {"TEST1", "TEST2"}
 IST = timezone(timedelta(hours=5, minutes=30))
 _SSTS_PF_REPORT_CACHE: dict[str, tuple[datetime, dict[str, object]]] = {}
 _SSTS_PF_ANALYSIS_TASKS: dict[str, dict[str, object]] = {}
@@ -271,6 +272,14 @@ def _ssts_is_online_now(snapshot: SstsDeviceSnapshot) -> bool:
     return minutes <= SSTS_RECENTLY_ONLINE_THRESHOLD_MINUTES
 
 
+def _ssts_normalize_rake_name(value: object | None) -> str:
+    return str(value or "").strip().upper()
+
+
+def _ssts_is_excluded_rake_name(value: object | None) -> bool:
+    return _ssts_normalize_rake_name(value) in SSTS_EXCLUDED_RAKE_NAMES
+
+
 def _snapshot_to_row(snapshot: SstsDeviceSnapshot) -> dict[str, object]:
     return {
         "device_id": snapshot.device_id,
@@ -340,7 +349,11 @@ def fetch_ssts_devices() -> list[dict[str, object]]:
     devices = _ssts_get_json(SSTS_API_DEVICE_URL, headers={"Authorization": token})
     if not isinstance(devices, list):
         raise RuntimeError("Unexpected SSTS device response format.")
-    return [item for item in devices if isinstance(item, dict)]
+    return [
+        item
+        for item in devices
+        if isinstance(item, dict) and not _ssts_is_excluded_rake_name(item.get("name"))
+    ]
 
 
 def fetch_ssts_trains_report(report_day: date, token: str) -> list[dict[str, object]]:
@@ -351,7 +364,11 @@ def fetch_ssts_trains_report(report_day: date, token: str) -> list[dict[str, obj
     )
     if not isinstance(response, list):
         raise RuntimeError("Unexpected SSTS trains report format.")
-    return [item for item in response if isinstance(item, dict)]
+    return [
+        item
+        for item in response
+        if isinstance(item, dict) and not _ssts_is_excluded_rake_name(item.get("device_name"))
+    ]
 
 
 def _format_time_value(value: object) -> str:
@@ -732,7 +749,7 @@ def _snapshots_for_run(session: Session, run_id: int) -> list[SstsDeviceSnapshot
         .where(SstsDeviceSnapshot.run_id == run_id)
         .order_by(SstsDeviceSnapshot.name)
     ).all()
-    return list(snapshots)
+    return [snapshot for snapshot in snapshots if not _ssts_is_excluded_rake_name(snapshot.name)]
 
 
 def build_ssts_report_context(session: Session, selected_day: date | None = None) -> dict[str, object]:
