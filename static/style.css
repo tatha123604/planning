@@ -1597,21 +1597,92 @@ ul { padding-left: 18px; margin: 6px 0; }
 .sidebar-toggle-btn:hover { background: linear-gradient(180deg, rgba(102,225,182,0.95), rgba(18,189,231,0.95)); box-shadow: 10px 0 24px rgba(0,0,0,0.4); }
 
 @media (max-width: 640px) {
+  body {
+    overflow-x: hidden;
+  }
   .brand-mark {
     width: 108px;
   }
   .brand-title {
     font-size: 0.9rem;
   }
-  .layout { flex-direction: column; }
-  .sidebar { width: 100%; height: auto; position: relative; border-right: none; border-bottom: 1px solid rgba(255,255,255,0.06); }
-  .content { padding: 16px; }
+  .layout {
+    display: block;
+    min-height: 100vh;
+  }
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: min(84vw, 320px);
+    height: 100vh;
+    padding: 22px 18px 18px;
+    border-right: 1px solid rgba(255,255,255,0.08);
+    border-bottom: none;
+    overflow-y: auto;
+    z-index: 1400;
+    transform: translateX(0);
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+  }
+  .nav-mobile.nav-hidden .sidebar {
+    width: min(84vw, 320px);
+    flex: 0 0 auto;
+    min-width: 0;
+    padding: 22px 18px 18px;
+    margin: 0;
+    border-right: 1px solid rgba(255,255,255,0.08);
+    border-bottom: none;
+    overflow-y: auto;
+    transform: translateX(calc(-100% - 12px));
+    box-shadow: none;
+  }
+  .nav-mobile.nav-hidden .brand {
+    position: static;
+    top: auto;
+    left: auto;
+    padding: 14px 12px 16px;
+    border-radius: 18px;
+    pointer-events: auto;
+    box-shadow: none;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .nav-mobile.nav-hidden .side-links,
+  .nav-mobile.nav-hidden .hierarchy {
+    display: flex;
+  }
+  .nav-mobile.nav-hidden .hierarchy {
+    display: block;
+  }
+  .nav-mobile:not(.nav-hidden)::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background: rgba(5, 10, 20, 0.58);
+    backdrop-filter: blur(3px);
+    z-index: 1300;
+  }
+  .content {
+    padding: 72px 16px 18px;
+  }
   header {
     align-items: stretch;
+    gap: 12px;
+    padding-top: 0;
+  }
+  header h1 {
+    font-size: 2.1rem;
+    line-height: 1.05;
+  }
+  header p {
+    font-size: 0.98rem;
+    line-height: 1.38;
   }
   .header-actions {
     flex-direction: column;
     align-items: stretch;
+    gap: 8px;
   }
   .header-actions .ghost.small,
   .header-actions .danger.small,
@@ -1625,13 +1696,16 @@ ul { padding-left: 18px; margin: 6px 0; }
     padding: 6px;
     border-radius: 16px;
     scroll-snap-type: x proximity;
+    margin-bottom: 14px;
   }
   .report-tab {
-    flex: 0 0 88%;
+    flex: 0 0 82%;
     scroll-snap-align: start;
+    min-height: 48px;
   }
   .grid {
     grid-template-columns: 1fr;
+    gap: 12px;
   }
   .card,
   .detail-panel {
@@ -1652,6 +1726,18 @@ ul { padding-left: 18px; margin: 6px 0; }
   }
   .detail-panel-head h3 {
     font-size: 1rem;
+  }
+  .sidebar-toggle-btn {
+    top: 14px;
+    left: auto !important;
+    right: 14px;
+    width: 44px;
+    height: 44px;
+    border-radius: 14px;
+    border: 1px solid rgba(255,255,255,0.18);
+    transform: none;
+    box-shadow: 0 12px 28px rgba(0,0,0,0.28);
+    z-index: 1500;
   }
   .employee-table {
     min-width: 560px;
