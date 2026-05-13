@@ -281,6 +281,9 @@ button:hover { filter: brightness(1.05); }
 .metric-level-offline .metric-level-fill {
   background: linear-gradient(90deg, #ef5b5b 0%, #ff8f8f 100%);
 }
+.metric-level-warning .metric-level-fill {
+  background: linear-gradient(90deg, #ff9b47 0%, #ffc56a 100%);
+}
 .metric-level-recovery .metric-level-fill {
   background: linear-gradient(90deg, #66e1b6 0%, #12bde7 100%);
 }
@@ -352,6 +355,18 @@ button:hover { filter: brightness(1.05); }
 .metric-card-offline .metric-value,
 .metric-card-offline .metric-card-footer {
   color: #fff1f1;
+}
+.metric-card-recent-offline {
+  background: linear-gradient(135deg, rgba(140, 74, 18, 0.96), rgba(194, 116, 31, 0.84));
+  border-color: rgba(255, 196, 108, 0.4);
+  box-shadow: 0 20px 50px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08);
+}
+.metric-card-recent-offline .metric-label,
+.metric-card-recent-offline p,
+.metric-card-recent-offline .metric-value,
+.metric-card-recent-offline .metric-card-footer,
+.metric-card-recent-offline .metric-meter-notes {
+  color: #fff5e8;
 }
 .metric-card-recovery {
   background: linear-gradient(135deg, rgba(22, 95, 57, 0.96), rgba(42, 144, 87, 0.82));

@@ -818,6 +818,7 @@ def build_ssts_report_context(
             "latest_run": None,
             "latest_rows": [],
             "online_now": [],
+            "current_not_online": [],
             "current_offline": [],
             "current_recently_offline": [],
             "previous_day_offline": [],
@@ -850,6 +851,11 @@ def build_ssts_report_context(
         _snapshot_to_row(row, reference_time=current_reference_time)
         for row in sorted(latest_snapshots, key=lambda item: (item.name.lower(), item.device_id))
         if _ssts_is_online_now(row, reference_time=current_reference_time)
+    ]
+    current_not_online = [
+        _snapshot_to_row(row, reference_time=current_reference_time)
+        for row in sorted(latest_snapshots, key=lambda item: _ssts_sort_key(item, current_reference_time))
+        if not _ssts_is_online_now(row, reference_time=current_reference_time)
     ]
     current_offline = [
         _snapshot_to_row(row, reference_time=current_reference_time)
@@ -1173,6 +1179,7 @@ def build_ssts_report_context(
             for row in sorted(latest_snapshots, key=lambda item: _ssts_sort_key(item, current_reference_time))
         ],
         "online_now": online_now,
+        "current_not_online": current_not_online,
         "current_offline": current_offline,
         "current_recently_offline": current_recently_offline,
         "previous_day_run": previous_day_run,
@@ -1989,7 +1996,7 @@ def ssts_report_page(
     latest_summary = {
         "total_rakes": len(context.get("latest_rows", [])),
         "online_now_count": len(context.get("online_now", [])),
-        "offline_count": len(context.get("current_offline", [])),
+        "offline_count": len(context.get("current_not_online", [])),
         "recent_offline_count": len(context.get("current_recently_offline", [])),
         "recently_offline_count": len(context.get("current_recently_offline", [])),
         "recently_online_count": len(context.get("recently_online", [])),

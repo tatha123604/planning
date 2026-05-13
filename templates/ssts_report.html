@@ -115,24 +115,24 @@
         <a class="metric-card-link" href="#offline-now-table">
           <article class="card metric-card metric-card-offline metric-card-clickable">
             <div class="metric-card-body">
-              <span class="metric-label">Offline &gt; 2 Hours</span>
-              <strong class="metric-value">{{ latest_summary.offline_count }}</strong>
-              <div class="metric-level metric-level-offline" style="--level-fill: {{ ((offline_count / total_rakes) * 100) if total_rakes else 0 }}%;">
+              <span class="metric-label">Offline</span>
+              <strong class="metric-value">{{ offline_count }}</strong>
+              <div class="metric-level metric-level-offline" style="--level-fill: {{ offline_ratio }}%;">
                 <div class="metric-level-fill"></div>
               </div>
               <div class="metric-meter-notes">
-                <span>{{ "%.1f"|format(((offline_count / total_rakes) * 100) if total_rakes else 0) }}% of total rakes</span>
+                <span>{{ "%.1f"|format(offline_ratio) }}% of total rakes</span>
               </div>
-              <p>Rakes currently considered offline by your rule.</p>
+              <p>All rakes that are not in the 5-minute online-now window.</p>
               <span class="metric-card-footer">Open table</span>
             </div>
           </article>
         </a>
-        <article class="card metric-card metric-card-offline">
+        <article class="card metric-card metric-card-recent-offline">
           <div class="metric-card-body">
             <span class="metric-label">Offline 2h to 1 Day</span>
             <strong class="metric-value">{{ recent_offline_count }}</strong>
-            <div class="metric-level metric-level-offline" style="--level-fill: {{ ((recent_offline_count / total_rakes) * 100) if total_rakes else 0 }}%;">
+            <div class="metric-level metric-level-warning" style="--level-fill: {{ ((recent_offline_count / total_rakes) * 100) if total_rakes else 0 }}%;">
               <div class="metric-level-fill"></div>
             </div>
             <div class="metric-meter-notes">
@@ -484,7 +484,7 @@
 
       <section class="card collapsible ssts-offline-section" id="offline-now-table">
         <details open>
-          <summary>Current Offline Rakes (Last Update &gt; 2 Hours)</summary>
+          <summary>Current Offline Rakes (Not in Online Now)</summary>
           <div class="table-wrap">
             <table class="employee-table paged" data-exportable="true" data-export-name="current_offline_rakes">
               <thead>
@@ -498,7 +498,7 @@
                 </tr>
               </thead>
               <tbody>
-                {% for row in current_offline %}
+                {% for row in current_not_online %}
                 <tr>
                   <td>{{ row.name }}</td>
                   <td>{{ row.uniqueid }}</td>
