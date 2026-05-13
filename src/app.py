@@ -600,6 +600,21 @@ def _get_ssts_pf_analysis_task(task_id: str | None) -> dict[str, object] | None:
 
 def _build_ssts_pf_speed_analysis_result(report_day: date) -> dict[str, object]:
     raw_context = build_ssts_pf_entering_context(report_day)
+    all_rows_by_train: dict[str, list[dict[str, object]]] = {}
+    for row in raw_context.get("pf_report_rows", []):
+        if not isinstance(row, dict):
+            continue
+        train_no = str(row.get("train_no") or "").strip()
+        if train_no:
+            all_rows_by_train.setdefault(train_no, []).append(dict(row))
+    for rows in all_rows_by_train.values():
+        rows.sort(
+            key=lambda row: (
+                999999 if row.get("srl_no") in ("", None) else int(row.get("srl_no") or 0),
+                str(row.get("station") or ""),
+            )
+        )
+
     filtered_rows: list[dict[str, object]] = []
     for row in raw_context.get("pf_report_rows", []):
         if not isinstance(row, dict):
@@ -623,7 +638,7 @@ def _build_ssts_pf_speed_analysis_result(report_day: date) -> dict[str, object]:
         train_no = str(row.get("train_no") or "").strip()
         if not train_no:
             continue
-        detail_rows_by_train.setdefault(train_no, []).append(row)
+        detail_rows_by_train[train_no] = all_rows_by_train.get(train_no, [row])
         summary = summary_by_train.setdefault(
             train_no,
             {
