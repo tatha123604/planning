@@ -935,6 +935,23 @@ def build_ssts_report_context(
             if not points:
                 continue
 
+            device_history = history_by_device.get(int(rake["device_id"]), [])
+            prior_snapshot = None
+            for snapshot in reversed(device_history):
+                snapshot_time = _ensure_utc(snapshot.observed_at)
+                if snapshot_time is not None and snapshot_time < day_start:
+                    prior_snapshot = snapshot
+                    break
+
+            seed_state = None
+            if prior_snapshot is not None:
+                seed_state = "offline" if _ssts_is_offline(prior_snapshot, reference_time=day_start) else "online"
+            elif points[0]["time"] > day_start:
+                seed_state = str(points[0]["state"])
+
+            if seed_state is not None and points[0]["time"] > day_start:
+                points.insert(0, {"time": day_start, "state": seed_state})
+
             segments: list[dict[str, object]] = []
 
             def build_segment(
