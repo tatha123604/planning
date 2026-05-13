@@ -889,6 +889,12 @@ def build_ssts_report_context(
         analysis_day_value = date.fromisoformat(str(analysis_day_options[0]["day_iso"]))
 
     selected_analysis_rows: list[dict[str, object]] = []
+    selected_analysis_summary = {
+        "day_label": analysis_day_value.strftime("%d-%m-%Y") if analysis_day_value else "",
+        "continuous_offline_count": 0,
+        "mixed_online_offline_count": 0,
+        "total_rakes": 0,
+    }
     if analysis_day_value is not None:
         selected_day_runs = [
             run
@@ -1057,6 +1063,19 @@ def build_ssts_report_context(
                 }
             )
 
+        selected_analysis_summary["total_rakes"] = len(selected_analysis_rows)
+        selected_analysis_summary["continuous_offline_count"] = sum(
+            1
+            for row in selected_analysis_rows
+            if row.get("segments")
+            and {str(segment.get("state")) for segment in row.get("segments", [])} == {"offline"}
+        )
+        selected_analysis_summary["mixed_online_offline_count"] = sum(
+            1
+            for row in selected_analysis_rows
+            if {"online", "offline"}.issubset({str(segment.get("state")) for segment in row.get("segments", [])})
+        )
+
         selected_analysis_rows.sort(
             key=lambda item: (
                 -int(item.get("offline_periods") or 0),
@@ -1127,6 +1146,7 @@ def build_ssts_report_context(
         "selected_analysis_day": analysis_day_value.isoformat() if analysis_day_value else None,
         "selected_analysis_day_label": analysis_day_value.strftime("%d-%m-%Y") if analysis_day_value else None,
         "selected_analysis_rows": selected_analysis_rows,
+        "selected_analysis_summary": selected_analysis_summary,
         "selected_day": selected_day_value.isoformat() if selected_day_value else None,
         "selected_day_label": selected_day_value.strftime("%d-%m-%Y") if selected_day_value else None,
         "selected_day_run": selected_day_run,
