@@ -641,9 +641,10 @@ def _build_ssts_pf_speed_analysis_result(report_day: date) -> dict[str, object]:
         )
         if not summary.get("crew_name") and row.get("crew_name"):
             summary["crew_name"] = str(row.get("crew_name") or "")
-        summary["occurrence_count"] = int(summary.get("occurrence_count") or 0) + 1
         geofence_speed = _pf_speed_value(row.get("geofence_enter_speed"))
         pf_speed = _pf_speed_value(row.get("pf_enter_speed"))
+        if pf_speed is not None and pf_speed > 40:
+            summary["occurrence_count"] = int(summary.get("occurrence_count") or 0) + 1
         if geofence_speed is not None:
             current_max = _pf_speed_value(summary.get("max_geofence_enter_speed"))
             if current_max is None or geofence_speed > current_max:
@@ -1659,6 +1660,231 @@ def reports_page(
     response.set_cookie("reports_start_date", start.isoformat())
     response.set_cookie("reports_end_date", end.isoformat())
     return response
+
+
+def _cli_page_context(
+    request: Request,
+    session: Session,
+    *,
+    roster_name: str | None = None,
+    roster_cli: str | None = None,
+    roster_role: str | None = None,
+    roster_gradation: str | None = None,
+    roster_cli_status: str | None = None,
+) -> dict[str, object]:
+    employees = session.exec(select(Employee)).all()
+    cli_opts = sorted({(e.cli or "").strip() for e in employees if (e.cli or "").strip()})
+    role_opts = ROLE_ORDER + sorted({e.role for e in employees if e.role not in ROLE_ORDER})
+    gradation_opts = sorted({e.gradation for e in employees if e.gradation})
+    cli_distribution = build_cli_distribution(employees)
+    for row in cli_distribution:
+        row["detail_href"] = f"/cli?roster_cli={urlparse.quote(str(row.get('cli') or ''))}#cli-distribution-detail"
+        row["selected"] = bool(roster_cli and str(row.get("cli") or "").strip().lower() == roster_cli.strip().lower())
+
+    totals_all = {
+        "A": sum(int(row.get("A") or 0) for row in cli_distribution),
+        "B": sum(int(row.get("B") or 0) for row in cli_distribution),
+        "C": sum(int(row.get("C") or 0) for row in cli_distribution),
+        "total": sum(int(row.get("total") or 0) for row in cli_distribution),
+        "total_staff": sum(int(row.get("total_staff") or 0) for row in cli_distribution),
+    }
+
+    cli_roster = list(employees)
+    if roster_cli_status in (None, ""):
+        cli_roster = [e for e in cli_roster if e.cli or e.cli_id]
+    elif roster_cli_status == "assigned":
+        cli_roster = [e for e in cli_roster if e.cli or e.cli_id]
+    elif roster_cli_status == "unassigned":
+        cli_roster = [e for e in cli_roster if not e.cli and not e.cli_id]
+    if roster_name:
+        name_lower = roster_name.lower()
+        cli_roster = [e for e in cli_roster if name_lower in e.name.lower()]
+    if roster_cli:
+        cli_lower = roster_cli.strip().lower()
+        cli_roster = [e for e in cli_roster if e.cli and cli_lower in e.cli.strip().lower()]
+    if roster_role:
+        cli_roster = [e for e in cli_roster if e.role == roster_role]
+    if roster_gradation:
+        grad_lower = roster_gradation.lower()
+        cli_roster = [e for e in cli_roster if e.gradation and grad_lower in e.gradation.lower()]
+    cli_roster = sorted(cli_roster, key=lambda e: ((e.cli or "").strip().lower(), role_sort_key(e.role), e.name))
+
+    return {
+        "request": request,
+        "active_page": "cli",
+        "cli_distribution": cli_distribution,
+        "cli_distribution_totals_all": totals_all,
+        "cli_distribution_breakdown": [],
+        "cli_distribution_totals": {"A": 0, "B": 0, "C": 0, "total": 0},
+        "cli_distribution_detail_label": roster_cli or "",
+        "cli_bio_reference_rows": [],
+        "cli_roster": cli_roster,
+        "cli_opts": cli_opts,
+        "role_opts": role_opts,
+        "gradation_opts": gradation_opts,
+        "roster_name": roster_name or "",
+        "roster_cli": roster_cli or "",
+        "roster_role": roster_role or "",
+        "roster_gradation": roster_gradation or "",
+        "roster_cli_status": roster_cli_status or "",
+        "roster_open": True,
+        "grading_update_error": "",
+        "grading_update_notice": "",
+        "grading_update_warning": "",
+        "grading_update_details": [],
+        "grading_warning_details": [],
+        "grading_source_name": "",
+        "grading_report_date": "",
+        "grading_saved_at": "",
+    }
+
+
+@app.get("/cli")
+def cli_page(
+    request: Request,
+    roster_name: Optional[str] = None,
+    roster_cli: Optional[str] = None,
+    roster_role: Optional[str] = None,
+    roster_gradation: Optional[str] = None,
+    roster_cli_status: Optional[str] = None,
+    session: Session = Depends(get_session),
+):
+    return templates.TemplateResponse(
+        "cli.html",
+        _cli_page_context(
+            request,
+            session,
+            roster_name=roster_name,
+            roster_cli=roster_cli,
+            roster_role=roster_role,
+            roster_gradation=roster_gradation,
+            roster_cli_status=roster_cli_status,
+        ),
+    )
+
+
+@app.get("/cli-distribution-planner")
+def cli_distribution_planner_page(request: Request, session: Session = Depends(get_session)):
+    employees = session.exec(select(Employee)).all()
+    cli_opts = sorted({(e.cli or "").strip() for e in employees if (e.cli or "").strip()})
+    return templates.TemplateResponse(
+        "cli_distribution_planner.html",
+        {
+            "request": request,
+            "active_page": "cli_distribution_planner",
+            "cli_opts": cli_opts,
+            "role_opts": ROLE_ORDER + sorted({e.role for e in employees if e.role not in ROLE_ORDER}),
+            "cli_manual_targets": [],
+            "cli_plan_staff_opts": sorted(employees, key=lambda e: (role_sort_key(e.role), e.name)),
+            "cli_plan_notice": "",
+            "cli_plan_error": "",
+            "cli_plan_selected_exclude_cli": [],
+            "cli_plan_selected_retiring_cli": [],
+            "cli_plan_selected_exclude_staff_ids": [],
+            "cli_plan_created_at": "",
+            "cli_plan_summary": [],
+            "cli_plan_assignments": [],
+            "cli_plan_current_cli_opts": [],
+            "cli_plan_proposed_cli_opts": [],
+        },
+    )
+
+
+@app.get("/top-performer")
+def top_performer_page(request: Request):
+    return templates.TemplateResponse(
+        "top_performer.html",
+        {
+            "request": request,
+            "active_page": "top_performer",
+            "saved_at_label": "",
+            "warnings": [],
+            "minimum_runs": 3,
+            "summary": None,
+            "results": [],
+            "comparison": None,
+        },
+    )
+
+
+@app.get("/cli-matrix")
+def cli_matrix_page(request: Request, report_date: Optional[str] = None):
+    return templates.TemplateResponse(
+        "cli_matrix.html",
+        {
+            "request": request,
+            "active_page": "cli_matrix",
+            "error": "",
+            "saved_notice": "",
+            "cached_template_name": "",
+            "report_date": report_date or "",
+            "source_report_date": "",
+            "source_report_date_label": "",
+            "summary_rows": [],
+            "overdue_rows": [],
+        },
+    )
+
+
+def _non_continuous_page_context(
+    request: Request,
+    *,
+    active_page: str,
+    route_base: str,
+    page_title: str,
+    heading_title: str,
+    report_date: str | None = None,
+) -> dict[str, object]:
+    return {
+        "request": request,
+        "active_page": active_page,
+        "route_base": route_base,
+        "page_title": page_title,
+        "heading_title": heading_title,
+        "error": "",
+        "saved_notice": "",
+        "template_token": "",
+        "source_name": "",
+        "source_report_date": "",
+        "source_report_date_label": "",
+        "cached_template_name": "",
+        "report_date": report_date or "",
+        "sign_on_label": "SIGN_ON",
+        "sign_off_label": "SIGN_OFF",
+        "sign_on_rows": [],
+        "sign_off_rows": [],
+        "allow_reason_edit": False,
+    }
+
+
+@app.get("/non-continuous-duty")
+def non_continuous_duty_page(request: Request, report_date: Optional[str] = None):
+    return templates.TemplateResponse(
+        "non_continuous_duty.html",
+        _non_continuous_page_context(
+            request,
+            active_page="non_continuous_duty",
+            route_base="/non-continuous-duty",
+            page_title="Non Continuous Duty",
+            heading_title="NON SUB NON CONT DUTY",
+            report_date=report_date,
+        ),
+    )
+
+
+@app.get("/sub-non-continuous-duty")
+def sub_non_continuous_duty_page(request: Request, report_date: Optional[str] = None):
+    return templates.TemplateResponse(
+        "non_continuous_duty.html",
+        _non_continuous_page_context(
+            request,
+            active_page="sub_non_continuous_duty",
+            route_base="/sub-non-continuous-duty",
+            page_title="Sub Non Continuous Duty",
+            heading_title="SUB NON CONT DUTY",
+            report_date=report_date,
+        ),
+    )
 
 
 @app.get("/ssts-report")

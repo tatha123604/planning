@@ -766,7 +766,6 @@
                   <th>Crew Name</th>
                   <th>ORG</th>
                   <th>DEST</th>
-                  <th>Srl</th>
                   <th>Station</th>
                   <th>Sch Arr</th>
                   <th>Act Arr</th>
@@ -789,7 +788,6 @@
                   <td>{{ row.crew_name }}</td>
                   <td>{{ row.org }}</td>
                   <td>{{ row.dest }}</td>
-                  <td>{{ row.srl_no }}</td>
                   <td>{{ row.station }}</td>
                   <td>{{ row.sch_arr }}</td>
                   <td>{{ row.act_arr }}</td>
@@ -803,7 +801,7 @@
                 </tr>
                 {% else %}
                 <tr>
-                  <td colspan="18">No train selected yet, or this train has no 40+ speed rows.</td>
+                  <td colspan="17">No train selected yet, or this train has no 40+ speed rows.</td>
                 </tr>
                 {% endfor %}
               </tbody>

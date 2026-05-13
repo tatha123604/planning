@@ -52,16 +52,42 @@ body {
   font-size: 0.95rem;
   word-break: break-word;
 }
+.brand > span {
+  display: block;
+  max-width: 100%;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
 .brand .dot { width: 14px; height: 14px; border-radius: 50%; background: linear-gradient(135deg, #12bde7, #66e1b6); box-shadow: 0 0 12px rgba(18,189,231,0.9); }
 .side-links { display: flex; flex-direction: column; gap: 10px; }
 .side-links a {
+  display: flex;
+  align-items: center;
+  min-width: 0;
   color: #c5cada;
   text-decoration: none;
   padding: 11px 12px;
   border-radius: 10px;
   font-weight: 700;
+  line-height: 1.28;
+  white-space: normal;
+  overflow-wrap: anywhere;
   border: 1px solid transparent;
   transition: all 0.18s ease;
+}
+.long-nav-label {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+.side-group summary {
+  line-height: 1.28;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.side-sub-links a {
+  font-size: 0.92rem;
 }
 .side-links a.active {
   background: rgba(18,189,231,0.18);
