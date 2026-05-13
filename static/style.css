@@ -183,11 +183,32 @@ button:hover { filter: brightness(1.05); }
   background: linear-gradient(180deg, rgba(255,255,255,0.28), rgba(255,255,255,0.04));
   mix-blend-mode: screen;
 }
+.metric-level-split {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: inherit;
+}
+.metric-level-split-online,
+.metric-level-split-offline {
+  min-width: 0;
+  height: 100%;
+}
+.metric-level-split-online {
+  background: linear-gradient(90deg, #26d07c 0%, #7cf0c3 100%);
+}
+.metric-level-split-offline {
+  background: linear-gradient(90deg, #ef5b5b 0%, #ff8f8f 100%);
+}
 .metric-level-total .metric-level-fill {
   background: linear-gradient(90deg, #12bde7 0%, #66e1b6 100%);
 }
+.metric-level-online .metric-level-fill {
+  background: linear-gradient(90deg, #26d07c 0%, #7cf0c3 100%);
+}
 .metric-level-offline .metric-level-fill {
-  background: linear-gradient(90deg, #ff9580 0%, #ffc46c 100%);
+  background: linear-gradient(90deg, #ef5b5b 0%, #ff8f8f 100%);
 }
 .metric-level-recovery .metric-level-fill {
   background: linear-gradient(90deg, #66e1b6 0%, #12bde7 100%);

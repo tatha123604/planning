@@ -937,7 +937,13 @@ def build_ssts_report_context(
 
             segments: list[dict[str, object]] = []
 
-            def build_segment(state: str, start_time: datetime, end_time: datetime) -> dict[str, object]:
+            def build_segment(
+                state: str,
+                start_time: datetime,
+                end_time: datetime,
+                *,
+                count_for_periods: bool = False,
+            ) -> dict[str, object]:
                 duration_minutes = max(0, int((end_time - start_time).total_seconds() // 60))
                 display_end = end_time - timedelta(minutes=1)
                 return {
@@ -947,6 +953,7 @@ def build_ssts_report_context(
                     "duration_label": _format_duration(duration_minutes) or "",
                     "width_percent": round((duration_minutes / (24 * 60)) * 100, 2),
                     "summary_label": f"{_format_ist_time(start_time)} to {_format_ist_time(display_end)} {'offline' if state == 'offline' else 'online'}",
+                    "count_for_periods": count_for_periods,
                 }
 
             current_state = str(points[0]["state"])
@@ -957,8 +964,15 @@ def build_ssts_report_context(
                 if point_state == current_state:
                     continue
                 duration_minutes = max(0, int((point_time - segment_start).total_seconds() // 60))
-                if duration_minutes >= SSTS_OFFLINE_THRESHOLD_MINUTES:
-                    segments.append(build_segment(current_state, segment_start, point_time))
+                if duration_minutes > 0:
+                    segments.append(
+                        build_segment(
+                            current_state,
+                            segment_start,
+                            point_time,
+                            count_for_periods=duration_minutes >= SSTS_OFFLINE_THRESHOLD_MINUTES,
+                        )
+                    )
                 current_state = point_state
                 segment_start = point_time
 
@@ -981,19 +995,37 @@ def build_ssts_report_context(
                     followup_offline_start = bounded_lastupdate
 
             duration_minutes = max(0, int((current_segment_end - current_segment_start).total_seconds() // 60))
-            if duration_minutes >= SSTS_OFFLINE_THRESHOLD_MINUTES:
+            if duration_minutes > 0:
                 display_end_time = current_segment_end
                 if current_state == "online" and lastupdate_time is not None:
                     display_end_time = min(current_segment_end, max(current_segment_start, lastupdate_time))
-                segments.append(build_segment(current_state, current_segment_start, display_end_time))
+                segments.append(
+                    build_segment(
+                        current_state,
+                        current_segment_start,
+                        display_end_time,
+                        count_for_periods=duration_minutes >= SSTS_OFFLINE_THRESHOLD_MINUTES,
+                    )
+                )
 
             if followup_offline_start is not None and followup_offline_start < reference_end:
                 offline_duration_minutes = max(0, int((reference_end - followup_offline_start).total_seconds() // 60))
-                if offline_duration_minutes >= SSTS_OFFLINE_THRESHOLD_MINUTES:
-                    segments.append(build_segment("offline", followup_offline_start, reference_end))
+                if offline_duration_minutes > 0:
+                    segments.append(
+                        build_segment(
+                            "offline",
+                            followup_offline_start,
+                            reference_end,
+                            count_for_periods=offline_duration_minutes >= SSTS_OFFLINE_THRESHOLD_MINUTES,
+                        )
+                    )
 
-            offline_periods = sum(1 for segment in segments if segment["state"] == "offline")
-            online_periods = sum(1 for segment in segments if segment["state"] == "online")
+            offline_periods = sum(
+                1 for segment in segments if segment["state"] == "offline" and segment.get("count_for_periods")
+            )
+            online_periods = sum(
+                1 for segment in segments if segment["state"] == "online" and segment.get("count_for_periods")
+            )
             selected_analysis_rows.append(
                 {
                     "device_id": rake["device_id"],

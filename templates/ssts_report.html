@@ -61,6 +61,8 @@
       {% set recent_offline_count = latest_summary.recent_offline_count or latest_summary.recently_offline_count or 0 %}
       {% set recently_online_count = latest_summary.recently_online_count or 0 %}
       {% set online_count = latest_summary.online_now_count or (total_rakes - offline_count if total_rakes >= offline_count else 0) %}
+      {% set online_ratio = ((online_count / total_rakes) * 100) if total_rakes else 0 %}
+      {% set offline_ratio = ((offline_count / total_rakes) * 100) if total_rakes else 0 %}
 
       {% if active_report_tab == 'online_offline' %}
       <section class="grid">
@@ -81,13 +83,15 @@
           <div class="metric-card-body">
             <span class="metric-label">Total Rakes</span>
             <strong class="metric-value">{{ latest_summary.total_rakes }}</strong>
-            <div class="metric-level metric-level-total" style="--level-fill: 100%;">
-              <div class="metric-level-fill"></div>
+            <div class="metric-level metric-level-total">
+              <div class="metric-level-split">
+                <div class="metric-level-split-online" style="width: {{ online_ratio }}%;"></div>
+                <div class="metric-level-split-offline" style="width: {{ offline_ratio }}%;"></div>
+              </div>
             </div>
             <div class="metric-meter-notes">
-              <span>Online now {{ online_count }}</span>
+              <span>Online {{ online_count }}</span>
               <span>Offline {{ offline_count }}</span>
-              <span>Offline 2h to 1 Day {{ recent_offline_count }}</span>
             </div>
             <p>Latest successfully stored snapshot.</p>
           </div>
@@ -95,13 +99,13 @@
         <a class="metric-card-link" href="#online-now-table">
           <article class="card metric-card metric-card-online metric-card-clickable">
             <div class="metric-card-body">
-              <span class="metric-label">Currently Online Rakes</span>
+              <span class="metric-label">Online Now</span>
               <strong class="metric-value">{{ online_count }}</strong>
-              <div class="metric-level metric-level-recovery" style="--level-fill: {{ ((online_count / total_rakes) * 100) if total_rakes else 0 }}%;">
+              <div class="metric-level metric-level-online" style="--level-fill: {{ online_ratio }}%;">
                 <div class="metric-level-fill"></div>
               </div>
               <div class="metric-meter-notes">
-                <span>{{ "%.1f"|format(((online_count / total_rakes) * 100) if total_rakes else 0) }}% active now</span>
+                <span>{{ "%.1f"|format(online_ratio) }}% active now</span>
               </div>
               <p>Rakes currently active within your offline threshold.</p>
               <span class="metric-card-footer">Open table</span>
@@ -207,9 +211,9 @@
           <div>
             <h2>Detailed Analysis</h2>
             {% if selected_analysis_day_label %}
-            <p>Graphical day-wise rake timeline for {{ selected_analysis_day_label }}, built from 5-minute status records and showing ordered online/offline periods longer than 2 hours.</p>
+            <p>Graphical day-wise rake timeline for {{ selected_analysis_day_label }}, built from 5-minute status records with current online/offline stretches shown directly in the timeline.</p>
             {% else %}
-            <p>Select a date to view each rake's ordered online/offline timeline from 5-minute status records for periods longer than 2 hours.</p>
+            <p>Select a date to view each rake's ordered online/offline timeline from 5-minute status records, with the last two columns counting periods longer than 2 hours.</p>
             {% endif %}
           </div>
         </div>
@@ -272,7 +276,7 @@
                   {% if row.timeline_summary %}
                   <div class="timeline-summary-list">{{ row.timeline_summary }}</div>
                   {% else %}
-                  <div class="timeline-empty">No period above 2 hours.</div>
+                  <div class="timeline-empty">No timeline data recorded yet.</div>
                   {% endif %}
                 </td>
                 <td>{{ row.offline_periods }}</td>
