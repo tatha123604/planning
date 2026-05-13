@@ -1069,24 +1069,24 @@ ul { padding-left: 18px; margin: 6px 0; }
   max-width: 736px;
 }
 .analysis-summary-card {
-  min-height: 96px;
-  height: 96px;
+  min-height: 72px;
+  height: 72px;
 }
 .analysis-summary-card .metric-card-body {
-  gap: 6px;
-  padding: 10px 14px;
+  gap: 4px;
+  padding: 8px 12px;
   justify-content: space-between;
 }
 .analysis-summary-card .metric-label {
-  font-size: 11px;
+  font-size: 10px;
 }
 .analysis-summary-card .metric-value {
-  font-size: 1.35rem;
+  font-size: 1.15rem;
 }
 .analysis-summary-card p {
   margin-top: 0;
-  font-size: 12px;
-  line-height: 1.3;
+  font-size: 11px;
+  line-height: 1.2;
 }
 .analysis-summary-meta {
   display: inline-flex;
@@ -1097,7 +1097,7 @@ ul { padding-left: 18px; margin: 6px 0; }
   background: rgba(255, 255, 255, 0.14);
   border: 1px solid rgba(255, 255, 255, 0.16);
   color: rgba(255, 255, 255, 0.92);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.04em;
 }
@@ -1108,7 +1108,7 @@ ul { padding-left: 18px; margin: 6px 0; }
     max-width: none;
   }
   .analysis-summary-card {
-    min-height: 92px;
+    min-height: 72px;
     height: auto;
   }
 }
