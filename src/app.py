@@ -821,8 +821,6 @@ def build_ssts_report_context(
             "current_not_online": [],
             "current_offline": [],
             "current_recently_offline": [],
-            "previous_day_offline": [],
-            "previous_day_recently_offline": [],
             "recently_online": [],
             "daily_summary": [],
             "analysis_day_options": [],
@@ -840,12 +838,6 @@ def build_ssts_report_context(
     latest_map = {row.device_id: row for row in latest_snapshots}
     latest_run_time = _ensure_utc(latest_run.observed_at)
     current_reference_time = _utc_now()
-    previous_day_cutoff = latest_run_time - timedelta(days=1)
-    previous_day_run = next(
-        (run for run in runs if run.fetch_status == "ok" and _ensure_utc(run.observed_at) <= previous_day_cutoff),
-        None,
-    )
-    previous_day_snapshots = _snapshots_for_run(session, previous_day_run.id or 0) if previous_day_run else []
 
     online_now = [
         _snapshot_to_row(row, reference_time=current_reference_time)
@@ -867,17 +859,6 @@ def build_ssts_report_context(
         for row in sorted(latest_snapshots, key=lambda item: _ssts_sort_key(item, current_reference_time))
         if _ssts_is_recently_offline(row, reference_time=current_reference_time)
     ]
-    previous_day_offline = [
-        _snapshot_to_row(row)
-        for row in sorted(previous_day_snapshots, key=_ssts_sort_key)
-        if _ssts_is_offline(row)
-    ]
-    previous_day_recently_offline = [
-        _snapshot_to_row(row)
-        for row in sorted(previous_day_snapshots, key=_ssts_sort_key)
-        if _ssts_is_recently_offline(row)
-    ]
-
     recovery_runs = [run for run in runs if run.fetch_status == "ok" and _ensure_utc(run.observed_at) <= latest_run_time]
     snapshots_by_run = {run.id: _snapshots_for_run(session, run.id or 0) for run in recovery_runs}
     history_by_device: dict[int, list[SstsDeviceSnapshot]] = {}
@@ -1182,9 +1163,6 @@ def build_ssts_report_context(
         "current_not_online": current_not_online,
         "current_offline": current_offline,
         "current_recently_offline": current_recently_offline,
-        "previous_day_run": previous_day_run,
-        "previous_day_offline": previous_day_offline,
-        "previous_day_recently_offline": previous_day_recently_offline,
         "recently_online": recently_online,
         "daily_summary": daily_summary,
         "analysis_day_options": analysis_day_options,
