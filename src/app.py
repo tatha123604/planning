@@ -294,7 +294,10 @@ def _ssts_is_recently_offline(snapshot: SstsDeviceSnapshot, reference_time: date
 
 
 def _ssts_is_online_now(snapshot: SstsDeviceSnapshot, reference_time: datetime | None = None) -> bool:
-    return not _ssts_is_offline(snapshot, reference_time)
+    minutes = _snapshot_offline_minutes(snapshot, reference_time)
+    if minutes is None:
+        return False
+    return minutes <= SSTS_RECENTLY_ONLINE_THRESHOLD_MINUTES
 
 
 def _ssts_normalize_rake_name(value: object | None) -> str:
