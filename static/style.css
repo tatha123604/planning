@@ -204,6 +204,124 @@ button:hover { filter: brightness(1.05); }
 .metric-card p {
   margin-top: auto;
 }
+.metric-card-footer {
+  display: flex;
+  align-items: center;
+  min-height: 18px;
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.86);
+}
+.metric-card-footer-placeholder {
+  visibility: hidden;
+}
+.metric-card-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+  height: 100%;
+}
+.metric-card-clickable {
+  position: relative;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+.metric-card-link:hover .metric-card-clickable,
+.metric-card-link:focus-visible .metric-card-clickable {
+  transform: translateY(-2px);
+  box-shadow: 0 24px 54px rgba(0,0,0,0.38), inset 0 1px 0 rgba(255,255,255,0.12);
+}
+.metric-card-link:focus-visible {
+  outline: none;
+}
+.metric-card-link:focus-visible .metric-card-clickable {
+  border-color: rgba(255, 228, 92, 0.72);
+}
+.metric-card-online {
+  background: linear-gradient(135deg, rgba(24, 80, 52, 0.94), rgba(19, 121, 88, 0.78));
+  border-color: rgba(122, 239, 180, 0.32);
+  box-shadow: 0 20px 50px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08);
+}
+.metric-card-online .metric-label,
+.metric-card-online p,
+.metric-card-online .metric-value,
+.metric-card-online .metric-card-footer {
+  color: #ecfff4;
+}
+.metric-card-offline {
+  background: linear-gradient(135deg, rgba(98, 30, 30, 0.94), rgba(138, 47, 47, 0.8));
+  border-color: rgba(255, 153, 153, 0.34);
+  box-shadow: 0 20px 50px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08);
+}
+.metric-card-offline .metric-label,
+.metric-card-offline p,
+.metric-card-offline .metric-value,
+.metric-card-offline .metric-card-footer {
+  color: #fff1f1;
+}
+.metric-card-recovery {
+  background: linear-gradient(135deg, rgba(22, 95, 57, 0.96), rgba(42, 144, 87, 0.82));
+  border-color: rgba(148, 247, 205, 0.38);
+  box-shadow: 0 20px 50px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08);
+}
+.metric-card-recovery .metric-label,
+.metric-card-recovery p,
+.metric-card-recovery .metric-value,
+.metric-card-recovery .metric-card-footer {
+  color: #effff6;
+}
+.metric-card-total {
+  background: linear-gradient(135deg, rgba(135, 108, 18, 0.96), rgba(196, 153, 28, 0.84));
+  border-color: rgba(255, 229, 120, 0.42);
+  box-shadow: 0 20px 50px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08);
+}
+.metric-card-total .metric-label,
+.metric-card-total p,
+.metric-card-total .metric-value,
+.metric-card-total .metric-card-footer,
+.metric-card-total .metric-meter-notes {
+  color: #fffbea;
+}
+.ssts-recovery-section {
+  background: linear-gradient(135deg, rgba(15, 56, 40, 0.9), rgba(18, 82, 58, 0.74));
+  border-color: rgba(122, 239, 180, 0.22);
+}
+.ssts-online-section details > summary {
+  background: linear-gradient(135deg, rgba(24, 80, 52, 0.9), rgba(19, 121, 88, 0.72));
+  border-color: rgba(122, 239, 180, 0.32);
+  color: #effff6;
+}
+.ssts-online-section details > summary:hover,
+.ssts-online-section details[open] > summary {
+  background: linear-gradient(135deg, rgba(32, 110, 70, 0.94), rgba(28, 144, 102, 0.78));
+  border-color: rgba(148, 247, 205, 0.46);
+  color: #f7fff9;
+}
+.ssts-online-section .employee-table thead th {
+  background: linear-gradient(135deg, rgba(18, 87, 57, 0.98), rgba(15, 114, 82, 0.98));
+}
+.ssts-online-section .employee-table thead th:hover {
+  background: linear-gradient(135deg, rgba(24, 102, 68, 0.99), rgba(18, 130, 94, 0.99));
+}
+.ssts-offline-section details > summary {
+  background: linear-gradient(135deg, rgba(98, 30, 30, 0.9), rgba(138, 47, 47, 0.72));
+  border-color: rgba(255, 153, 153, 0.3);
+  color: #fff3f3;
+}
+.ssts-offline-section details > summary:hover,
+.ssts-offline-section details[open] > summary {
+  background: linear-gradient(135deg, rgba(118, 34, 34, 0.94), rgba(156, 54, 54, 0.8));
+  border-color: rgba(255, 179, 179, 0.42);
+  color: #fff8f8;
+}
+.ssts-offline-section .employee-table thead th {
+  background: linear-gradient(135deg, rgba(92, 24, 24, 0.98), rgba(126, 39, 39, 0.98));
+}
+.ssts-offline-section .employee-table thead th:hover {
+  background: linear-gradient(135deg, rgba(108, 30, 30, 0.99), rgba(142, 45, 45, 0.99));
+}
 .card + .card {
   margin-top: 18px;
 }

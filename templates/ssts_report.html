@@ -60,7 +60,7 @@
       {% set offline_count = latest_summary.offline_count or 0 %}
       {% set recent_offline_count = latest_summary.recent_offline_count or latest_summary.recently_offline_count or 0 %}
       {% set recently_online_count = latest_summary.recently_online_count or 0 %}
-      {% set online_count = total_rakes - offline_count if total_rakes >= offline_count else 0 %}
+      {% set online_count = latest_summary.online_now_count or (total_rakes - offline_count if total_rakes >= offline_count else 0) %}
 
       {% if active_report_tab == 'online_offline' %}
       <section class="grid">
@@ -92,20 +92,39 @@
             <p>Latest successfully stored snapshot.</p>
           </div>
         </article>
-        <article class="card metric-card">
-          <div class="metric-card-body">
-            <span class="metric-label">Offline &gt; 2 Hours</span>
-            <strong class="metric-value">{{ latest_summary.offline_count }}</strong>
-            <div class="metric-level metric-level-offline" style="--level-fill: {{ ((offline_count / total_rakes) * 100) if total_rakes else 0 }}%;">
-              <div class="metric-level-fill"></div>
+        <a class="metric-card-link" href="#online-now-table">
+          <article class="card metric-card metric-card-online metric-card-clickable">
+            <div class="metric-card-body">
+              <span class="metric-label">Currently Online Rakes</span>
+              <strong class="metric-value">{{ online_count }}</strong>
+              <div class="metric-level metric-level-recovery" style="--level-fill: {{ ((online_count / total_rakes) * 100) if total_rakes else 0 }}%;">
+                <div class="metric-level-fill"></div>
+              </div>
+              <div class="metric-meter-notes">
+                <span>{{ "%.1f"|format(((online_count / total_rakes) * 100) if total_rakes else 0) }}% active now</span>
+              </div>
+              <p>Rakes currently active within your offline threshold.</p>
+              <span class="metric-card-footer">Open table</span>
             </div>
-            <div class="metric-meter-notes">
-              <span>{{ "%.1f"|format(((offline_count / total_rakes) * 100) if total_rakes else 0) }}% of total rakes</span>
+          </article>
+        </a>
+        <a class="metric-card-link" href="#offline-now-table">
+          <article class="card metric-card metric-card-offline metric-card-clickable">
+            <div class="metric-card-body">
+              <span class="metric-label">Offline &gt; 2 Hours</span>
+              <strong class="metric-value">{{ latest_summary.offline_count }}</strong>
+              <div class="metric-level metric-level-offline" style="--level-fill: {{ ((offline_count / total_rakes) * 100) if total_rakes else 0 }}%;">
+                <div class="metric-level-fill"></div>
+              </div>
+              <div class="metric-meter-notes">
+                <span>{{ "%.1f"|format(((offline_count / total_rakes) * 100) if total_rakes else 0) }}% of total rakes</span>
+              </div>
+              <p>Rakes currently considered offline by your rule.</p>
+              <span class="metric-card-footer">Open table</span>
             </div>
-            <p>Rakes currently considered offline by your rule.</p>
-          </div>
-        </article>
-        <article class="card metric-card">
+          </article>
+        </a>
+        <article class="card metric-card metric-card-offline">
           <div class="metric-card-body">
             <span class="metric-label">Offline 2h to 1 Day</span>
             <strong class="metric-value">{{ recent_offline_count }}</strong>
@@ -118,7 +137,8 @@
             <p>Rakes offline between 2 hours and 1 day in the latest snapshot.</p>
           </div>
         </article>
-        <article class="card metric-card">
+        <a class="metric-card-link" href="#recently-online-table">
+          <article class="card metric-card metric-card-recovery metric-card-clickable">
           <div class="metric-card-body">
             <span class="metric-label">Recently Came Online</span>
             <strong class="metric-value">{{ latest_summary.recently_online_count }}</strong>
@@ -129,8 +149,10 @@
               <span>{{ "%.1f"|format(((recently_online_count / total_rakes) * 100) if total_rakes else 0) }}% recovery window</span>
             </div>
             <p>Was offline for more than 5 hours, now active in the latest snapshot.</p>
+            <span class="metric-card-footer">Open table</span>
           </div>
-        </article>
+          </article>
+        </a>
       </section>
 
       <section class="card">
@@ -310,7 +332,43 @@
         </div>
       </section>
 
-      <section class="card collapsible">
+      <section class="card collapsible ssts-online-section" id="online-now-table">
+        <details open>
+          <summary>Currently Online Rakes</summary>
+          <div class="table-wrap">
+            <table class="employee-table paged" data-exportable="true" data-export-name="currently_online_rakes">
+              <thead>
+                <tr>
+                  <th>Rake No</th>
+                  <th>Device ID</th>
+                  <th>Mobile No</th>
+                  <th>Cars</th>
+                  <th>Last Update</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in online_now %}
+                <tr>
+                  <td>{{ row.name }}</td>
+                  <td>{{ row.uniqueid }}</td>
+                  <td>{{ row.phone }}</td>
+                  <td>{{ row.contact }}</td>
+                  <td>{{ row.lastupdate_label }}</td>
+                  <td>{{ row.offline_duration }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                  <td colspan="6">No current online rakes found in the latest snapshot.</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      </section>
+
+      <section class="card collapsible ssts-offline-section" id="offline-now-table">
         <details open>
           <summary>Current Offline Rakes (Last Update &gt; 2 Hours)</summary>
           <div class="table-wrap">
@@ -451,7 +509,7 @@
         </details>
       </section>
 
-      <section class="card collapsible">
+      <section class="card collapsible ssts-recovery-section" id="recently-online-table">
         <details open>
           <summary>Recently Came Online (Previously Offline &gt; 5 Hours)</summary>
           <div class="table-wrap">
