@@ -16,10 +16,12 @@ from urllib import request as urlrequest
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Form, Request, UploadFile, File, HTTPException
-from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from openpyxl import load_workbook, Workbook
+from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.utils import get_column_letter
 from sqlmodel import Session, select
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -75,6 +77,458 @@ def filter_hire_by(value, days: int = 30):
         return None
 templates.env.filters["hire_by"] = filter_hire_by
 
+
+def _sanitize_export_title(value: object | None) -> str:
+    text = re.sub(r"\s+", " ", str(value or "").strip())
+    return text or "Table Export"
+
+
+def _sanitize_excel_sheet_title(value: object | None) -> str:
+    text = _sanitize_export_title(value)
+    text = re.sub(r'[\[\]\*:/\\?]', " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text[:31] or "Table Export"
+
+
+def _sanitize_export_filename(value: object | None, suffix: str) -> str:
+    title = _sanitize_export_title(value)
+    slug = re.sub(r"[^A-Za-z0-9]+", "_", title).strip("_").lower() or "table_export"
+    return f"{slug}.{suffix}"
+
+
+def _normalize_export_text(value: object | None) -> str:
+    return re.sub(r"\s+", " ", str(value or "").strip())
+
+
+def _parse_export_report_date(value: object | None) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    for parser in (
+        lambda raw: date.fromisoformat(raw),
+        lambda raw: datetime.strptime(raw, "%d-%m-%Y").date(),
+        lambda raw: datetime.strptime(raw, "%d/%m/%Y").date(),
+    ):
+        try:
+            return parser(text).strftime("%d-%m-%Y")
+        except ValueError:
+            continue
+    return ""
+
+
+def _coerce_export_table_payload(payload: object) -> tuple[str, list[str], list[list[str]], str]:
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Export payload must be an object.")
+
+    headers_payload = payload.get("headers")
+    rows_payload = payload.get("rows")
+    if not isinstance(headers_payload, list) or not headers_payload:
+        raise HTTPException(status_code=400, detail="Export requires at least one column.")
+    if rows_payload is not None and not isinstance(rows_payload, list):
+        raise HTTPException(status_code=400, detail="Export rows payload is invalid.")
+
+    title = _sanitize_export_title(payload.get("title"))
+    report_date_label = _parse_export_report_date(payload.get("report_date"))
+    headers = [
+        _normalize_export_text(header) or f"Column {index + 1}"
+        for index, header in enumerate(headers_payload)
+    ]
+    width = len(headers)
+    rows: list[list[str]] = []
+    for raw_row in rows_payload or []:
+        if not isinstance(raw_row, list):
+            continue
+        normalized = [_normalize_export_text(cell) for cell in raw_row[:width]]
+        if len(normalized) < width:
+            normalized.extend([""] * (width - len(normalized)))
+        rows.append(normalized)
+    return title, headers, rows, report_date_label
+
+
+def _pdf_escape_text(value: object | None) -> str:
+    text = _normalize_export_text(value).encode("latin-1", "replace").decode("latin-1")
+    return text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+
+
+def _estimate_pdf_text_width(value: object | None, font_size: float, *, bold: bool = False) -> float:
+    text = _normalize_export_text(value)
+    if not text:
+        return 0.0
+
+    total_units = 0.0
+    for char in text:
+        if char in " .,:;|!'`":
+            total_units += 0.28
+        elif char in "[](){}frtIjl":
+            total_units += 0.38
+        elif char in "mwMW@#%&":
+            total_units += 0.92
+        elif char.isdigit():
+            total_units += 0.56
+        elif char.isupper():
+            total_units += 0.67
+        else:
+            total_units += 0.57
+    return total_units * font_size * (1.05 if bold else 1.0)
+
+
+def _truncate_pdf_text_to_width(value: object | None, max_width: float, font_size: float) -> str:
+    text = _normalize_export_text(value)
+    if not text or _estimate_pdf_text_width(text, font_size) <= max_width:
+        return text
+
+    suffix = "..."
+    available = max_width - _estimate_pdf_text_width(suffix, font_size)
+    if available <= font_size * 0.8:
+        return suffix
+
+    trimmed = ""
+    for char in text:
+        if _estimate_pdf_text_width(trimmed + char, font_size) > available:
+            break
+        trimmed += char
+    return (trimmed.rstrip() or text[:1]) + suffix
+
+
+def _split_pdf_token_to_width(token: str, max_width: float, font_size: float) -> list[str]:
+    if not token:
+        return [""]
+
+    parts: list[str] = []
+    current = ""
+    for char in token:
+        candidate = current + char
+        if current and _estimate_pdf_text_width(candidate, font_size) > max_width:
+            parts.append(current)
+            current = char
+        else:
+            current = candidate
+    if current:
+        parts.append(current)
+    return parts or [token]
+
+
+def _wrap_pdf_text_to_width(
+    value: object | None,
+    max_width: float,
+    font_size: float,
+    *,
+    max_lines: int,
+) -> list[str]:
+    text = _normalize_export_text(value)
+    if not text:
+        return [""]
+
+    words = text.split(" ")
+    lines: list[str] = []
+    current = ""
+
+    def push(segment: str) -> None:
+        nonlocal current, lines
+        if not current:
+            current = segment
+            return
+        candidate = f"{current} {segment}"
+        if _estimate_pdf_text_width(candidate, font_size) <= max_width:
+            current = candidate
+            return
+        lines.append(current)
+        current = segment
+
+    for word in words:
+        pieces = (
+            _split_pdf_token_to_width(word, max_width, font_size)
+            if _estimate_pdf_text_width(word, font_size) > max_width
+            else [word]
+        )
+        for piece in pieces:
+            push(piece)
+
+    if current:
+        lines.append(current)
+
+    if len(lines) > max_lines:
+        overflow = " ".join(lines[max_lines - 1 :])
+        lines = lines[: max_lines - 1] + [
+            _truncate_pdf_text_to_width(overflow, max_width, font_size)
+        ]
+    return lines or [""]
+
+
+def _fit_pdf_column_widths(
+    headers: list[str],
+    rows: list[list[str]],
+    table_width: float,
+    body_font_size: float,
+    header_font_size: float,
+) -> list[float]:
+    column_count = len(headers)
+    if column_count <= 1:
+        return [table_width]
+
+    min_width = max(28.0, min(76.0, table_width / max(column_count * 1.9, 1)))
+    if min_width * column_count > table_width:
+        return [table_width / column_count] * column_count
+
+    max_width = max(min_width + 12.0, table_width * (0.34 if column_count <= 4 else 0.24 if column_count <= 8 else 0.18))
+    sample_rows = rows[: min(len(rows), 250)]
+    preferred: list[float] = []
+
+    for index, header in enumerate(headers):
+        values = [header] + [row[index] if index < len(row) else "" for row in sample_rows]
+        measured = sorted(
+            _estimate_pdf_text_width(cell, body_font_size)
+            for cell in values[1:]
+            if _normalize_export_text(cell)
+        )
+        if measured:
+            pivot = max(0, math.ceil(len(measured) * 0.9) - 1)
+            content_width = measured[pivot]
+        else:
+            content_width = 0.0
+        header_width = _estimate_pdf_text_width(header, header_font_size, bold=True)
+        preferred.append(min(max(max(header_width, content_width) + 14.0, min_width), max_width))
+
+    total = sum(preferred)
+    if total < table_width:
+        scale = table_width / total if total else 1.0
+        preferred = [width * scale for width in preferred]
+    elif total > table_width:
+        overflow = total - table_width
+        adjusted = preferred[:]
+        while overflow > 0.5:
+            shrinkable = [max(0.0, width - min_width) for width in adjusted]
+            total_shrinkable = sum(shrinkable)
+            if total_shrinkable <= 0:
+                adjusted = [table_width / column_count] * column_count
+                break
+            next_widths: list[float] = []
+            for width, room in zip(adjusted, shrinkable):
+                if room <= 0:
+                    next_widths.append(width)
+                    continue
+                reduction = min(room, overflow * (room / total_shrinkable))
+                next_widths.append(width - reduction)
+            adjusted = next_widths
+            overflow = sum(adjusted) - table_width
+        preferred = adjusted
+
+    width_delta = table_width - sum(preferred)
+    preferred[-1] += width_delta
+    return preferred
+
+
+def _build_pdf_row_layout(
+    values: list[str],
+    widths: list[float],
+    font_size: float,
+    *,
+    max_lines: int,
+) -> dict[str, object]:
+    horizontal_padding = 5.0
+    vertical_padding = 4.0
+    line_height = font_size + 2.2
+    cells: list[list[str]] = []
+
+    for index, width in enumerate(widths):
+        text = values[index] if index < len(values) else ""
+        inner_width = max(width - (horizontal_padding * 2), font_size * 1.8)
+        cells.append(
+            _wrap_pdf_text_to_width(
+                text,
+                inner_width,
+                font_size,
+                max_lines=max_lines,
+            )
+        )
+
+    row_line_count = max((len(cell_lines) for cell_lines in cells), default=1)
+    row_height = max(18.0, (row_line_count * line_height) + (vertical_padding * 2))
+    return {
+        "cells": cells,
+        "height": row_height,
+        "line_height": line_height,
+        "padding_x": horizontal_padding,
+        "padding_y": vertical_padding,
+        "font_size": font_size,
+    }
+
+
+def _build_table_pdf_bytes(
+    title: str,
+    headers: list[str],
+    rows: list[list[str]],
+    report_date_label: str,
+) -> bytes:
+    page_width = 842.0
+    page_height = 595.0
+    margin_left = 26.0
+    margin_right = 26.0
+    margin_bottom = 24.0
+    table_top = 516.0
+    table_width = page_width - margin_left - margin_right
+    column_count = max(1, len(headers))
+    body_font_size = 8.8 if column_count <= 5 else 8.1 if column_count <= 8 else 7.4 if column_count <= 11 else 6.8
+    header_font_size = min(body_font_size + 0.6, 9.2)
+
+    widths = _fit_pdf_column_widths(headers, rows, table_width, body_font_size, header_font_size)
+    header_layout = _build_pdf_row_layout(headers, widths, header_font_size, max_lines=3)
+    body_rows = rows or [["No rows available."] + [""] * max(0, len(headers) - 1)]
+    row_layouts = [_build_pdf_row_layout(row, widths, body_font_size, max_lines=5) for row in body_rows]
+
+    usable_height = table_top - margin_bottom
+    pages: list[list[dict[str, object]]] = []
+    current_page: list[dict[str, object]] = []
+    current_height = float(header_layout["height"])
+
+    for layout in row_layouts:
+        layout_height = float(layout["height"])
+        if current_page and current_height + layout_height > usable_height:
+            pages.append(current_page)
+            current_page = []
+            current_height = float(header_layout["height"])
+        current_page.append(layout)
+        current_height += layout_height
+    pages.append(current_page)
+
+    def add_text(
+        commands: list[str],
+        font_name: str,
+        font_size: float,
+        x: float,
+        y: float,
+        text: str,
+        color: tuple[float, float, float],
+    ) -> None:
+        commands.append(f"{color[0]:.3f} {color[1]:.3f} {color[2]:.3f} rg")
+        commands.append(
+            f"BT /{font_name} {font_size:.2f} Tf 1 0 0 1 {x:.2f} {y:.2f} Tm ({_pdf_escape_text(text)}) Tj ET"
+        )
+
+    def draw_row(
+        commands: list[str],
+        row_layout: dict[str, object],
+        top_y: float,
+        *,
+        fill_color: tuple[float, float, float],
+        border_color: tuple[float, float, float],
+        text_color: tuple[float, float, float],
+        font_name: str,
+    ) -> float:
+        row_height = float(row_layout["height"])
+        bottom_y = top_y - row_height
+        commands.append(f"{fill_color[0]:.3f} {fill_color[1]:.3f} {fill_color[2]:.3f} rg")
+        commands.append(f"{margin_left:.2f} {bottom_y:.2f} {table_width:.2f} {row_height:.2f} re f")
+        commands.append("0.55 w")
+        commands.append(f"{border_color[0]:.3f} {border_color[1]:.3f} {border_color[2]:.3f} RG")
+        commands.append(f"{margin_left:.2f} {bottom_y:.2f} {table_width:.2f} {row_height:.2f} re S")
+
+        x = margin_left
+        cells: list[list[str]] = row_layout["cells"]  # type: ignore[assignment]
+        line_height = float(row_layout["line_height"])
+        padding_x = float(row_layout["padding_x"])
+        padding_y = float(row_layout["padding_y"])
+        font_size = float(row_layout["font_size"])
+
+        for width, cell_lines in zip(widths, cells):
+            commands.append(f"{x + width:.2f} {bottom_y:.2f} m {x + width:.2f} {top_y:.2f} l S")
+            text_x = x + padding_x
+            text_y = top_y - padding_y - font_size
+            for line in cell_lines:
+                add_text(commands, font_name, font_size, text_x, text_y, line, text_color)
+                text_y -= line_height
+            x += width
+        return bottom_y
+
+    objects: list[str] = [
+        "<< /Type /Catalog /Pages 2 0 R >>",
+        "",
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>",
+    ]
+    page_refs: list[int] = []
+
+    total_pages = len(pages)
+    for page_index, page_rows in enumerate(pages, start=1):
+        commands: list[str] = []
+        add_text(commands, "F2", 15.5, margin_left, 560.0, title, (0.086, 0.192, 0.298))
+        if report_date_label:
+            add_text(
+                commands,
+                "F1",
+                9.4,
+                margin_left,
+                548.0,
+                f"Updated on: {report_date_label}",
+                (0.306, 0.427, 0.529),
+            )
+        add_text(
+            commands,
+            "F1",
+            9.0,
+            margin_left,
+            536.0 if report_date_label else 544.0,
+            f"Rows: {len(rows)}   Page: {page_index}/{total_pages}",
+            (0.306, 0.427, 0.529),
+        )
+
+        current_y = table_top
+        current_y = draw_row(
+            commands,
+            header_layout,
+            current_y,
+            fill_color=(0.102, 0.286, 0.467),
+            border_color=(0.620, 0.753, 0.886),
+            text_color=(0.965, 0.984, 1.000),
+            font_name="F2",
+        )
+
+        for row_index, row_layout in enumerate(page_rows):
+            current_y = draw_row(
+                commands,
+                row_layout,
+                current_y,
+                fill_color=(0.968, 0.980, 0.992) if row_index % 2 == 0 else (1.000, 1.000, 1.000),
+                border_color=(0.792, 0.867, 0.925),
+                text_color=(0.122, 0.180, 0.239),
+                font_name="F1",
+            )
+
+        stream_body = "\n".join(commands).encode("latin-1", "replace")
+        content_object = (
+            f"<< /Length {len(stream_body)} >>\nstream\n".encode("latin-1")
+            + stream_body
+            + b"\nendstream"
+        ).decode("latin-1")
+        objects.append(content_object)
+        content_ref = len(objects)
+        page_object = (
+            f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {page_width} {page_height}] "
+            f"/Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents {content_ref} 0 R >>"
+        )
+        objects.append(page_object)
+        page_refs.append(len(objects))
+
+    objects[1] = f"<< /Type /Pages /Count {len(page_refs)} /Kids [{' '.join(f'{ref} 0 R' for ref in page_refs)}] >>"
+
+    pdf_parts = [b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n"]
+    offsets = [0]
+    running_offset = len(pdf_parts[0])
+    for index, obj in enumerate(objects, start=1):
+        offsets.append(running_offset)
+        chunk = f"{index} 0 obj\n{obj}\nendobj\n".encode("latin-1")
+        pdf_parts.append(chunk)
+        running_offset += len(chunk)
+
+    xref_offset = running_offset
+    xref_entries = ["0000000000 65535 f \n"] + [f"{offset:010d} 00000 n \n" for offset in offsets[1:]]
+    pdf_parts.append(f"xref\n0 {len(objects) + 1}\n".encode("latin-1"))
+    pdf_parts.append("".join(xref_entries).encode("latin-1"))
+    pdf_parts.append(
+        f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF".encode("latin-1")
+    )
+    return b"".join(pdf_parts)
+
 ADMIN_USER = "admin"
 ADMIN_PASS = "sdah1234"
 _AUTH_COOKIE = "session"
@@ -109,6 +563,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         if request.cookies.get(_AUTH_COOKIE) == "ok":
             return await call_next(request)
+        if path.startswith("/exports/") or request.headers.get("x-requested-with", "").lower() == "fetch":
+            return PlainTextResponse("Authentication required. Please sign in again and retry the export.", status_code=401)
         return RedirectResponse(url="/login", status_code=302)
 
 def _parse_as_of(request: Request, as_of: Optional[str]) -> date:
@@ -2063,6 +2519,88 @@ def download_cli_distribution(session: Session = Depends(get_session)):
         stream,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@app.post("/exports/table.xlsx")
+async def export_table_xlsx(request: Request):
+    try:
+        payload = await request.json()
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail="Invalid export payload.") from exc
+    title, headers, rows, report_date_label = _coerce_export_table_payload(payload)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = _sanitize_excel_sheet_title(title)
+    column_count = max(1, len(headers))
+    if report_date_label:
+        ws.append([title])
+        ws.append([f"Updated on: {report_date_label}"])
+        header_row_index = 3
+    else:
+        ws.append([title])
+        header_row_index = 2
+    ws.append(headers)
+    for row in rows:
+        ws.append(row)
+
+    header_fill = PatternFill(fill_type="solid", fgColor="16314C")
+    header_font = Font(bold=True, color="F3FBFF")
+    header_alignment = Alignment(horizontal="center", vertical="center")
+    for cell in ws[header_row_index]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = header_alignment
+
+    ws.freeze_panes = f"A{header_row_index + 1}"
+    last_row = header_row_index + max(len(rows), 1)
+    ws.auto_filter.ref = f"A{header_row_index}:{get_column_letter(column_count)}{last_row}"
+
+    title_alignment = Alignment(horizontal="left", vertical="center")
+    title_font = Font(bold=True, color="16314C")
+    for row_index in range(1, header_row_index):
+        cell = ws.cell(row=row_index, column=1)
+        cell.font = title_font
+        cell.alignment = title_alignment
+        ws.merge_cells(
+            start_row=row_index,
+            start_column=1,
+            end_row=row_index,
+            end_column=column_count,
+        )
+
+    for column_index, header in enumerate(headers, start=1):
+        max_length = len(header)
+        for row in rows:
+            max_length = max(max_length, len(row[column_index - 1]))
+        ws.column_dimensions[get_column_letter(column_index)].width = min(max(max_length + 2, 10), 42)
+
+    stream = BytesIO()
+    wb.save(stream)
+    stream.seek(0)
+    filename = _sanitize_export_filename(title, "xlsx")
+    return StreamingResponse(
+        stream,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{urlparse.quote(filename)}"},
+    )
+
+
+@app.post("/exports/table.pdf")
+async def export_table_pdf(request: Request):
+    try:
+        payload = await request.json()
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail="Invalid export payload.") from exc
+
+    title, headers, rows, report_date_label = _coerce_export_table_payload(payload)
+    pdf_bytes = _build_table_pdf_bytes(title, headers, rows, report_date_label)
+    filename = _sanitize_export_filename(title, "pdf")
+    return StreamingResponse(
+        BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{urlparse.quote(filename)}"},
     )
 
 

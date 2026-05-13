@@ -12,6 +12,42 @@
     return cleaned || fallback;
   };
 
+  const readBlobSignature = async (blob, size = 8) => {
+    const bytes = new Uint8Array(await blob.slice(0, size).arrayBuffer());
+    return Array.from(bytes);
+  };
+
+  const matchesSignature = (bytes, signature) =>
+    signature.every((value, index) => bytes[index] === value);
+
+  const getExpectedContentType = (extension) =>
+    extension === "pdf"
+      ? "application/pdf"
+      : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+  const validateDownloadBlob = async (blob, extension) => {
+    const bytes = await readBlobSignature(blob, extension === "pdf" ? 5 : 4);
+    if (extension === "pdf") {
+      return matchesSignature(bytes, [0x25, 0x50, 0x44, 0x46, 0x2d]);
+    }
+    return matchesSignature(bytes, [0x50, 0x4b, 0x03, 0x04]);
+  };
+
+  const extractErrorMessage = async (response, fallbackMessage) => {
+    const contentType = response.headers.get("content-type") || "";
+    try {
+      if (contentType.includes("application/json")) {
+        const payload = await response.json();
+        return normalizeText(payload?.detail || payload?.message || "") || fallbackMessage;
+      }
+      const text = await response.text();
+      return normalizeText(text) || fallbackMessage;
+    } catch (error) {
+      console.error(error);
+      return fallbackMessage;
+    }
+  };
+
   const extractExpandedTexts = (cells) => {
     const values = [];
     Array.from(cells || []).forEach((cell) => {
@@ -120,14 +156,27 @@
       button.disabled = true;
       const response = await fetch(endpoint, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: `${getExpectedContentType(extension)}, application/json, text/plain`,
+          "X-Requested-With": "fetch",
+        },
         body: JSON.stringify(snapshot),
       });
       if (!response.ok) {
-        const errorText = await response.text();
+        const errorText = await extractErrorMessage(response, failureMessage);
         throw new Error(errorText || failureMessage);
       }
       const blob = await response.blob();
+      const expectedContentType = getExpectedContentType(extension);
+      const contentType = response.headers.get("content-type") || blob.type || "";
+      const validBlob = await validateDownloadBlob(blob, extension);
+      if (!validBlob || !contentType.includes(expectedContentType)) {
+        throw new Error(
+          "The export response was not a valid file. Please sign in again and retry."
+        );
+      }
       const downloadUrl = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = downloadUrl;
