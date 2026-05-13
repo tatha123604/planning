@@ -23,19 +23,35 @@ body {
 }
 .brand {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 12px;
+  justify-content: center;
+  gap: 14px;
   font-weight: 800;
   letter-spacing: 0.04em;
   color: #e5e7f0;
-  padding: 10px 12px;
-  border-radius: 12px;
+  text-align: center;
+  padding: 14px 12px 16px;
+  border-radius: 18px;
   background: rgba(255,255,255,0.04);
   border: 1px solid rgba(255,255,255,0.08);
   cursor: pointer;
   transition: transform 0.2s ease, background 0.2s ease;
 }
 .brand:hover { background: rgba(255,255,255,0.07); transform: translateY(-1px); }
+.brand-mark {
+  width: min(132px, 100%);
+  height: auto;
+  display: block;
+  flex: 0 0 auto;
+}
+.brand-title {
+  display: block;
+  max-width: 100%;
+  line-height: 1.2;
+  font-size: 0.95rem;
+  word-break: break-word;
+}
 .brand .dot { width: 14px; height: 14px; border-radius: 50%; background: linear-gradient(135deg, #12bde7, #66e1b6); box-shadow: 0 0 12px rgba(18,189,231,0.9); }
 .side-links { display: flex; flex-direction: column; gap: 10px; }
 .side-links a {
@@ -122,6 +138,35 @@ button:hover { filter: brightness(1.05); }
 .ghost:hover { border-color: rgba(255,255,255,0.35); }
 
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin: 0 0 16px; }
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  margin: 0 0 16px;
+}
+.dashboard-headcount-card {
+  width: 100%;
+}
+.dashboard-summary-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+.dashboard-summary-card {
+  min-height: 280px;
+}
+.dashboard-summary-card h3 {
+  margin: 14px 0 8px;
+  font-size: 0.95rem;
+  color: #dff6ff;
+}
+.dashboard-summary-card ul {
+  margin-top: 8px;
+}
+.dashboard-summary-card li + li {
+  margin-top: 6px;
+}
 .card {
   background: rgba(17, 24, 39, 0.85);
   border: 1px solid rgba(255,255,255,0.06);
@@ -1377,6 +1422,9 @@ ul { padding-left: 18px; margin: 6px 0; }
 }
 
 @media (max-width: 900px) {
+  .dashboard-summary-row {
+    grid-template-columns: 1fr;
+  }
   .report-tabs {
     width: 100%;
   }
@@ -1451,6 +1499,12 @@ ul { padding-left: 18px; margin: 6px 0; }
 .sidebar-toggle-btn:hover { background: linear-gradient(180deg, rgba(102,225,182,0.95), rgba(18,189,231,0.95)); box-shadow: 10px 0 24px rgba(0,0,0,0.4); }
 
 @media (max-width: 640px) {
+  .brand-mark {
+    width: 108px;
+  }
+  .brand-title {
+    font-size: 0.9rem;
+  }
   .layout { flex-direction: column; }
   .sidebar { width: 100%; height: auto; position: relative; border-right: none; border-bottom: 1px solid rgba(255,255,255,0.06); }
   .content { padding: 16px; }

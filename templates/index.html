@@ -12,7 +12,7 @@
     <aside class="sidebar">
       <div class="brand">
         <img class="brand-mark" src="/static/indian-railways-mark.svg" alt="Indian Railways" />
-        <span>SDAH Crew Planner</span>
+        <span class="brand-title">SDAH Crew Planner</span>
       </div>
       <nav class="side-links">
         <a class="{{ 'active' if active_page == 'dashboard' else '' }}" href="/">Dashboard</a>
@@ -47,7 +47,7 @@
         </div>
       </header>
 
-      <section class="grid dashboard-grid">
+      <section class="dashboard-grid">
         <div class="card dashboard-headcount-card">
           <h2>Headcount vs Requirement</h2>
           <p class="hint">Target date: {{ target_date | dmy }}</p>
@@ -71,45 +71,47 @@
           </table>
         </div>
 
-        <div class="card">
-          <h2>Recruiting Actions</h2>
-          {% if recruit_plan %}
-            {% for role, steps in recruit_plan.items() %}
-              <h3>{{ role }}</h3>
-              <ul>
-                {% for step in steps %}<li>{{ step }}</li>{% endfor %}
-              </ul>
-            {% endfor %}
-          {% else %}
-            <p>No hiring needed within horizon.</p>
-          {% endif %}
-        </div>
+        <div class="dashboard-summary-row">
+          <div class="card dashboard-summary-card">
+            <h2>Recruiting Actions</h2>
+            {% if recruit_plan %}
+              {% for role, steps in recruit_plan.items() %}
+                <h3>{{ role }}</h3>
+                <ul>
+                  {% for step in steps %}<li>{{ step }}</li>{% endfor %}
+                </ul>
+              {% endfor %}
+            {% else %}
+              <p>No hiring needed within horizon.</p>
+            {% endif %}
+          </div>
 
-        <div class="card">
-          <h2>Promotions</h2>
-          {% if promotion_plan %}
-            <ul>
-              {% for move in promotion_plan %}<li>{{ move }}</li>{% endfor %}
-            </ul>
-          {% else %}
-            <p>No promotions in window.</p>
-          {% endif %}
-        </div>
-
-        <div class="card">
-          <h2>Upcoming Retirements</h2>
-          {% if retiring %}
-            {% for role, people in retiring.items() %}
-              <h3>{{ role }}</h3>
+          <div class="card dashboard-summary-card">
+            <h2>Promotions</h2>
+            {% if promotion_plan %}
               <ul>
-                {% for p in people %}
-                  <li>{{ p.name }} ({{ p.retirement_date | dmy if p.retirement_date else '' }})</li>
-                {% endfor %}
+                {% for move in promotion_plan %}<li>{{ move }}</li>{% endfor %}
               </ul>
-            {% endfor %}
-          {% else %}
-            <p>None within horizon.</p>
-          {% endif %}
+            {% else %}
+              <p>No promotions in window.</p>
+            {% endif %}
+          </div>
+
+          <div class="card dashboard-summary-card">
+            <h2>Upcoming Retirements</h2>
+            {% if retiring %}
+              {% for role, people in retiring.items() %}
+                <h3>{{ role }}</h3>
+                <ul>
+                  {% for p in people %}
+                    <li>{{ p.name }} ({{ p.retirement_date | dmy if p.retirement_date else '' }})</li>
+                  {% endfor %}
+                </ul>
+              {% endfor %}
+            {% else %}
+              <p>None within horizon.</p>
+            {% endif %}
+          </div>
         </div>
       </section>
     </main>
