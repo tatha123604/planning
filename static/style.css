@@ -1060,18 +1060,20 @@ ul { padding-left: 18px; margin: 6px 0; }
   color: #b9cce1;
 }
 .analysis-summary-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(220px, 300px));
+  display: flex;
+  flex-wrap: wrap;
   justify-content: end;
-  align-items: stretch;
+  align-items: flex-start;
   gap: 16px;
   margin: 10px 0 18px;
   margin-left: auto;
   max-width: 616px;
 }
 .analysis-summary-card {
+  flex: 0 1 300px;
   min-height: 148px;
-  height: 100%;
+  height: auto;
+  margin: 0;
   align-self: stretch;
 }
 .analysis-summary-card .metric-card-body {
@@ -1106,9 +1108,11 @@ ul { padding-left: 18px; margin: 6px 0; }
 }
 @media (max-width: 900px) {
   .analysis-summary-grid {
-    grid-template-columns: 1fr;
     justify-content: stretch;
     max-width: none;
+  }
+  .analysis-summary-card {
+    flex-basis: 100%;
   }
   .analysis-summary-card {
     min-height: 132px;
