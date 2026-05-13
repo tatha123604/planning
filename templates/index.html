@@ -4,24 +4,36 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SDAH Crew Planner</title>
-  <link rel="stylesheet" href="/static/style.css?v={{ asset_ver }}" />
+  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="icon" type="image/svg+xml" href="/static/indian-railways-mark.svg" />
 </head>
 <body>
   <div class="layout">
     <aside class="sidebar">
       <div class="brand">
-        <div class="dot"></div>
+        <img class="brand-mark" src="/static/indian-railways-mark.svg" alt="Indian Railways" />
         <span>SDAH Crew Planner</span>
       </div>
       <nav class="side-links">
         <a class="{{ 'active' if active_page == 'dashboard' else '' }}" href="/">Dashboard</a>
         <a class="{{ 'active' if active_page == 'employees' else '' }}" href="/employees">Employees</a>
         <a class="{{ 'active' if active_page == 'uploads' else '' }}" href="/uploads">Uploads</a>
+        <a class="{{ 'active' if active_page == 'cli' else '' }}" href="/cli">CLI</a>
+        <a class="{{ 'active' if active_page == 'cli_distribution_planner' else '' }}" href="/cli-distribution-planner">CLI Distribution Planner (Experimental)</a>
+        <a class="{{ 'active' if active_page == 'top_performer' else '' }}" href="/top-performer">Top Performer</a>
+        <details class="side-group" {% if active_page in ['cli_matrix', 'non_continuous_duty', 'sub_non_continuous_duty'] %}open{% endif %}>
+          <summary>CMS REPORTS</summary>
+          <div class="side-sub-links">
+            <a class="{{ 'active' if active_page == 'cli_matrix' else '' }}" href="/cli-matrix">CLI Matrix</a>
+            <a class="{{ 'active' if active_page == 'non_continuous_duty' else '' }}" href="/non-continuous-duty">NON SUB NON CONT DUTY</a>
+            <a class="{{ 'active' if active_page == 'sub_non_continuous_duty' else '' }}" href="/sub-non-continuous-duty">SUB NON CONT DUTY</a>
+          </div>
+        </details>
         <a class="{{ 'active' if active_page == 'requirements' else '' }}" href="/requirements">Requirements</a>
         <a class="{{ 'active' if active_page == 'reports' else '' }}" href="/reports">Reports</a>
         <a class="{{ 'active' if active_page == 'ssts_report' else '' }}" href="/ssts-report">SSTS Report</a>
       </nav>
-      <div class="hierarchy">Hierarchy: LPM &gt; Motorman &gt; LPP &gt; LPG &gt; LPS (Shunter) &gt; ALP</div>
+      <div class="hierarchy">Hierarchy: LPM &gt; Motorman &gt; LPP &gt; LPG &gt; LPS/SHT &gt; ALP</div>
     </aside>
 
     <main class="content">
@@ -35,13 +47,13 @@
         </div>
       </header>
 
-      <section class="grid">
-        <div class="card">
+      <section class="grid dashboard-grid">
+        <div class="card dashboard-headcount-card">
           <h2>Headcount vs Requirement</h2>
           <p class="hint">Target date: {{ target_date | dmy }}</p>
-          <table class="paged">
+          <table class="employee-table paged metric-table">
             <thead>
-              <tr><th>Role</th><th>Man on Role</th><th>No. of Retirements</th><th>IN HAND</th></tr>
+              <tr><th>Designation</th><th>Man on Designation</th><th>No. of Retirements</th><th>IN HAND</th></tr>
             </thead>
             <tbody>
               {% for req in requirements %}
@@ -49,7 +61,7 @@
               {% set retiring = retire_counts.get(req.role, 0) %}
               {% set deficiency = have - retiring %}
               <tr class="{{ 'ok' if deficiency > 0 else 'warn' }}">
-                <td>{{ req.role }}</td>
+                <td><span class="designation-pill">{{ req.role }}</span></td>
                 <td>{{ have }}</td>
                 <td>{{ retiring }}</td>
                 <td>{{ deficiency }}</td>
@@ -117,11 +129,22 @@
           toggle();
         }
       });
-      // ensure start visible
       document.body.classList.remove('nav-hidden');
+
     })();
   </script>
-  <script src="/static/table-pager.js?v={{ asset_ver }}"></script>
-  <script src="/static/sidebar-toggle.js?v={{ asset_ver }}"></script>
+  <script src="/static/sidebar-toggle.js"></script>
+  <script src="/static/table-pager.js"></script>
+  <script src="/static/table-export.js"></script>
+  <script src="/static/button-confirm.js"></script>
 </body>
 </html>
+
+
+
+
+
+
+
+
+

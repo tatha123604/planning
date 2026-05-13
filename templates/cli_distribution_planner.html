@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CLI Distribution Planner | SDAH Crew Planner</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="icon" type="image/svg+xml" href="/static/indian-railways-mark.svg" />
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <img class="brand-mark" src="/static/indian-railways-mark.svg" alt="Indian Railways" />
+        <span>SDAH Crew Planner</span>
+      </div>
+      <nav class="side-links">
+        <a class="{{ 'active' if active_page == 'dashboard' else '' }}" href="/">Dashboard</a>
+        <a class="{{ 'active' if active_page == 'employees' else '' }}" href="/employees">Employees</a>
+        <a class="{{ 'active' if active_page == 'uploads' else '' }}" href="/uploads">Uploads</a>
+        <a class="{{ 'active' if active_page == 'cli' else '' }}" href="/cli">CLI</a>
+        <a class="{{ 'active' if active_page == 'cli_distribution_planner' else '' }}" href="/cli-distribution-planner">CLI Distribution Planner (Experimental)</a>
+        <a class="{{ 'active' if active_page == 'top_performer' else '' }}" href="/top-performer">Top Performer</a>
+        <details class="side-group" {% if active_page in ['cli_matrix', 'non_continuous_duty', 'sub_non_continuous_duty'] %}open{% endif %}>
+          <summary>CMS REPORTS</summary>
+          <div class="side-sub-links">
+            <a class="{{ 'active' if active_page == 'cli_matrix' else '' }}" href="/cli-matrix">CLI Matrix</a>
+            <a class="{{ 'active' if active_page == 'non_continuous_duty' else '' }}" href="/non-continuous-duty">NON SUB NON CONT DUTY</a>
+            <a class="{{ 'active' if active_page == 'sub_non_continuous_duty' else '' }}" href="/sub-non-continuous-duty">SUB NON CONT DUTY</a>
+          </div>
+        </details>
+        <a class="{{ 'active' if active_page == 'requirements' else '' }}" href="/requirements">Requirements</a>
+        <a class="{{ 'active' if active_page == 'reports' else '' }}" href="/reports">Reports</a>
+      </nav>
+      <div class="hierarchy">Hierarchy: LPM &gt; Motorman &gt; LPP &gt; LPG &gt; LPS/SHT &gt; ALP</div>
+    </aside>
+
+    <main class="content">
+      <header>
+        <div>
+          <h1>CLI Distribution Planner</h1>
+          <p>Plan balanced distribution across CLI when new CLI joins or retires.</p>
+        </div>
+        <div class="header-actions">
+          <a class="ghost small" href="/logout">Logout</a>
+        </div>
+      </header>
+
+      <section class="card" id="cli-distribution-planner">
+        <p class="hint">Distribution stays the same until you calculate again (typically after new CLI joins or retires).</p>
+        {% if cli_plan_notice %}
+        <p class="hint success-text">{{ cli_plan_notice }}</p>
+        {% endif %}
+        {% if cli_plan_error %}
+        <p class="hint error-text">{{ cli_plan_error }}</p>
+        {% endif %}
+        <form class="inline" method="post" action="/cli/distribution/targets/add">
+          <label>CLI Name
+            <input name="cli_name" placeholder="CLI name" required />
+          </label>
+          <label>CLI ID
+            <input name="cli_id" placeholder="CLI ID (optional)" />
+          </label>
+          <button type="submit" data-confirm="Add this CLI to distribution targets?">ADD CLI</button>
+        </form>
+
+        {% if cli_manual_targets %}
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Target CLI</th>
+                <th>CLI ID</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for target in cli_manual_targets %}
+              <tr>
+                <td>{{ target.cli_name }}</td>
+                <td>{{ target.cli_id or '' }}</td>
+                <td>
+                  <form method="post" action="/cli/distribution/targets/remove">
+                    <input type="hidden" name="target_id" value="{{ target.id }}" />
+                    <button type="submit" class="danger" data-confirm="Remove this CLI target?">Remove</button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endif %}
+
+        <form class="inline" method="post" action="/cli/distribution/calculate">
+          <label>Exclude CLI
+            <select name="exclude_cli" multiple size="5">
+              {% for opt in cli_opts %}
+                <option value="{{ opt }}" {% if opt in cli_plan_selected_exclude_cli %}selected{% endif %}>{{ opt }}</option>
+              {% endfor %}
+            </select>
+            <span class="hint">Use Ctrl/Shift to select multiple.</span>
+            <div class="hint" id="exclude-cli-selected">Selected: none</div>
+            <button type="button" class="ghost small planner-reset-button" id="exclude-cli-reset">Reset selection</button>
+          </label>
+          <label>Retiring CLI
+            <select name="retiring_cli" multiple size="5">
+              {% for opt in cli_opts %}
+                <option value="{{ opt }}" {% if opt in cli_plan_selected_retiring_cli %}selected{% endif %}>{{ opt }}</option>
+              {% endfor %}
+            </select>
+            <span class="hint">Use Ctrl/Shift to select multiple.</span>
+            <div class="hint" id="retiring-cli-selected">Selected: none</div>
+            <button type="button" class="ghost small planner-reset-button" id="retiring-cli-reset">Reset selection</button>
+          </label>
+          <label>Exclude Staff Name
+            <select name="exclude_staff_ids" multiple size="6">
+              {% for staff in cli_plan_staff_opts %}
+                <option value="{{ staff.id }}" {% if staff.id in cli_plan_selected_exclude_staff_ids %}selected{% endif %}>{{ staff.name }} | {{ staff.role }}{% if staff.cli %} | {{ staff.cli }}{% endif %}</option>
+              {% endfor %}
+            </select>
+            <span class="hint">Use Ctrl/Shift to select multiple.</span>
+            <div class="hint" id="exclude-staff-selected">Selected: none</div>
+            <button type="button" class="ghost small planner-reset-button" id="exclude-staff-reset">Reset selection</button>
+          </label>
+          <button type="submit" data-confirm="Calculate new CLI distribution plan?">Calculate Distribution</button>
+          {% if cli_plan_created_at %}<span class="hint">Last calculated: {{ cli_plan_created_at }}</span>{% endif %}
+        </form>
+
+        {% if cli_plan_summary %}
+        <h3 class="highlight-yellow">CLI Distribution Summary by Gradation Wise</h3>
+        <div class="inline planner-filter-row planner-filter-row-single">
+          <label>CLI Filter
+            <select id="cli-plan-summary-filter">
+              <option value="">All</option>
+              {% for row in cli_plan_summary %}
+                <option value="{{ row.cli }}">{{ row.cli }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+        <div class="table-wrap">
+          <table class="paged" id="cli-plan-summary-table">
+            <thead>
+              <tr>
+                <th>CLI</th>
+                <th>CLI ID</th>
+                <th>Gradation A</th>
+                <th>Gradation B</th>
+                <th>Gradation C</th>
+                <th>Total/Gradation</th>
+                <th>Total staff under CLI</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in cli_plan_summary %}
+              <tr data-cli="{{ row.cli }}">
+                <td>{{ row.cli }}</td>
+                <td>{{ row.cli_id }}</td>
+                <td>{{ row.A }}</td>
+                <td>{{ row.B }}</td>
+                <td>{{ row.C }}</td>
+                <td>{{ row.total_gradation }}</td>
+                <td>{{ row.total_staff }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endif %}
+
+        {% if cli_plan_assignments %}
+        <h3 class="highlight-yellow">CLI Distribution Summary in Detailed</h3>
+        <div class="inline planner-filter-row">
+          <label>Current CLI
+            <select id="cli-plan-assignments-current-filter">
+              <option value="">All</option>
+              {% for opt in cli_plan_current_cli_opts %}
+                <option value="{{ opt }}">{{ opt }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>Proposed CLI
+            <select id="cli-plan-assignments-proposed-filter">
+              <option value="">All</option>
+              {% for opt in cli_plan_proposed_cli_opts %}
+                <option value="{{ opt }}">{{ opt }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>Designation
+            <select id="cli-plan-assignments-role-filter">
+              <option value="">All</option>
+              {% for opt in role_opts %}
+                <option value="{{ opt }}">{{ opt }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>Name
+            <input id="cli-plan-assignments-name-filter" placeholder="Type name" />
+          </label>
+        </div>
+        <div class="table-wrap">
+          <table class="paged" id="cli-plan-assignments-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Designation</th>
+                <th>Gradation</th>
+                <th>Current CLI</th>
+                <th>Current CLI ID</th>
+                <th>Proposed CLI</th>
+                <th>Proposed CLI ID</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in cli_plan_assignments %}
+              <tr data-cli="{{ row.proposed_cli }}" data-current-cli="{{ row.current_cli or '' }}">
+                <td>{{ row.name }}</td>
+                <td>{{ row.role }}</td>
+                <td>{{ row.gradation }}</td>
+                <td>{{ row.current_cli or '' }}</td>
+                <td>{{ row.current_cli_id or '' }}</td>
+                <td>{{ row.proposed_cli }}</td>
+                <td>{{ row.proposed_cli_id or '' }}</td>
+              </tr>
+              {% endfor %}
+              <tr class="total-highlight" id="cli-plan-assignments-total">
+                <td>TOTAL</td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td id="cli-plan-assignments-total-count">0</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        {% endif %}
+      </section>
+    </main>
+  </div>
+
+  <script>
+    (() => {
+      const brand = document.querySelector('.brand');
+      if (!brand) return;
+      brand.style.cursor = 'pointer';
+      brand.setAttribute('title', 'Click to hide/show navigation');
+      brand.setAttribute('tabindex', '0');
+      const toggle = () => document.body.classList.toggle('nav-hidden');
+      brand.addEventListener('click', toggle);
+      brand.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          toggle();
+        }
+      });
+      document.body.classList.remove('nav-hidden');
+
+      const applyCliFilter = (table, filterValue) => {
+        if (!table) return;
+        const rows = Array.from(table.tBodies?.[0]?.rows || []);
+        rows.forEach((row) => {
+          const rowCli = (row.dataset.cli || '').trim();
+          row.dataset.filterHidden =
+            filterValue && rowCli !== filterValue ? 'true' : 'false';
+        });
+        table.dispatchEvent(new CustomEvent('table-pager:refresh', { detail: { resetPage: true } }));
+      };
+
+      const summaryFilter = document.getElementById('cli-plan-summary-filter');
+      const summaryTable = document.getElementById('cli-plan-summary-table');
+      if (summaryFilter && summaryTable) {
+        summaryFilter.addEventListener('change', () => {
+          applyCliFilter(summaryTable, summaryFilter.value);
+        });
+      }
+
+      const assignmentsCurrentFilter = document.getElementById('cli-plan-assignments-current-filter');
+      const assignmentsProposedFilter = document.getElementById('cli-plan-assignments-proposed-filter');
+      const assignmentsTable = document.getElementById('cli-plan-assignments-table');
+      const assignmentsRoleFilter = document.getElementById('cli-plan-assignments-role-filter');
+      const assignmentsNameFilter = document.getElementById('cli-plan-assignments-name-filter');
+      const assignmentsTotalCell = document.getElementById('cli-plan-assignments-total-count');
+
+      const applyAssignmentFilters = () => {
+        if (!assignmentsTable) return;
+        const currentValue = (assignmentsCurrentFilter?.value || '').trim().toLowerCase();
+        const proposedValue = (assignmentsProposedFilter?.value || '').trim().toLowerCase();
+        const roleValue = assignmentsRoleFilter?.value || '';
+        const nameValue = (assignmentsNameFilter?.value || '').trim().toLowerCase();
+        const rows = Array.from(assignmentsTable.tBodies?.[0]?.rows || []);
+        let visibleCount = 0;
+        rows.forEach((row) => {
+          if (row.id === 'cli-plan-assignments-total') {
+            row.dataset.filterHidden = 'false';
+            return;
+          }
+          const rowCli = (row.dataset.cli || '').trim().toLowerCase();
+          const rowCurrentCli = (row.dataset.currentCli || '').trim().toLowerCase();
+          const roleCell = row.cells?.[1]?.textContent?.trim() || '';
+          const nameCell = row.cells?.[0]?.textContent?.trim().toLowerCase() || '';
+          const hide =
+            (currentValue && rowCurrentCli !== currentValue) ||
+            (proposedValue && rowCli !== proposedValue) ||
+            (roleValue && roleCell !== roleValue);
+          const finalHide = hide || (nameValue && !nameCell.includes(nameValue));
+          row.dataset.filterHidden = finalHide ? 'true' : 'false';
+          if (!finalHide) visibleCount += 1;
+        });
+        if (assignmentsTotalCell) {
+          assignmentsTotalCell.textContent = String(visibleCount);
+        }
+        assignmentsTable.dispatchEvent(new CustomEvent('table-pager:refresh', { detail: { resetPage: true } }));
+      };
+
+      if (assignmentsCurrentFilter && assignmentsTable) {
+        assignmentsCurrentFilter.addEventListener('change', () => {
+          applyAssignmentFilters();
+        });
+      }
+      if (assignmentsProposedFilter && assignmentsTable) {
+        assignmentsProposedFilter.addEventListener('change', () => {
+          applyAssignmentFilters();
+        });
+      }
+      if (assignmentsRoleFilter && assignmentsTable) {
+        assignmentsRoleFilter.addEventListener('change', () => {
+          applyAssignmentFilters();
+        });
+      }
+      if (assignmentsNameFilter && assignmentsTable) {
+        assignmentsNameFilter.addEventListener('input', () => {
+          applyAssignmentFilters();
+        });
+      }
+      if (assignmentsTable) {
+        applyAssignmentFilters();
+      }
+
+      const updateSelectedLabel = (selectEl, labelEl) => {
+        if (!selectEl || !labelEl) return;
+        const selected = Array.from(selectEl.selectedOptions || []).map((opt) => opt.textContent?.trim()).filter(Boolean);
+        labelEl.textContent = selected.length ? `Selected: ${selected.join(', ')}` : 'Selected: none';
+      };
+
+      const excludeSelect = document.querySelector('select[name="exclude_cli"]');
+      const excludeLabel = document.getElementById('exclude-cli-selected');
+      const excludeReset = document.getElementById('exclude-cli-reset');
+      if (excludeSelect && excludeLabel) {
+        updateSelectedLabel(excludeSelect, excludeLabel);
+        excludeSelect.addEventListener('change', () => updateSelectedLabel(excludeSelect, excludeLabel));
+        excludeReset?.addEventListener('click', () => {
+          Array.from(excludeSelect.options).forEach((option) => {
+            option.selected = false;
+          });
+          updateSelectedLabel(excludeSelect, excludeLabel);
+        });
+      }
+
+      const retiringSelect = document.querySelector('select[name="retiring_cli"]');
+      const retiringLabel = document.getElementById('retiring-cli-selected');
+      const retiringReset = document.getElementById('retiring-cli-reset');
+      if (retiringSelect && retiringLabel) {
+        updateSelectedLabel(retiringSelect, retiringLabel);
+        retiringSelect.addEventListener('change', () => updateSelectedLabel(retiringSelect, retiringLabel));
+        retiringReset?.addEventListener('click', () => {
+          Array.from(retiringSelect.options).forEach((option) => {
+            option.selected = false;
+          });
+          updateSelectedLabel(retiringSelect, retiringLabel);
+        });
+      }
+
+      const excludeStaffSelect = document.querySelector('select[name="exclude_staff_ids"]');
+      const excludeStaffLabel = document.getElementById('exclude-staff-selected');
+      const excludeStaffReset = document.getElementById('exclude-staff-reset');
+      if (excludeStaffSelect && excludeStaffLabel) {
+        updateSelectedLabel(excludeStaffSelect, excludeStaffLabel);
+        excludeStaffSelect.addEventListener('change', () => updateSelectedLabel(excludeStaffSelect, excludeStaffLabel));
+        excludeStaffReset?.addEventListener('click', () => {
+          Array.from(excludeStaffSelect.options).forEach((option) => {
+            option.selected = false;
+          });
+          updateSelectedLabel(excludeStaffSelect, excludeStaffLabel);
+        });
+      }
+    })();
+  </script>
+  <script src="/static/sidebar-toggle.js"></script>
+  <script src="/static/table-pager.js"></script>
+  <script src="/static/table-export.js"></script>
+  <script src="/static/button-confirm.js"></script>
+</body>
+</html>

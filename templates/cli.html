@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CLI | SDAH Crew Planner</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="icon" type="image/svg+xml" href="/static/indian-railways-mark.svg" />
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <img class="brand-mark" src="/static/indian-railways-mark.svg" alt="Indian Railways" />
+        <span>SDAH Crew Planner</span>
+      </div>
+      <nav class="side-links">
+        <a class="{{ 'active' if active_page == 'dashboard' else '' }}" href="/">Dashboard</a>
+        <a class="{{ 'active' if active_page == 'employees' else '' }}" href="/employees">Employees</a>
+        <a class="{{ 'active' if active_page == 'uploads' else '' }}" href="/uploads">Uploads</a>
+        <a class="{{ 'active' if active_page == 'cli' else '' }}" href="/cli">CLI</a>
+        <a class="{{ 'active' if active_page == 'cli_distribution_planner' else '' }}" href="/cli-distribution-planner">CLI Distribution Planner (Experimental)</a>
+        <a class="{{ 'active' if active_page == 'top_performer' else '' }}" href="/top-performer">Top Performer</a>
+        <details class="side-group" {% if active_page in ['cli_matrix', 'non_continuous_duty', 'sub_non_continuous_duty'] %}open{% endif %}>
+          <summary>CMS REPORTS</summary>
+          <div class="side-sub-links">
+            <a class="{{ 'active' if active_page == 'cli_matrix' else '' }}" href="/cli-matrix">CLI Matrix</a>
+            <a class="{{ 'active' if active_page == 'non_continuous_duty' else '' }}" href="/non-continuous-duty">NON SUB NON CONT DUTY</a>
+            <a class="{{ 'active' if active_page == 'sub_non_continuous_duty' else '' }}" href="/sub-non-continuous-duty">SUB NON CONT DUTY</a>
+          </div>
+        </details>
+        <a class="{{ 'active' if active_page == 'requirements' else '' }}" href="/requirements">Requirements</a>
+        <a class="{{ 'active' if active_page == 'reports' else '' }}" href="/reports">Reports</a>
+      </nav>
+      <div class="hierarchy">Hierarchy: LPM &gt; Motorman &gt; LPP &gt; LPG &gt; LPS/SHT &gt; ALP</div>
+    </aside>
+
+    <main class="content">
+      <header>
+        <div>
+          <h1>CLI</h1>
+          <p>All CLI-related gradation tools, distribution, and roster in one place.</p>
+        </div>
+        <div class="header-actions">
+          <a class="ghost small" href="/logout">Logout</a>
+        </div>
+      </header>
+
+      <section class="card" id="li-grading-card">
+        <h2>Upload CLI Grading (.xlsx)</h2>
+        {% if grading_update_error %}
+        <p class="error-text" role="alert">{{ grading_update_error }}</p>
+        {% endif %}
+        {% if grading_update_notice %}
+        <p class="hint success-text" role="status">{{ grading_update_notice }}</p>
+        {% endif %}
+        {% if grading_update_warning %}
+        <p class="hint warning-text" role="status">{{ grading_update_warning }}</p>
+        {% endif %}
+        {% if grading_source_name or grading_report_date or grading_saved_at %}
+        <p class="hint">
+          Latest grading source:
+          {% if grading_source_name %}<strong>{{ grading_source_name }}</strong>{% endif %}
+          {% if grading_report_date %}<span> - file date {{ grading_report_date }}</span>{% endif %}
+          {% if grading_saved_at %}<span> - updated on {{ grading_saved_at }}</span>{% endif %}
+        </p>
+        {% endif %}
+        {% if grading_update_details %}
+        <div class="sync-list-header">
+          <p class="hint success-text"><strong>Gradation update details</strong></p>
+          {% if grading_update_details|length > 10 %}
+          <button type="button" class="ghost small sync-list-toggle" id="grading-details-toggle" aria-expanded="false">Show more</button>
+          {% endif %}
+        </div>
+        <ul class="sync-warning-list" id="grading-details-list">
+          {% for item in grading_update_details %}
+          <li{% if loop.index > 10 %} class="grading-detail-extra" hidden{% endif %}>{{ item }}</li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+        {% if grading_warning_details %}
+        <div class="sync-list-header">
+          <p class="hint warning-text"><strong>Mismatch / Auto-fixed records</strong></p>
+          {% if grading_warning_details|length > 10 %}
+          <button type="button" class="ghost small sync-list-toggle" id="grading-warning-toggle" aria-expanded="false">Show more</button>
+          {% endif %}
+        </div>
+        <ul class="sync-warning-list" id="grading-warning-list">
+          {% for item in grading_warning_details %}
+          <li{% if loop.index > 10 %} class="grading-warning-extra" hidden{% endif %}>{{ item }}</li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+        <form method="post" action="/upload-li-grading" enctype="multipart/form-data" class="inline sensitive-inline-form" data-password-gated-form data-password-gated-code="11111">
+          <label>Excel file
+            <input type="file" name="file" accept=".xlsx,.xlsm" required />
+          </label>
+          <label>CLI bio data (.xlsx)
+            <input type="file" name="bio_data_file" accept=".xlsx,.xlsm" required />
+          </label>
+          <label class="site-password-label compact-site-password">Action Code
+            <input class="site-password-input compact-site-password-input" type="password" name="action_password" autocomplete="current-password" required data-password-gated-input />
+          </label>
+          <button type="submit" data-password-gated-button disabled>Gradation Update</button>
+        </form>
+        <p class="hint">Uses the CLI Crew Grading template columns: <code>CLI ID</code>, <code>CREW ID</code>, <code>CREW NAME</code>, <code>GRADE</code>, and <code>GRADING DATE</code>. Upload <code>CLI bio data (.xlsx)</code> as the reference map for CLI ID to CLI name. Here, <code>LI ID</code> and <code>CLI ID</code> are the same. Any CLI bio row without a grading match will keep gradation <code>0</code>.</p>
+      </section>
+
+      <section class="card collapsible" id="cli-bio-reference">
+        <details open>
+          <summary>CLI Bio Reference</summary>
+          <p class="hint">Saved from the uploaded CLI bio data file. Rows without a grading match stay at gradation <strong>0</strong>.</p>
+          <div class="table-wrap">
+            <table class="paged">
+              <thead>
+                <tr class="table-report-date">
+                  <th colspan="2">Total rows: {{ cli_bio_reference_rows|length if cli_bio_reference_rows else 0 }}</th>
+                </tr>
+                <tr>
+                  <th>CLI ID</th>
+                  <th>CLI Name</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in cli_bio_reference_rows %}
+                <tr>
+                  <td>{{ row.cli_id }}</td>
+                  <td>{{ row.cli_name }}</td>
+                </tr>
+                {% endfor %}
+                {% if not cli_bio_reference_rows %}
+                <tr>
+                  <td colspan="2" class="empty-state">No CLI bio reference rows saved yet.</td>
+                </tr>
+                {% endif %}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      </section>
+
+      <section class="card collapsible">
+        <details open>
+          <summary>CLI Distribution by Gradation</summary>
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap;">
+            <div>
+              <p>Counts of Gradation A, B, and C staff per CLI (all employees).</p>
+              {% if grading_report_date %}
+              <p class="hint">Distribution file date: <strong>{{ grading_report_date }}</strong></p>
+              {% endif %}
+            </div>
+            <a class="ghost" href="/reports/cli-distribution.xlsx">Download Excel</a>
+          </div>
+          <div class="table-wrap">
+            <table class="paged clickable-table" id="cli-distribution-table">
+              <thead>
+                <tr class="table-report-date">
+                  <th colspan="6">Updated on: {{ grading_report_date or '—' }}</th>
+                </tr>
+                <tr>
+                  <th>CLI</th>
+                  <th>CLI ID</th>
+                  <th>Gradation A</th>
+                  <th>Gradation B</th>
+                  <th>Gradation C</th>
+                  <th>Total/Gradation</th>
+                  <th>Total staff under CLI</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in cli_distribution %}
+                <tr{% if row.selected %} class="table-paged-active-odd"{% endif %} data-href="{{ row.detail_href }}">
+                  <td><a href="{{ row.detail_href }}">{{ row.cli | cli_label(row.cli_id) }}</a></td>
+                  <td>{{ row.cli_id or '' }}</td>
+                  <td>{{ row.A }}</td>
+                  <td>{{ row.B }}</td>
+                  <td>{{ row.C }}</td>
+                  <td>{{ row.total }}</td>
+                  <td>{{ row.total_staff or 0 }}</td>
+                </tr>
+                {% endfor %}
+                <tr class="total-highlight">
+                  <td>TOTAL LP</td>
+                  <td></td>
+                  <td>{{ cli_distribution_totals_all.get('A', 0) }}</td>
+                  <td>{{ cli_distribution_totals_all.get('B', 0) }}</td>
+                  <td>{{ cli_distribution_totals_all.get('C', 0) }}</td>
+                  <td>{{ cli_distribution_totals_all.get('total', 0) }}</td>
+                  <td>{{ cli_distribution_totals_all.get('total_staff', 0) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </details>
+      </section>
+
+      {% if cli_distribution_breakdown %}
+      <section class="card collapsible" id="cli-distribution-detail">
+        <details open>
+          <summary>CLI Detail - {{ cli_distribution_detail_label }}</summary>
+          <p class="hint">Designation-wise gradation breakup for <strong>{{ cli_distribution_detail_label }}</strong>.</p>
+          <div class="table-wrap">
+            <table class="paged">
+              <thead>
+                <tr class="table-report-date">
+                  <th colspan="5">Updated on: {{ grading_report_date or '—' }}</th>
+                </tr>
+                <tr>
+                  <th>Designation</th>
+                  <th>Gradation A</th>
+                  <th>Gradation B</th>
+                  <th>Gradation C</th>
+                  <th>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in cli_distribution_breakdown %}
+                <tr>
+                  <td>{{ row.designation }}</td>
+                  <td>{{ row.A }}</td>
+                  <td>{{ row.B }}</td>
+                  <td>{{ row.C }}</td>
+                  <td>{{ row.total }}</td>
+                </tr>
+                {% endfor %}
+                <tr class="total-highlight">
+                  <td>TOTAL</td>
+                  <td>{{ cli_distribution_totals.get('A', 0) }}</td>
+                  <td>{{ cli_distribution_totals.get('B', 0) }}</td>
+                  <td>{{ cli_distribution_totals.get('C', 0) }}</td>
+                  <td>{{ cli_distribution_totals.get('total', 0) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </details>
+      </section>
+      {% endif %}
+
+      <section class="card collapsible" id="cli-roster">
+        <details {% if roster_open %}open{% else %}open{% endif %}>
+          <summary>CLI Roster</summary>
+          <form class="inline" method="get" action="/cli#cli-roster">
+            <label>Name
+              <input name="roster_name" value="{{ roster_name }}" placeholder="Search name" />
+            </label>
+            <label>CLI
+              <select name="roster_cli">
+                <option value="">All</option>
+                {% for opt in cli_opts %}
+                  <option value="{{ opt }}" {% if roster_cli == opt %}selected{% endif %}>{{ opt }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>Designation
+              <select name="roster_role">
+                <option value="">All</option>
+                {% for opt in role_opts %}
+                  <option value="{{ opt }}" {% if roster_role == opt %}selected{% endif %}>{{ opt }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>Gradation
+              <select name="roster_gradation">
+                <option value="">All</option>
+                {% for opt in gradation_opts %}
+                  <option value="{{ opt }}" {% if roster_gradation == opt %}selected{% endif %}>{{ opt }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>CLI Status
+              <select name="roster_cli_status">
+                <option value="" {% if not roster_cli_status %}selected{% endif %}>Assigned only</option>
+                <option value="assigned" {% if roster_cli_status == 'assigned' %}selected{% endif %}>Assigned</option>
+                <option value="unassigned" {% if roster_cli_status == 'unassigned' %}selected{% endif %}>Unassigned</option>
+              </select>
+            </label>
+            <button type="submit">Filter</button>
+            <a class="ghost" href="/cli#cli-roster">Reset</a>
+          </form>
+          <div class="table-wrap">
+            <table class="employee-table paged">
+              <thead>
+                <tr class="table-report-date">
+                  <th colspan="8">Updated on: {{ grading_report_date or '—' }}</th>
+                </tr>
+                <tr>
+                  <th>CLI</th>
+                  <th>CLI ID</th>
+                  <th>Name</th>
+                  <th>HRMS ID</th>
+                  <th>CREW ID</th>
+                  <th>Designation</th>
+                  <th>Gradation</th>
+                  <th>Grading Due</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for e in cli_roster %}
+                <tr>
+                  <td>{{ e.cli_label or (e.cli | cli_label(e.cli_id)) }}</td>
+                  <td>{{ e.cli_id or '' }}</td>
+                  <td>
+                    {% if e.id %}
+                      <a class="cli-roster-link" href="/employees/{{ e.id }}">{{ e.name }}</a>
+                    {% else %}
+                      {{ e.name }}
+                    {% endif %}
+                  </td>
+                  <td>{{ e.hrms or '' }}</td>
+                  <td>{{ e.crew_id or '' }}</td>
+                  <td>{{ e.role }}</td>
+                  <td>{{ e.gradation or '' }}</td>
+                  <td>{{ e.grading_due | dmy if e.grading_due else '' }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      </section>
+    </main>
+  </div>
+  <script>
+    (() => {
+      const brand = document.querySelector('.brand');
+      if (!brand) return;
+      brand.style.cursor = 'pointer';
+      brand.setAttribute('title', 'Click to hide/show navigation');
+      brand.setAttribute('tabindex', '0');
+      const toggle = () => document.body.classList.toggle('nav-hidden');
+      brand.addEventListener('click', toggle);
+      brand.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          toggle();
+        }
+      });
+      document.body.classList.remove('nav-hidden');
+
+      const sourceReportDate = document.querySelector('#source-report-date');
+      if (!sourceReportDate) {
+        const hidden = document.createElement('input');
+        hidden.type = 'hidden';
+        hidden.id = 'source-report-date';
+        hidden.value = '{{ grading_report_date_iso or "" }}';
+        document.body.appendChild(hidden);
+      }
+
+      document.querySelectorAll('[data-password-gated-form]').forEach((form) => {
+        const passwordInput = form.querySelector('[data-password-gated-input]');
+        const submitButton = form.querySelector('[data-password-gated-button]');
+        if (!passwordInput || !submitButton) return;
+
+        const requiredCode = form.dataset.passwordGatedCode || '11111';
+        const syncButtonState = () => {
+          submitButton.disabled = passwordInput.value.trim() !== requiredCode;
+        };
+
+        passwordInput.addEventListener('input', syncButtonState);
+        syncButtonState();
+      });
+
+      const gradingDetailsToggle = document.getElementById('grading-details-toggle');
+      const gradingDetailsList = document.getElementById('grading-details-list');
+      if (gradingDetailsToggle && gradingDetailsList) {
+        const detailItems = Array.from(gradingDetailsList.querySelectorAll('.grading-detail-extra'));
+        let detailsExpanded = false;
+        const renderDetails = () => {
+          detailItems.forEach((item) => {
+            item.hidden = !detailsExpanded;
+          });
+          gradingDetailsToggle.textContent = detailsExpanded ? 'Show less' : 'Show more';
+          gradingDetailsToggle.setAttribute('aria-expanded', detailsExpanded ? 'true' : 'false');
+        };
+        gradingDetailsToggle.addEventListener('click', () => {
+          detailsExpanded = !detailsExpanded;
+          renderDetails();
+        });
+        renderDetails();
+      }
+
+      const gradingWarningToggle = document.getElementById('grading-warning-toggle');
+      const gradingWarningList = document.getElementById('grading-warning-list');
+      if (gradingWarningToggle && gradingWarningList) {
+        const warningItems = Array.from(gradingWarningList.querySelectorAll('.grading-warning-extra'));
+        let warningsExpanded = false;
+        const renderWarnings = () => {
+          warningItems.forEach((item) => {
+            item.hidden = !warningsExpanded;
+          });
+          gradingWarningToggle.textContent = warningsExpanded ? 'Show less' : 'Show more';
+          gradingWarningToggle.setAttribute('aria-expanded', warningsExpanded ? 'true' : 'false');
+        };
+        gradingWarningToggle.addEventListener('click', () => {
+          warningsExpanded = !warningsExpanded;
+          renderWarnings();
+        });
+        renderWarnings();
+      }
+
+      document.querySelectorAll('#cli-distribution-table tbody tr[data-href]').forEach((row) => {
+        row.style.cursor = 'pointer';
+        row.addEventListener('click', (event) => {
+          if (event.target.closest('a')) return;
+          const href = row.dataset.href;
+          if (href) {
+            window.location.href = href;
+          }
+        });
+      });
+
+      document.querySelectorAll('#cli-roster select').forEach((select) => {
+        const syncSelectState = () => {
+          const hasValue = Boolean((select.value || '').trim());
+          select.classList.toggle('select-has-value', hasValue);
+          select.style.color = hasValue ? '#ffe666' : '';
+          select.style.webkitTextFillColor = hasValue ? '#ffe666' : '';
+          select.style.fontWeight = hasValue ? '700' : '';
+        };
+        select.addEventListener('change', syncSelectState);
+        syncSelectState();
+      });
+
+    })();
+  </script>
+  <script src="/static/sidebar-toggle.js"></script>
+  <script src="/static/table-pager.js"></script>
+  <script src="/static/table-export.js"></script>
+  <script src="/static/button-confirm.js"></script>
+</body>
+</html>

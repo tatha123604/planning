@@ -4,10 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Login | SDAH Crew Planner</title>
-  <link rel="stylesheet" href="/static/style.css?v={{ asset_ver }}" />
+  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="icon" type="image/svg+xml" href="/static/indian-railways-mark.svg" />
   <style>
     body { display: flex; align-items: center; justify-content: center; min-height: 100vh; background: #0d1b2a; color: #f5f7fb; font-family: "Inter", system-ui, sans-serif; }
     .login-card { background: #132743; padding: 32px; border-radius: 16px; width: min(420px, 92vw); box-shadow: 0 12px 40px rgba(0,0,0,0.35); }
+    .login-brand { width: 66px; height: 66px; display: block; margin: 0 auto 14px; object-fit: contain; }
     .login-card h1 { margin: 0 0 8px; font-size: 24px; }
     .login-card p { margin: 0 0 20px; color: #cdd7e3; }
     label { display: block; font-weight: 600; margin: 12px 0 6px; }
@@ -20,6 +22,7 @@
 </head>
 <body>
   <div class="login-card">
+    <img class="login-brand" src="/static/indian-railways-mark.svg" alt="Indian Railways" />
     <h1>SDAH Crew Planner</h1>
     <p>Please sign in to continue.</p>
     <form method="post" action="/login">
@@ -34,5 +37,8 @@
     {% if error %}<div class="error">{{ error }}</div>{% endif %}
     <div class="hint">Default: admin / sdah1234</div>
   </div>
+  <script src="/static/button-confirm.js"></script>
 </body>
 </html>
+
+

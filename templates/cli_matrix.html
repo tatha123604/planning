@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CLI Matrix | SDAH Crew Planner</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="icon" type="image/svg+xml" href="/static/indian-railways-mark.svg" />
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <img class="brand-mark" src="/static/indian-railways-mark.svg" alt="Indian Railways" />
+        <span>SDAH Crew Planner</span>
+      </div>
+      <nav class="side-links">
+        <a class="{{ 'active' if active_page == 'dashboard' else '' }}" href="/">Dashboard</a>
+        <a class="{{ 'active' if active_page == 'employees' else '' }}" href="/employees">Employees</a>
+        <a class="{{ 'active' if active_page == 'uploads' else '' }}" href="/uploads">Uploads</a>
+        <a class="{{ 'active' if active_page == 'cli' else '' }}" href="/cli">CLI</a>
+        <a class="{{ 'active' if active_page == 'cli_distribution_planner' else '' }}" href="/cli-distribution-planner">CLI Distribution Planner (Experimental)</a>
+        <a class="{{ 'active' if active_page == 'top_performer' else '' }}" href="/top-performer">Top Performer</a>
+        <details class="side-group" {% if active_page in ['cli_matrix', 'non_continuous_duty', 'sub_non_continuous_duty'] %}open{% endif %}>
+          <summary>CMS REPORTS</summary>
+          <div class="side-sub-links">
+            <a class="{{ 'active' if active_page == 'cli_matrix' else '' }}" href="/cli-matrix">CLI Matrix</a>
+            <a class="{{ 'active' if active_page == 'non_continuous_duty' else '' }}" href="/non-continuous-duty">NON SUB NON CONT DUTY</a>
+            <a class="{{ 'active' if active_page == 'sub_non_continuous_duty' else '' }}" href="/sub-non-continuous-duty">SUB NON CONT DUTY</a>
+          </div>
+        </details>
+        <a class="{{ 'active' if active_page == 'requirements' else '' }}" href="/requirements">Requirements</a>
+        <a class="{{ 'active' if active_page == 'reports' else '' }}" href="/reports">Reports</a>
+      </nav>
+      <div class="hierarchy">Hierarchy: LPM &gt; Motorman &gt; LPP &gt; LPG &gt; LPS/SHT &gt; ALP</div>
+    </aside>
+
+    <main class="content">
+      <header>
+        <div>
+          <h1>CLI Matrix</h1>
+          <p>Update <strong>Summary position of FP OVERDUE</strong>, <strong>COUNSELLING DUE SUMMARY</strong>, and the dated combined sheet from the latest CLI Matrix export while keeping the template workbook format and remaining sheets.</p>
+        </div>
+        <div class="header-actions">
+          <a class="ghost small" href="/logout">Logout</a>
+        </div>
+      </header>
+
+      <section>
+        <div class="card">
+          <h2>Generate workbook</h2>
+          {% if error %}
+          <p class="error-text" id="cli-matrix-error">{{ error }}</p>
+          {% endif %}
+          <form id="cli-matrix-form" method="post" action="/cli-matrix/generate" enctype="multipart/form-data">
+            <input type="hidden" name="template_ready" value="{{ '1' if cached_template_name else '' }}" />
+            <input type="hidden" id="source-report-date" value="{{ source_report_date or '' }}" />
+            <input type="hidden" id="source-report-date-label" value="{{ source_report_date_label or '' }}" />
+            <label>Latest CLI Matrix file
+              <input id="source-file" type="file" name="source_file" accept=".xlsx,.xlsm" required />
+            </label>
+            <label>Template / previous workbook
+              <input id="template-file" type="file" name="template_file" accept=".xlsx,.xlsm" />
+              <span class="template-name-label">Saved Template File</span>
+              <input id="template-name-display" class="template-name-display" type="text" value="{{ cached_template_name or '' }}" placeholder="No template saved yet" readonly />
+            </label>
+            <label>Report date
+              <input id="report-date" type="date" name="report_date" value="{{ report_date or '' }}" />
+            </label>
+            <p class="hint">
+              Source file: latest export with columns like <code>CLI ID</code>, <code>CLI Name</code>, <code>AllotedDesig.</code>, and <code>FPOverDue</code>.
+              Template file: existing workbook whose report-sheet formatting should be preserved.
+            </p>
+            <p class="hint">The report date is auto-detected from the input filename when possible, and you can still adjust it manually.</p>
+            {% if cached_template_name %}
+            <p class="hint">Saved template ready: <strong>{{ cached_template_name }}</strong>. Upload a new template only when you want to replace the current format.</p>
+            {% endif %}
+            <p class="hint">
+              Output: Summary sheet keeps FP overdue rows only, counselling summary keeps counselling overdue rows only, and the dated combined sheet refreshes all overdue values by CLI and designation.
+            </p>
+            <div class="actions">
+              <button type="submit" class="ghost" id="preview-cli-matrix" formaction="/cli-matrix/preview" formmethod="post">Preview tables</button>
+              <button type="submit" id="generate-cli-matrix">Generate and download</button>
+              <button type="button" class="ghost" id="reset-cli-matrix">Reset files</button>
+            </div>
+            <p class="hint" id="cli-matrix-preview-status" role="status" aria-live="polite"></p>
+          </form>
+        </div>
+
+        <div class="card">
+          <h2>View saved daily data</h2>
+          {% if saved_notice %}
+          <p class="hint">{{ saved_notice }}</p>
+          {% endif %}
+          <form method="get" action="/cli-matrix" class="inline">
+            <label>Saved date
+              <input type="date" name="report_date" value="{{ report_date or '' }}" />
+            </label>
+            <div class="actions">
+              <button type="submit" class="ghost">Load saved data</button>
+            </div>
+          </form>
+          <form method="post" action="/cli-matrix/reset" class="inline danger-inline cli-matrix-reset-form">
+            <input type="hidden" name="report_date" value="{{ report_date or '' }}" />
+            <div class="actions">
+              <button type="submit" class="danger">Reset saved table data</button>
+            </div>
+          </form>
+          <p class="hint">Each preview or generated CLI Matrix snapshot is stored on the server for about 1 month, so you can reopen old daily values from here.</p>
+        </div>
+
+        <div id="cli-matrix-results">
+        {% if summary_rows %}
+          <section class="card collapsible">
+            <details open>
+              <summary>Summary position of FP OVERDUE</summary>
+              <div class="table-wrap">
+                {% set summary_total = namespace(fp=0) %}
+                <table class="employee-table paged">
+                  <thead>
+                    <tr class="table-report-date">
+                      <th colspan="6">Report date: {{ source_report_date_label or (report_date | dmy) or '—' }}</th>
+                    </tr>
+                    <tr>
+                    <th>S.No.</th>
+                    <th>CLI ID</th>
+                    <th>CLI Name</th>
+                    <th>Alloted Desig.</th>
+                    <th>FP Over Due</th>
+                    <th>Oldest FP OverDue Date</th>
+                  </tr>
+                </thead>
+                  <tbody>
+                    {% for row in summary_rows %}
+                    {% set summary_total.fp = summary_total.fp + row["FP Over Due"] %}
+                    <tr>
+                      <td>{{ row["S.No."] }}</td>
+                      <td>{{ row["CLI ID"] }}</td>
+                    <td>{{ row["CLI Name"] }}</td>
+                    <td>{{ row["Alloted Desig."] }}</td>
+                    <td>{{ row["FP Over Due"] }}</td>
+                      <td>{{ row["Oldest FP OverDue Date"] | dmy }}</td>
+                    </tr>
+                    {% endfor %}
+                    <tr class="total-highlight">
+                      <td colspan="4"><strong>TOTAL</strong></td>
+                      <td><strong>{{ summary_total.fp }}</strong></td>
+                      <td></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+          </details>
+        </section>
+        {% endif %}
+
+        {% if overdue_rows %}
+        <section class="card collapsible">
+          <details open>
+            <summary>Total Summary of OVERDUE</summary>
+            <div class="table-wrap">
+              <table class="employee-table paged">
+                <thead>
+                  <tr class="table-report-date">
+                    <th colspan="11">Report date: {{ source_report_date_label or (report_date | dmy) or '—' }}</th>
+                  </tr>
+                  <tr>
+                    <th>S.No.</th>
+                    <th>CLI ID</th>
+                    <th>CLI Name</th>
+                    <th>Alloted Desig.</th>
+                    <th>FP Over Due</th>
+                    <th>Oldest FP OverDue Date</th>
+                    <th>Counsel Over Due</th>
+                    <th>Oldest Counsel OverDue Date</th>
+                    <th>Grading OverDue</th>
+                    <th>Oldest Grading OverDue</th>
+                    <th>Total Over Due Cases</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for row in overdue_rows %}
+                  <tr>
+                    <td>{{ row["S.No."] }}</td>
+                    <td>{{ row["CLI ID"] }}</td>
+                    <td>{{ row["CLI Name"] }}</td>
+                    <td>{{ row["Alloted Desig."] }}</td>
+                    <td>{{ row["FP Over Due"] }}</td>
+                    <td>{{ row["Oldest FP OverDue Date"] | dmy }}</td>
+                    <td>{{ row["Counsel Over Due"] }}</td>
+                    <td>{{ row["Oldest Counsel OverDue Date"] | dmy }}</td>
+                    <td>{{ row["Grading OverDue"] }}</td>
+                    <td>{{ row["Oldest Grading OverDue"] | dmy }}</td>
+                    <td>{{ row["Total Over Due Cases"] }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        </section>
+        {% endif %}
+        </div>
+      </section>
+    </main>
+  </div>
+  <script>
+    (() => {
+      const brand = document.querySelector('.brand');
+      if (!brand) return;
+      brand.style.cursor = 'pointer';
+      brand.setAttribute('title', 'Click to hide/show navigation');
+      brand.setAttribute('tabindex', '0');
+      const toggle = () => document.body.classList.toggle('nav-hidden');
+      brand.addEventListener('click', toggle);
+      brand.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          toggle();
+        }
+      });
+      document.body.classList.remove('nav-hidden');
+
+      const form = document.querySelector('#cli-matrix-form');
+      const sourceInput = document.querySelector('#source-file');
+      const templateInput = document.querySelector('#template-file');
+      const reportDateInput = document.querySelector('#report-date');
+      const resetBtn = document.querySelector('#reset-cli-matrix');
+      const resetSavedForm = document.querySelector('.cli-matrix-reset-form');
+      const templateReadyInput = form ? form.querySelector('input[name="template_ready"]') : null;
+      const templateNameDisplay = document.querySelector('#template-name-display');
+      const previewStatus = document.querySelector('#cli-matrix-preview-status');
+      const previewButton = document.querySelector('#preview-cli-matrix');
+      const resultsWrap = document.querySelector('#cli-matrix-results');
+      const errorBox = document.querySelector('#cli-matrix-error');
+
+      const inferDateFromName = (name) => {
+        if (!name) return '';
+        const stem = name.replace(/\.[^.]+$/, '');
+        let match = stem.match(/(\d{2})[.\-_](\d{2})[.\-_](\d{4})/);
+        if (match) return `${match[3]}-${match[2]}-${match[1]}`;
+        match = stem.match(/(\d{4})[.\-_](\d{2})[.\-_](\d{2})/);
+        if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+        return '';
+      };
+
+      const clearFiles = () => {
+        if (sourceInput) sourceInput.value = '';
+        if (templateInput) templateInput.value = '';
+      };
+
+      if (resetBtn) {
+        resetBtn.addEventListener('click', () => {
+          if (!window.confirm('Reset selected source/template files and clear the report date?')) return;
+          clearFiles();
+          if (reportDateInput) reportDateInput.value = '';
+        });
+      }
+
+      if (resetSavedForm) {
+        resetSavedForm.addEventListener('submit', (event) => {
+          if (!window.confirm('Delete the saved CLI Matrix table data for the selected date?')) {
+            event.preventDefault();
+          }
+        });
+      }
+
+      if (sourceInput) {
+        sourceInput.addEventListener('change', () => {
+          const file = sourceInput.files && sourceInput.files[0];
+          if (!file || !reportDateInput) return;
+          const inferredDate = inferDateFromName(file.name);
+          if (inferredDate) reportDateInput.value = inferredDate;
+        });
+      }
+
+      if (templateInput) {
+        templateInput.addEventListener('change', () => {
+          templateInput.setCustomValidity('');
+          const file = templateInput.files && templateInput.files[0];
+          if (templateNameDisplay) {
+            templateNameDisplay.value = file ? file.name : (templateReadyInput && templateReadyInput.value ? templateNameDisplay.defaultValue : '');
+          }
+        });
+      }
+
+      if (form) {
+        form.addEventListener('submit', (event) => {
+          const hasTemplateFile = !!(templateInput && templateInput.files && templateInput.files.length);
+          const hasSavedTemplate = !!(templateReadyInput && templateReadyInput.value);
+          if (event.submitter && event.submitter.id === 'preview-cli-matrix') {
+            event.preventDefault();
+            if (!previewButton) return;
+            previewButton.disabled = true;
+            if (previewStatus) previewStatus.textContent = 'Preparing preview...';
+            if (errorBox) errorBox.textContent = '';
+            const action = previewButton.formAction || '/cli-matrix/preview';
+            const payload = new FormData(form);
+            fetch(action, { method: 'POST', body: payload })
+              .then(async (response) => {
+                const text = await response.text();
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(text, 'text/html');
+                const nextResults = doc.querySelector('#cli-matrix-results');
+                if (nextResults && resultsWrap) {
+                  resultsWrap.innerHTML = nextResults.innerHTML;
+                  if (window.__tablePagerInject) {
+                    resultsWrap.querySelectorAll('table.paged').forEach((table) => window.__tablePagerInject(table));
+                  }
+                  if (window.__tableExportInject) {
+                    resultsWrap.querySelectorAll('table').forEach((table, index) =>
+                      window.__tableExportInject(table, index)
+                    );
+                  }
+                }
+                const nextError = doc.querySelector('#cli-matrix-error');
+                if (nextError && errorBox) {
+                  errorBox.textContent = nextError.textContent || '';
+                }
+                const nextReport = doc.querySelector('#report-date');
+                if (nextReport && reportDateInput) {
+                  reportDateInput.value = nextReport.value || reportDateInput.value;
+                }
+                const nextSourceDate = doc.querySelector('#source-report-date');
+                const currentSourceDate = document.querySelector('#source-report-date');
+                if (nextSourceDate && currentSourceDate) {
+                  currentSourceDate.value = nextSourceDate.value || '';
+                }
+                const nextSourceLabel = doc.querySelector('#source-report-date-label');
+                const currentSourceLabel = document.querySelector('#source-report-date-label');
+                if (nextSourceLabel && currentSourceLabel) {
+                  currentSourceLabel.value = nextSourceLabel.value || '';
+                }
+                if (previewStatus) previewStatus.textContent = response.ok ? 'Preview updated.' : 'Preview failed.';
+                window.setTimeout(() => {
+                  if (previewStatus) previewStatus.textContent = '';
+                }, 2200);
+              })
+              .catch((err) => {
+                console.error(err);
+                if (previewStatus) previewStatus.textContent = 'Preview failed.';
+              })
+              .finally(() => {
+                previewButton.disabled = false;
+              });
+            return;
+          }
+          if (event.submitter && event.submitter.id === 'generate-cli-matrix' && !hasTemplateFile && !hasSavedTemplate) {
+            if (templateInput) {
+              templateInput.setCustomValidity('Please upload the template workbook once before downloading.');
+              templateInput.reportValidity();
+            }
+            event.preventDefault();
+            return;
+          }
+          if (templateInput) {
+            templateInput.setCustomValidity('');
+          }
+          if (event.submitter && event.submitter.id === 'generate-cli-matrix') {
+            window.setTimeout(clearFiles, 1200);
+          }
+        });
+      }
+    })();
+  </script>
+  <script src="/static/sidebar-toggle.js"></script>
+  <script src="/static/table-pager.js"></script>
+  <script src="/static/table-export.js"></script>
+  <script src="/static/button-confirm.js"></script>
+</body>
+</html>
+
+
+
+
+
+
+
+

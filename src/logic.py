@@ -7,7 +7,7 @@ from sqlmodel import Session, select
 
 from .models import Employee, Requirement
 
-ROLE_ORDER = ["LPM", "Motorman", "LPP", "LPG", "LPS", "ALP"]
+ROLE_ORDER = ["LPM", "Motorman", "LPP", "LPG", "LPS/SHT", "ALP"]
 
 
 def role_sort_key(role: str) -> int:
@@ -23,9 +23,12 @@ def normalize_role(role: str | None) -> str | None:
     role_clean = role.strip()
     upper = role_clean.upper()
     canonical = {
-        "SHUNTER": "LPS",
-        "LPS(SHUNTER)": "LPS",
+        "SHUNTER": "LPS/SHT",
+        "SHT": "LPS/SHT",
+        "LPS(SHUNTER)": "LPS/SHT",
+        "LPS/SHT": "LPS/SHT",
         "MOTORMAN": "Motorman",
+        "MTM": "Motorman",
         "MOTOR MAN": "Motorman",
         "M/MAN": "Motorman",
         "MMAN": "Motorman",
@@ -33,7 +36,7 @@ def normalize_role(role: str | None) -> str | None:
         "LPP": "LPP",
         "LPP(LOCO)": "LPP",
         "LPP/LOCO": "LPP",
-        "LPS": "LPS",
+        "LPS": "LPS/SHT",
         "ALP": "ALP",
         "SR.ALP": "ALP",
         "LPG": "LPG",
@@ -74,6 +77,7 @@ def apply_promotions(employees: Iterable[Employee], as_of: date) -> List[Employe
                 category=e.category,
                 pf_no=e.pf_no,
                 hrms=e.hrms,
+                crew_id=e.crew_id,
                 dob=e.dob,
                 doa=e.doa,
                 do_report=e.do_report,

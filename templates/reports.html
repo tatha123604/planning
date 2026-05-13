@@ -4,24 +4,36 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Reports | SDAH Crew Planner</title>
-  <link rel="stylesheet" href="/static/style.css?v={{ asset_ver }}" />
+  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="icon" type="image/svg+xml" href="/static/indian-railways-mark.svg" />
 </head>
 <body>
   <div class="layout">
     <aside class="sidebar">
       <div class="brand">
-        <div class="dot"></div>
+        <img class="brand-mark" src="/static/indian-railways-mark.svg" alt="Indian Railways" />
         <span>SDAH Crew Planner</span>
       </div>
       <nav class="side-links">
         <a class="{{ 'active' if active_page == 'dashboard' else '' }}" href="/">Dashboard</a>
         <a class="{{ 'active' if active_page == 'employees' else '' }}" href="/employees">Employees</a>
         <a class="{{ 'active' if active_page == 'uploads' else '' }}" href="/uploads">Uploads</a>
+        <a class="{{ 'active' if active_page == 'cli' else '' }}" href="/cli">CLI</a>
+        <a class="{{ 'active' if active_page == 'cli_distribution_planner' else '' }}" href="/cli-distribution-planner">CLI Distribution Planner (Experimental)</a>
+        <a class="{{ 'active' if active_page == 'top_performer' else '' }}" href="/top-performer">Top Performer</a>
+        <details class="side-group" {% if active_page in ['cli_matrix', 'non_continuous_duty', 'sub_non_continuous_duty'] %}open{% endif %}>
+          <summary>CMS REPORTS</summary>
+          <div class="side-sub-links">
+            <a class="{{ 'active' if active_page == 'cli_matrix' else '' }}" href="/cli-matrix">CLI Matrix</a>
+            <a class="{{ 'active' if active_page == 'non_continuous_duty' else '' }}" href="/non-continuous-duty">NON SUB NON CONT DUTY</a>
+            <a class="{{ 'active' if active_page == 'sub_non_continuous_duty' else '' }}" href="/sub-non-continuous-duty">SUB NON CONT DUTY</a>
+          </div>
+        </details>
         <a class="{{ 'active' if active_page == 'requirements' else '' }}" href="/requirements">Requirements</a>
         <a class="{{ 'active' if active_page == 'reports' else '' }}" href="/reports">Reports</a>
         <a class="{{ 'active' if active_page == 'ssts_report' else '' }}" href="/ssts-report">SSTS Report</a>
       </nav>
-      <div class="hierarchy">Hierarchy: LPM &gt; Motorman &gt; LPP &gt; LPG &gt; LPS (Shunter) &gt; ALP</div>
+      <div class="hierarchy">Hierarchy: LPM &gt; Motorman &gt; LPP &gt; LPG &gt; LPS/SHT &gt; ALP</div>
     </aside>
 
     <main class="content">
@@ -38,45 +50,11 @@
       {% set recalc = request.query_params.get('start_date') or request.query_params.get('end_date') %}
 
       <section class="card collapsible">
-        <details {% if not recalc %}open{% endif %}>
-          <summary>CLI Distribution by Gradation</summary>
-          <div style="display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap;">
-            <p>Counts of Gradation A, B, and C staff per CLI (all employees).</p>
-            <a class="ghost" href="/reports/cli-distribution.xlsx">Download Excel</a>
-          </div>
-          <div class="table-wrap">
-          <table class="paged">
-            <thead>
-              <tr>
-                <th>CLI</th>
-                <th>Gradation A</th>
-                <th>Gradation B</th>
-                  <th>Gradation C</th>
-                  <th>Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for row in cli_distribution %}
-                <tr>
-                  <td>{{ row.cli }}</td>
-                  <td>{{ row.A }}</td>
-                  <td>{{ row.B }}</td>
-                  <td>{{ row.C }}</td>
-                  <td>{{ row.total }}</td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        </details>
-      </section>
-
-      <section class="card collapsible">
         <details open>
           <summary>Staff Positions by Working Location</summary>
-          <p>Counts of employees per role grouped by <code>working_at</code>.</p>
+          <p>Counts of employees per designation grouped by <code>working_at</code>.</p>
           <div class="table-wrap">
-            <table>
+            <table class="paged">
               <thead>
                 <tr>
                   <th>Working At</th>
@@ -89,7 +67,7 @@
               <tbody>
                 {% for row in working_summary %}
                   <tr>
-                    <td>{{ row.working_at }}</td>
+                    <td>{% if row.working_at %}<span class="designation-pill">{{ row.working_at }}</span>{% endif %}</td>
                     {% for role in role_headers %}
                       <td>{{ row.counts[role] }}</td>
                     {% endfor %}
@@ -102,23 +80,23 @@
         </details>
       </section>
 
-      <section class="card collapsible">
+      <section class="card collapsible" id="retirements-by-designation-card">
         <details open>
-          <summary>Retirements by Role</summary>
-          <form class="inline" method="get" action="/reports">
+          <summary>Retirements by Designation</summary>
+          <form class="inline" method="get" action="/reports#retirements-by-designation-card">
             <label>From <input type="date" name="start_date" value="{{ start_date.isoformat() }}" /></label>
             <label>To <input type="date" name="end_date" value="{{ end_date.isoformat() }}" /></label>
             <button type="submit">Recalculate</button>
             {# <a class="ghost" href="{{ dashboard_link }}">Apply dates to Dashboard</a> #}
           </form>
-          <table class="paged">
+          <table class="paged clickable-table" id="retirements-by-designation-table">
             <thead>
-              <tr><th>Role</th><th>Retirements</th></tr>
+              <tr><th>Designation</th><th>Retirements</th></tr>
             </thead>
             <tbody>
               {% for role, count in retirements.items() %}
-              <tr>
-                <td><a href="/reports?start_date={{ start_date.isoformat() }}&end_date={{ end_date.isoformat() }}&role={{ role }}">{{ role }}</a></td>
+              <tr data-href="/reports?start_date={{ start_date.isoformat() }}&end_date={{ end_date.isoformat() }}&role={{ role }}#retirement-details-card">
+                <td><a class="cli-roster-link" href="/reports?start_date={{ start_date.isoformat() }}&end_date={{ end_date.isoformat() }}&role={{ role }}#retirement-details-card">{{ role }}</a></td>
                 <td>{{ count }}</td>
               </tr>
               {% endfor %}
@@ -127,46 +105,93 @@
         </details>
       </section>
 
-      <section class="card collapsible">
-        <details {% if not recalc %}open{% endif %}>
+      <section class="card collapsible" id="retirement-details-card" tabindex="-1">
+        <details {% if role_filter or not recalc %}open{% endif %}>
           <summary>Retirement Details{% if role_filter %} &mdash; {{ role_filter }}{% endif %}</summary>
           {% if role_filter %}
-            <p><a class="ghost small" href="/reports?start_date={{ start_date.isoformat() }}&end_date={{ end_date.isoformat() }}">Clear role filter</a></p>
+            <p><a class="ghost small" href="/reports?start_date={{ start_date.isoformat() }}&end_date={{ end_date.isoformat() }}#retirements-by-designation-card">Clear designation filter</a></p>
           {% endif %}
           <div class="table-wrap">
             <table class="employee-table paged">
               <thead>
                 <tr>
                   <th>Name</th>
-                  <th>Role</th>
+                  <th>HRMS ID</th>
+                  <th>CREW ID</th>
+                  <th>Designation</th>
                   <th>CLI</th>
-                <th>Gradation</th>
-                <th>Retirement Date</th>
-                <th>Hire By (30d before)</th>
-                <th>Working At</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
+                  <th>Gradation</th>
+                  <th>Retirement Date</th>
+                  <th>Hire By (30d before)</th>
+                  <th>Working At</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
               <tbody>
                 {% for e in retiring_list %}
                 <tr>
                   <td>{{ e.name }}</td>
+                  <td>{{ e.hrms or '' }}</td>
+                  <td>{{ e.crew_id or '' }}</td>
                   <td>{{ e.role }}</td>
-                  <td>{{ e.cli or '' }}</td>
+                  <td>{{ e.cli | cli_label(e.cli_id) }}</td>
                   <td>{{ e.gradation or '' }}</td>
                   <td>{{ e.retirement_date | dmy if e.retirement_date else '' }}</td>
                   <td>{{ (e.retirement_date | hire_by(30)) | dmy if e.retirement_date else '' }}</td>
-                  <td>{{ e.working_at or '' }}</td>
-                  <td>{{ e.status or '' }}</td>
-                  <td class="actions-cell actions-col">
-                    <details class="actions-toggle">
-                      <summary></summary>
-                      <div>
-                        <a class="ghost small" href="/employees/{{ e.id }}">Edit</a>
-                      </div>
-                    </details>
-                  </td>
+                  <td>{% if e.working_at %}<span class="designation-pill">{{ e.working_at }}</span>{% endif %}</td>
+                  <td><a class="ghost small" href="/employees/{{ e.id }}">Edit</a></td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      </section>
+
+      <section class="card collapsible" id="unassigned-cli-card">
+        <details open>
+          <summary>Staff Without CLI Assigned</summary>
+          <form class="inline" method="get" action="/reports#unassigned-cli-card">
+            <input type="hidden" name="start_date" value="{{ start_date.isoformat() }}" />
+            <input type="hidden" name="end_date" value="{{ end_date.isoformat() }}" />
+            {% if role_filter %}<input type="hidden" name="role" value="{{ role_filter }}" />{% endif %}
+            <label>Name
+              <input name="unassigned_name" value="{{ unassigned_name }}" placeholder="Search name" />
+            </label>
+            <label>Designation
+              <select name="unassigned_role">
+                <option value="">All</option>
+                {% for opt in role_headers %}
+                  <option value="{{ opt }}" {% if unassigned_role == opt %}selected{% endif %}>{{ opt }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <button type="submit">Filter</button>
+            <a class="ghost" href="/reports#unassigned-cli-card">Reset</a>
+          </form>
+          <div class="table-wrap">
+            <table class="employee-table paged">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>HRMS ID</th>
+                  <th>CREW ID</th>
+                  <th>Designation</th>
+                  <th>Gradation</th>
+                  <th>Working At</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for e in unassigned_cli_staff %}
+                <tr>
+                  <td>{{ e.name }}</td>
+                  <td>{{ e.hrms or '' }}</td>
+                  <td>{{ e.crew_id or '' }}</td>
+                  <td>{{ e.role }}</td>
+                  <td>{{ e.gradation or '' }}</td>
+                  <td>{% if e.working_at %}<span class="designation-pill">{{ e.working_at }}</span>{% endif %}</td>
+                  <td><a class="ghost small" href="/employees/{{ e.id }}">Edit</a></td>
                 </tr>
                 {% endfor %}
               </tbody>
@@ -192,9 +217,33 @@
         }
       });
       document.body.classList.remove('nav-hidden');
+
+      document.querySelectorAll('#retirements-by-designation-table tbody tr[data-href]').forEach((row) => {
+        row.style.cursor = 'pointer';
+        row.addEventListener('click', (event) => {
+          if (event.target.closest('a, button, input, select, textarea, summary')) return;
+          const href = row.dataset.href;
+          if (href) {
+            window.location.href = href;
+          }
+        });
+      });
+
     })();
   </script>
-  <script src="/static/table-pager.js?v={{ asset_ver }}"></script>
-  <script src="/static/sidebar-toggle.js?v={{ asset_ver }}"></script>
+  <script src="/static/sidebar-toggle.js"></script>
+  <script src="/static/table-pager.js"></script>
+  <script src="/static/table-export.js"></script>
+  <script src="/static/button-confirm.js"></script>
 </body>
 </html>
+
+
+
+
+
+
+
+
+
+

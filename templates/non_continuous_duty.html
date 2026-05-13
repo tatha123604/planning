@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ page_title }} | SDAH Crew Planner</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="icon" type="image/svg+xml" href="/static/indian-railways-mark.svg" />
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <img class="brand-mark" src="/static/indian-railways-mark.svg" alt="Indian Railways" />
+        <span>SDAH Crew Planner</span>
+      </div>
+      <nav class="side-links">
+        <a class="{{ 'active' if active_page == 'dashboard' else '' }}" href="/">Dashboard</a>
+        <a class="{{ 'active' if active_page == 'employees' else '' }}" href="/employees">Employees</a>
+        <a class="{{ 'active' if active_page == 'uploads' else '' }}" href="/uploads">Uploads</a>
+        <a class="{{ 'active' if active_page == 'cli' else '' }}" href="/cli">CLI</a>
+        <a class="{{ 'active' if active_page == 'cli_distribution_planner' else '' }}" href="/cli-distribution-planner">CLI Distribution Planner (Experimental)</a>
+        <a class="{{ 'active' if active_page == 'top_performer' else '' }}" href="/top-performer">Top Performer</a>
+        <details class="side-group" {% if active_page in ['cli_matrix', 'non_continuous_duty', 'sub_non_continuous_duty'] %}open{% endif %}>
+          <summary>CMS REPORTS</summary>
+          <div class="side-sub-links">
+            <a class="{{ 'active' if active_page == 'cli_matrix' else '' }}" href="/cli-matrix">CLI Matrix</a>
+            <a class="{{ 'active' if active_page == 'non_continuous_duty' else '' }}" href="/non-continuous-duty">NON SUB NON CONT DUTY</a>
+            <a class="{{ 'active' if active_page == 'sub_non_continuous_duty' else '' }}" href="/sub-non-continuous-duty">SUB NON CONT DUTY</a>
+          </div>
+        </details>
+        <a class="{{ 'active' if active_page == 'requirements' else '' }}" href="/requirements">Requirements</a>
+        <a class="{{ 'active' if active_page == 'reports' else '' }}" href="/reports">Reports</a>
+      </nav>
+      <div class="hierarchy">Hierarchy: LPM &gt; Motorman &gt; LPP &gt; LPG &gt; LPS/SHT &gt; ALP</div>
+    </aside>
+
+    <main class="content">
+      <header>
+        <div>
+          <h1>{{ heading_title }}</h1>
+          <p>Upload a SIGN_ON or SIGN_OFF detail workbook, store that day's section, and generate the formal workbook tab from saved daily data.</p>
+        </div>
+        <div class="header-actions">
+          <a class="ghost small" href="/logout">Logout</a>
+        </div>
+      </header>
+
+      <section>
+        <div class="card">
+          <h2>Generate workbook</h2>
+          {% if error %}
+          <p class="error-text">{{ error }}</p>
+          {% endif %}
+          <form id="ncd-form" method="post" action="{{ route_base }}/generate" enctype="multipart/form-data">
+            <input type="hidden" name="template_token" value="{{ template_token or '' }}" />
+            <input type="hidden" name="source_name" value="{{ source_name or '' }}" />
+            <input type="hidden" id="source-report-date" value="{{ source_report_date or '' }}" />
+            <input type="hidden" id="source-report-date-label" value="{{ source_report_date_label or '' }}" />
+            <label>Source SIGN_ON / SIGN_OFF file
+              <input id="ncd-source-file" type="file" name="source_file" accept=".xlsx,.xlsm" />
+            </label>
+            <label>Formal / template workbook
+              <input id="ncd-template-file" type="file" name="template_file" accept=".xlsx,.xlsm" />
+              <span class="template-name-label">Saved Template File</span>
+              <input id="ncd-template-name-display" class="template-name-display" type="text" value="{{ cached_template_name or '' }}" placeholder="No template saved yet" readonly />
+            </label>
+            <label>Report date
+              <input id="ncd-report-date" type="date" name="report_date" value="{{ report_date or '' }}" />
+            </label>
+            <p class="hint">The uploaded report type is detected automatically. SIGN_ON uploads update the SIGN_ON section; SIGN_OFF uploads update the SIGN_OFF section for the chosen date.</p>
+            {% if source_name %}
+            <p class="hint">Preview-ready source snapshot: <strong>{{ source_name }}</strong></p>
+            {% endif %}
+            {% if cached_template_name %}
+            <p class="hint">Cached template ready for download: <strong>{{ cached_template_name }}</strong></p>
+            {% endif %}
+            <div class="actions">
+              <button type="submit" class="primary-action" id="generate-ncd" formaction="{{ route_base }}/preview" formmethod="post">Generate</button>
+              <button type="submit" class="secondary-action" id="download-ncd">Download</button>
+              <button type="button" class="ghost" id="reset-ncd">Reset files</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="card">
+          <h2>View saved daily data</h2>
+          {% if saved_notice %}
+          <p class="hint">{{ saved_notice }}</p>
+          {% endif %}
+          <form method="get" action="{{ route_base }}" class="inline">
+            <label>Saved date
+              <input type="date" name="report_date" value="{{ report_date or '' }}" />
+            </label>
+            <div class="actions">
+              <button type="submit" class="ghost">Load saved data</button>
+            </div>
+          </form>
+          <form method="post" action="{{ route_base }}/reset" class="inline danger-inline ncd-reset-form">
+            <input type="hidden" name="report_date" value="{{ report_date or '' }}" />
+            <div class="actions">
+              <button type="submit" class="danger">Reset saved table data</button>
+            </div>
+          </form>
+          <p class="hint">Saved daily snapshots are kept for the latest 30 days.</p>
+        </div>
+
+        <section class="card collapsible">
+          <details open>
+            <summary>{{ sign_on_label }}</summary>
+            {% if sign_on_rows %}
+            <div class="table-wrap">
+              <table class="employee-table paged">
+                <thead>
+                  <tr class="table-report-date">
+                    <th colspan="13">Report date: {{ source_report_date_label or (report_date | dmy) or '—' }}</th>
+                  </tr>
+                  <tr>
+                    <th>SNO.</th>
+                    <th>CREW ID</th>
+                    <th>CREW NAME</th>
+                    <th>DESIG.</th>
+                    <th>SIGNON STTN</th>
+                    <th>SIGNON TIME</th>
+                    <th>SUP ID</th>
+                    <th>ENTRY POINT</th>
+                    <th>TRAIN NO.</th>
+                    <th>LOCO NO.</th>
+                    <th>DUTY TYPE</th>
+                    <th>TO STN</th>
+                    <th>REASON</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for row in sign_on_rows %}
+                  <tr>
+                    <td>{{ row["SNO."] }}</td>
+                    <td>{{ row["CREW ID"] }}</td>
+                    <td>{{ row["CREW NAME"] }}</td>
+                    <td>{{ row["DESIG."] }}</td>
+                    <td>{{ row["STATION"] }}</td>
+                    <td>{{ row["EVENT TIME"] }}</td>
+                    <td>{{ row["SUP ID"] }}</td>
+                    <td>{{ row["ENTRY POINT"] }}</td>
+                    <td>{{ row["TRAIN NO."] }}</td>
+                    <td>{{ row["LOCO NO."] }}</td>
+                    <td>{{ row["DUTY TYPE"] }}</td>
+                    <td>{{ row["ROUTE STN"] }}</td>
+                    <td class="reason-cell">
+                      {% if allow_reason_edit %}
+                      <div class="reason-editor" data-section="sign_on" data-row-no="{{ row['SNO.'] }}" data-report-date="{{ report_date }}" data-save-url="{{ route_base }}/reason">
+                        <span class="reason-display">{{ row["REASON"] or "" }}</span>
+                        <div class="reason-edit-controls" hidden>
+                          <input type="text" class="reason-input" value="{{ row['REASON'] }}" placeholder="Enter reason" />
+                          <button type="button" class="ghost small reason-save">Save</button>
+                        </div>
+                      </div>
+                      {% else %}
+                      {{ row["REASON"] }}
+                      {% endif %}
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% else %}
+            <p class="hint">No saved SIGN_ON rows for this date yet.</p>
+            {% endif %}
+          </details>
+        </section>
+
+        <section class="card collapsible">
+          <details open>
+            <summary>{{ sign_off_label }}</summary>
+            {% if sign_off_rows %}
+            <div class="table-wrap">
+              <table class="employee-table paged">
+                <thead>
+                  <tr class="table-report-date">
+                    <th colspan="13">Report date: {{ source_report_date_label or (report_date | dmy) or '—' }}</th>
+                  </tr>
+                  <tr>
+                    <th>SNO.</th>
+                    <th>CREW ID</th>
+                    <th>CREW NAME</th>
+                    <th>DESIG.</th>
+                    <th>SIGNOFF STTN</th>
+                    <th>SIGNOFF TIME</th>
+                    <th>SUP ID</th>
+                    <th>ENTRY POINT</th>
+                    <th>TRAIN NO.</th>
+                    <th>LOCO NO.</th>
+                    <th>DUTY TYPE</th>
+                    <th>FROM STN</th>
+                    <th>REASON</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for row in sign_off_rows %}
+                  <tr>
+                    <td>{{ row["SNO."] }}</td>
+                    <td>{{ row["CREW ID"] }}</td>
+                    <td>{{ row["CREW NAME"] }}</td>
+                    <td>{{ row["DESIG."] }}</td>
+                    <td>{{ row["STATION"] }}</td>
+                    <td>{{ row["EVENT TIME"] }}</td>
+                    <td>{{ row["SUP ID"] }}</td>
+                    <td>{{ row["ENTRY POINT"] }}</td>
+                    <td>{{ row["TRAIN NO."] }}</td>
+                    <td>{{ row["LOCO NO."] }}</td>
+                    <td>{{ row["DUTY TYPE"] }}</td>
+                    <td>{{ row["ROUTE STN"] }}</td>
+                    <td class="reason-cell">
+                      {% if allow_reason_edit %}
+                      <div class="reason-editor" data-section="sign_off" data-row-no="{{ row['SNO.'] }}" data-report-date="{{ report_date }}" data-save-url="{{ route_base }}/reason">
+                        <span class="reason-display">{{ row["REASON"] or "" }}</span>
+                        <div class="reason-edit-controls" hidden>
+                          <input type="text" class="reason-input" value="{{ row['REASON'] }}" placeholder="Enter reason" />
+                          <button type="button" class="ghost small reason-save">Save</button>
+                        </div>
+                      </div>
+                      {% else %}
+                      {{ row["REASON"] }}
+                      {% endif %}
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% else %}
+            <p class="hint">No saved SIGN_OFF rows for this date yet.</p>
+            {% endif %}
+          </details>
+        </section>
+      </section>
+    </main>
+  </div>
+  <script>
+    (() => {
+      const brand = document.querySelector('.brand');
+      if (brand) {
+        brand.style.cursor = 'pointer';
+        brand.setAttribute('title', 'Click to hide/show navigation');
+        brand.setAttribute('tabindex', '0');
+        const toggle = () => document.body.classList.toggle('nav-hidden');
+        brand.addEventListener('click', toggle);
+        brand.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            toggle();
+          }
+        });
+        document.body.classList.remove('nav-hidden');
+      }
+
+      const form = document.querySelector('#ncd-form');
+      const sourceInput = document.querySelector('#ncd-source-file');
+      const templateInput = document.querySelector('#ncd-template-file');
+      const reportDateInput = document.querySelector('#ncd-report-date');
+      const resetBtn = document.querySelector('#reset-ncd');
+      const resetSavedForm = document.querySelector('.ncd-reset-form');
+      const templateTokenInput = form ? form.querySelector('input[name="template_token"]') : null;
+      const sourceNameInput = form ? form.querySelector('input[name="source_name"]') : null;
+      const templateNameDisplay = document.querySelector('#ncd-template-name-display');
+
+      const inferDateFromName = (name) => {
+        if (!name) return '';
+        const stem = name.replace(/\.[^.]+$/, '');
+        let match = stem.match(/(\d{2})[.\-_](\d{2})[.\-_](\d{4})/);
+        if (match) return `${match[3]}-${match[2]}-${match[1]}`;
+        match = stem.match(/(\d{4})[.\-_](\d{2})[.\-_](\d{2})/);
+        if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+        return '';
+      };
+
+      const clearFiles = () => {
+        if (sourceInput) sourceInput.value = '';
+        if (templateInput) templateInput.value = '';
+        if (sourceNameInput) sourceNameInput.value = '';
+      };
+
+      if (resetBtn) {
+        resetBtn.addEventListener('click', () => {
+          if (!window.confirm('Reset selected source/template files and clear the report date?')) return;
+          clearFiles();
+          if (reportDateInput) reportDateInput.value = '';
+        });
+      }
+
+      if (resetSavedForm) {
+        resetSavedForm.addEventListener('submit', (event) => {
+          if (!window.confirm('Delete the saved table data for the selected date?')) {
+            event.preventDefault();
+          }
+        });
+      }
+
+      if (sourceInput) {
+        sourceInput.addEventListener('change', () => {
+          sourceInput.setCustomValidity('');
+          const file = sourceInput.files && sourceInput.files[0];
+          if (!file || !reportDateInput) return;
+          const inferredDate = inferDateFromName(file.name);
+          if (inferredDate) reportDateInput.value = inferredDate;
+          if (sourceNameInput && file.name) sourceNameInput.value = file.name;
+        });
+      }
+
+      if (templateInput) {
+        templateInput.addEventListener('change', () => {
+          templateInput.setCustomValidity('');
+          const file = templateInput.files && templateInput.files[0];
+          if (templateNameDisplay) {
+            templateNameDisplay.value = file ? file.name : (templateTokenInput && templateTokenInput.value ? templateNameDisplay.defaultValue : '');
+          }
+        });
+      }
+
+      if (form) {
+        form.addEventListener('submit', (event) => {
+          const submitter = event.submitter;
+          const hasSourceFile = !!(sourceInput && sourceInput.files && sourceInput.files.length);
+          const hasSourceSnapshot = !!(sourceNameInput && sourceNameInput.value);
+          const hasTemplateFile = !!(templateInput && templateInput.files && templateInput.files.length);
+          const hasTemplateToken = !!(templateTokenInput && templateTokenInput.value);
+
+          if (sourceInput) sourceInput.setCustomValidity('');
+          if (templateInput) templateInput.setCustomValidity('');
+
+          if (submitter && submitter.id === 'generate-ncd' && !hasSourceFile) {
+            if (sourceInput) {
+              sourceInput.setCustomValidity('Please choose a source file before clicking Generate.');
+              sourceInput.reportValidity();
+            }
+            event.preventDefault();
+            return;
+          }
+
+          if (submitter && submitter.id === 'download-ncd' && !hasSourceFile && !hasSourceSnapshot) {
+            if (sourceInput) {
+              sourceInput.setCustomValidity('Please click Generate first or choose a source file before downloading.');
+              sourceInput.reportValidity();
+            }
+            event.preventDefault();
+            return;
+          }
+
+          if (submitter && submitter.id === 'download-ncd' && !hasTemplateFile && !hasTemplateToken) {
+            if (templateInput) {
+              templateInput.setCustomValidity('Please choose the formal/template workbook once before downloading.');
+              templateInput.reportValidity();
+            }
+            event.preventDefault();
+            return;
+          }
+
+          if (submitter && submitter.id === 'download-ncd') {
+            window.setTimeout(clearFiles, 1200);
+          }
+        });
+      }
+
+      const reasonEditors = document.querySelectorAll('.reason-editor');
+      reasonEditors.forEach((editor) => {
+        const display = editor.querySelector('.reason-display');
+        const controls = editor.querySelector('.reason-edit-controls');
+        const input = editor.querySelector('.reason-input');
+        const saveButton = editor.querySelector('.reason-save');
+        const saveUrl = editor.dataset.saveUrl;
+        const reportDate = editor.dataset.reportDate;
+        const section = editor.dataset.section;
+        const rowNo = Number(editor.dataset.rowNo || '0');
+
+        const startEdit = () => {
+          if (!display || !controls || !input) return;
+          editor.classList.add('editing');
+          display.hidden = true;
+          controls.hidden = false;
+          input.focus();
+          input.select();
+        };
+
+        const stopEdit = (reasonText) => {
+          if (!display || !controls || !input) return;
+          const text = reasonText || '';
+          input.value = text;
+          input.defaultValue = text;
+          display.textContent = text;
+          controls.hidden = true;
+          display.hidden = false;
+          editor.classList.remove('editing');
+        };
+
+        const saveReason = async () => {
+          if (!saveButton || !saveUrl || !reportDate || !section || !rowNo) return;
+          const previousLabel = saveButton.textContent;
+          saveButton.disabled = true;
+          saveButton.textContent = 'Saving...';
+          try {
+            const response = await fetch(saveUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                report_date: reportDate,
+                section,
+                row_no: rowNo,
+                reason: input ? input.value : '',
+              }),
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+              throw new Error(payload.detail || 'Could not save reason.');
+            }
+            stopEdit(payload.reason || '');
+          } catch (error) {
+            window.alert(error && error.message ? error.message : 'Could not save reason.');
+          } finally {
+            saveButton.disabled = false;
+            saveButton.textContent = previousLabel;
+          }
+        };
+
+        editor.addEventListener('dblclick', () => {
+          if (editor.classList.contains('editing')) return;
+          startEdit();
+        });
+
+        if (saveButton) {
+          saveButton.addEventListener('click', saveReason);
+        }
+
+        if (input) {
+          input.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              saveReason();
+            }
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              stopEdit(input.defaultValue || '');
+            }
+          });
+        }
+      });
+    })();
+  </script>
+  <script src="/static/sidebar-toggle.js"></script>
+  <script src="/static/table-pager.js"></script>
+  <script src="/static/table-export.js"></script>
+  <script src="/static/button-confirm.js"></script>
+</body>
+</html>
+
+

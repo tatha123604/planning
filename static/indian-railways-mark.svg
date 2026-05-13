@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-labelledby="title">
+  <title>Indian Railways inspired mark</title>
+  <g fill="none" fill-rule="evenodd">
+    <rect x="54" y="10" width="12" height="14" rx="1.5" fill="#FFFFFF"/>
+    <circle cx="60" cy="48" r="28" fill="#FFFFFF"/>
+    <circle cx="60" cy="48" r="18" fill="transparent"/>
+    <path d="M39 40c4-10 12-15 21-15s17 5 21 15H39Z" fill="#FF8C4D"/>
+    <path d="M37 56h46c-3 12-12 18-23 18s-20-6-23-18Z" fill="#00A65A"/>
+    <circle cx="60" cy="48" r="6.5" fill="#171C8F"/>
+    <path d="M28 78c10 10 21 15 32 15s22-5 32-15l8 8c-12 13-25 20-40 20S32 99 20 86l8-8Z" fill="#FFFFFF"/>
+  </g>
+</svg>

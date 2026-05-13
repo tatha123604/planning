@@ -4,24 +4,36 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Edit Employee | SDAH Crew Planner</title>
-  <link rel="stylesheet" href="/static/style.css?v={{ asset_ver }}" />
+  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="icon" type="image/svg+xml" href="/static/indian-railways-mark.svg" />
 </head>
 <body>
   <div class="layout">
     <aside class="sidebar">
       <div class="brand">
-        <div class="dot"></div>
+        <img class="brand-mark" src="/static/indian-railways-mark.svg" alt="Indian Railways" />
         <span>SDAH Crew Planner</span>
       </div>
       <nav class="side-links">
         <a class="{{ 'active' if active_page == 'dashboard' else '' }}" href="/">Dashboard</a>
         <a class="{{ 'active' if active_page == 'employees' else '' }}" href="/employees">Employees</a>
         <a class="{{ 'active' if active_page == 'uploads' else '' }}" href="/uploads">Uploads</a>
+        <a class="{{ 'active' if active_page == 'cli' else '' }}" href="/cli">CLI</a>
+        <a class="{{ 'active' if active_page == 'cli_distribution_planner' else '' }}" href="/cli-distribution-planner">CLI Distribution Planner (Experimental)</a>
+        <a class="{{ 'active' if active_page == 'top_performer' else '' }}" href="/top-performer">Top Performer</a>
+        <details class="side-group" {% if active_page in ['cli_matrix', 'non_continuous_duty', 'sub_non_continuous_duty'] %}open{% endif %}>
+          <summary>CMS REPORTS</summary>
+          <div class="side-sub-links">
+            <a class="{{ 'active' if active_page == 'cli_matrix' else '' }}" href="/cli-matrix">CLI Matrix</a>
+            <a class="{{ 'active' if active_page == 'non_continuous_duty' else '' }}" href="/non-continuous-duty">NON SUB NON CONT DUTY</a>
+            <a class="{{ 'active' if active_page == 'sub_non_continuous_duty' else '' }}" href="/sub-non-continuous-duty">SUB NON CONT DUTY</a>
+          </div>
+        </details>
         <a class="{{ 'active' if active_page == 'requirements' else '' }}" href="/requirements">Requirements</a>
         <a class="{{ 'active' if active_page == 'reports' else '' }}" href="/reports">Reports</a>
         <a class="{{ 'active' if active_page == 'ssts_report' else '' }}" href="/ssts-report">SSTS Report</a>
       </nav>
-      <div class="hierarchy">Hierarchy: LPM &gt; Motorman &gt; LPP &gt; LPG &gt; LPS (Shunter) &gt; ALP</div>
+      <div class="hierarchy">Hierarchy: LPM &gt; Motorman &gt; LPP &gt; LPG &gt; LPS/SHT &gt; ALP</div>
     </aside>
 
     <main class="content">
@@ -34,9 +46,10 @@
 
       <section class="card">
         <form method="post" action="/employees/{{ employee.id }}">
+          <input type="hidden" name="return_to" value="{{ return_to }}" />
           <div class="grid">
             <label>Name <input name="name" value="{{ employee.name }}" required /></label>
-            <label>Role
+            <label>Designation
               <select name="role" required>
                 {% for role in role_order %}
                   <option value="{{ role }}" {% if role == employee.role %}selected{% endif %}>{{ role }}</option>
@@ -44,7 +57,7 @@
               </select>
             </label>
             <label>Retirement date <input type="date" name="retirement_date" value="{{ employee.retirement_date if employee.retirement_date else '' }}" required /></label>
-            <label>Promotion role
+            <label>Promotion designation
               <select name="promotion_role">
                 <option value=""></option>
                 {% for role in role_order %}
@@ -57,26 +70,21 @@
             <label>Category <input name="category" value="{{ employee.category or '' }}" /></label>
             <label>PF No <input name="pf_no" value="{{ employee.pf_no or '' }}" /></label>
             <label>HRMS ID <input name="hrms" value="{{ employee.hrms or '' }}" /></label>
+            <label>CREW ID <input name="crew_id" value="{{ employee.crew_id or '' }}" /></label>
             <label>Gradation <input name="gradation" value="{{ employee.gradation or '' }}" /></label>
             <label>CLI <input name="cli" value="{{ employee.cli or '' }}" /></label>
+            <label>CLI ID <input name="cli_id" value="{{ employee.cli_id or '' }}" /></label>
             <label>Date of birth <input type="date" name="dob" value="{{ employee.dob or '' }}" /></label>
-            <label>Date of appointment <input type="date" name="doa" value="{{ employee.doa or '' }}" /></label>
+            <label>APPOINT DATE <input type="date" name="doa" value="{{ employee.doa or '' }}" /></label>
             <label>Date of report <input type="date" name="do_report" value="{{ employee.do_report or '' }}" /></label>
             <label>PME Due <input type="date" name="pme_due" value="{{ employee.pme_due or '' }}" /></label>
             <label>Technical Due <input type="date" name="technical_due" value="{{ employee.technical_due or '' }}" /></label>
             <label>Transportation Due <input type="date" name="transportation_due" value="{{ employee.transportation_due or '' }}" /></label>
-            <label>Status
-              <select name="status">
-                <option value=""></option>
-                <option value="ACTIVE" {% if employee.status == 'ACTIVE' %}selected{% endif %}>ACTIVE</option>
-                <option value="INACTIVE" {% if employee.status == 'INACTIVE' %}selected{% endif %}>INACTIVE</option>
-              </select>
-            </label>
             <label>Working at <input name="working_at" value="{{ employee.working_at or '' }}" /></label>
           </div>
           <div class="actions">
             <button type="submit">Save</button>
-            <a class="ghost" href="/employees">Cancel</a>
+            <a class="ghost" href="{{ return_to }}">Cancel</a>
           </div>
         </form>
       </section>
@@ -98,7 +106,18 @@
         }
       });
       document.body.classList.remove('nav-hidden');
+
     })();
   </script>
+  <script src="/static/sidebar-toggle.js"></script>
+  <script src="/static/button-confirm.js"></script>
 </body>
 </html>
+
+
+
+
+
+
+
+

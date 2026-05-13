@@ -4,24 +4,36 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Employees | SDAH Crew Planner</title>
-  <link rel="stylesheet" href="/static/style.css?v={{ asset_ver }}" />
+  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="icon" type="image/svg+xml" href="/static/indian-railways-mark.svg" />
 </head>
 <body>
   <div class="layout">
     <aside class="sidebar">
       <div class="brand">
-        <div class="dot"></div>
+        <img class="brand-mark" src="/static/indian-railways-mark.svg" alt="Indian Railways" />
         <span>SDAH Crew Planner</span>
       </div>
       <nav class="side-links">
         <a class="{{ 'active' if active_page == 'dashboard' else '' }}" href="/">Dashboard</a>
         <a class="{{ 'active' if active_page == 'employees' else '' }}" href="/employees">Employees</a>
         <a class="{{ 'active' if active_page == 'uploads' else '' }}" href="/uploads">Uploads</a>
+        <a class="{{ 'active' if active_page == 'cli' else '' }}" href="/cli">CLI</a>
+        <a class="{{ 'active' if active_page == 'cli_distribution_planner' else '' }}" href="/cli-distribution-planner">CLI Distribution Planner (Experimental)</a>
+        <a class="{{ 'active' if active_page == 'top_performer' else '' }}" href="/top-performer">Top Performer</a>
+        <details class="side-group" {% if active_page in ['cli_matrix', 'non_continuous_duty', 'sub_non_continuous_duty'] %}open{% endif %}>
+          <summary>CMS REPORTS</summary>
+          <div class="side-sub-links">
+            <a class="{{ 'active' if active_page == 'cli_matrix' else '' }}" href="/cli-matrix">CLI Matrix</a>
+            <a class="{{ 'active' if active_page == 'non_continuous_duty' else '' }}" href="/non-continuous-duty">NON SUB NON CONT DUTY</a>
+            <a class="{{ 'active' if active_page == 'sub_non_continuous_duty' else '' }}" href="/sub-non-continuous-duty">SUB NON CONT DUTY</a>
+          </div>
+        </details>
         <a class="{{ 'active' if active_page == 'requirements' else '' }}" href="/requirements">Requirements</a>
         <a class="{{ 'active' if active_page == 'reports' else '' }}" href="/reports">Reports</a>
         <a class="{{ 'active' if active_page == 'ssts_report' else '' }}" href="/ssts-report">SSTS Report</a>
       </nav>
-      <div class="hierarchy">Hierarchy: LPM &gt; Motorman &gt; LPP &gt; LPG &gt; LPS (Shunter) &gt; ALP</div>
+      <div class="hierarchy">Hierarchy: LPM &gt; Motorman &gt; LPP &gt; LPG &gt; LPS/SHT &gt; ALP</div>
     </aside>
 
     <main class="content">
@@ -35,12 +47,98 @@
         </div>
       </header>
 
+      <section class="card" id="google-sync-card">
+        <h2>Google Sheet Sync</h2>
+        {% if sync_error %}
+        <p class="error-text" role="alert">{{ sync_error }}</p>
+        {% endif %}
+        {% if sync_notice %}
+        <p class="hint success-text" role="status">{{ sync_notice }}</p>
+        {% endif %}
+        {% if sync_warning %}
+        <p class="hint warning-text" role="status">{{ sync_warning }}</p>
+        {% endif %}
+        {% if sync_backup %}
+        <p class="hint" role="status">{{ sync_backup }}</p>
+        {% endif %}
+        {% if sync_backup_label %}
+        <p class="hint">Latest backup: <strong>{{ sync_backup_label }}</strong></p>
+        {% endif %}
+        <p class="hint" id="google-sync-live" role="status" aria-live="polite"></p>
+        <p class="hint warning-text" id="google-sync-warning" role="status" aria-live="polite"></p>
+        <p class="hint" id="google-sync-backup" role="status" aria-live="polite"></p>
+        <div class="sync-report-card" id="google-sync-preview-actions" hidden style="display:none;">
+          <div class="sync-report-section">
+            <h4>Save these changes?</h4>
+            <p class="hint">Preview first, then choose Yes to write the Google Sheet changes into our database.</p>
+            <div class="actions">
+              <button type="button" id="google-sync-apply" class="secondary-action cleanup-keep-button">Yes, save changes</button>
+              <button type="button" id="google-sync-cancel-preview" class="secondary-action cleanup-delete-button">No, discard preview</button>
+            </div>
+          </div>
+        </div>
+        <div class="sync-report-card" id="google-sync-report" hidden style="display:none;">
+          <div class="sync-report-section">
+            <h4>Inserted</h4>
+            <ul class="sync-report-list" id="google-sync-added"></ul>
+          </div>
+          <div class="sync-report-section">
+            <h4>Updated (Operational)</h4>
+            <ul class="sync-report-list" id="google-sync-updated"></ul>
+          </div>
+          <div class="sync-report-section">
+            <h4>Auto-corrected</h4>
+            <ul class="sync-report-list" id="google-sync-autocorrected"></ul>
+          </div>
+          <div class="sync-report-section">
+            <h4>Deleted</h4>
+            <ul class="sync-report-list" id="google-sync-deleted"></ul>
+          </div>
+        </div>
+        <div id="google-sync-details-wrap" hidden>
+          <div class="sync-list-header">
+            <p class="hint success-text"><strong>Last sync updates / auto-corrections</strong></p>
+            <button type="button" class="ghost small sync-list-toggle" id="google-sync-details-toggle" hidden aria-expanded="false">Show more</button>
+          </div>
+          <ul class="sync-warning-list" id="google-sync-details-list"></ul>
+        </div>
+        <div id="google-sync-warning-wrap" hidden>
+          <p class="hint warning-text"><strong>Mismatch / Auto-fixed records</strong></p>
+          <ul class="sync-warning-list" id="google-sync-warning-list"></ul>
+        </div>
+        <p class="hint">One-way sync only: changes made in Google Sheet will update this project, but edits made here will not push back to Google Sheet.</p>
+        {% if google_sync_ready %}
+        <p class="hint">Configured source: <strong>{{ google_sync_range }}</strong></p>
+        <form method="post" action="/employees/sync-google-preview" class="inline sensitive-inline-form" data-google-sync-form data-password-gated-form data-password-gated-code="11111">
+          <label class="site-password-label compact-site-password">Action Code
+            <input class="site-password-input compact-site-password-input" type="password" name="action_password" autocomplete="current-password" required data-password-gated-input />
+          </label>
+          <div class="actions">
+            <button type="submit" data-sync-button data-password-gated-button disabled>Google Sheet Sync</button>
+          </div>
+        </form>
+        <form method="post" action="/employees/restore-backup" class="inline sensitive-inline-form" data-password-gated-form data-password-gated-code="11111">
+          <label class="site-password-label compact-site-password">Action Code
+            <input class="site-password-input compact-site-password-input" type="password" name="action_password" autocomplete="current-password" required data-password-gated-input />
+          </label>
+          <div class="actions">
+            <button type="submit" class="ghost" data-password-gated-button disabled data-confirm-label="restore the latest backup">Restore last backup</button>
+          </div>
+        </form>
+        {% else %}
+        <p class="hint">Google Sheet sync is not configured yet. Set the Google Sheet and service-account environment variables on the server, then this button will work.</p>
+        <div class="actions">
+          <button type="button" disabled>Sync from Google Sheet</button>
+        </div>
+        {% endif %}
+      </section>
+
       <section class="card collapsible" id="employees-card">
         <details {% if employees_open %}open{% endif %}>
           <summary>Employees</summary>
-          <form class="inline" method="get" action="/employees#employees-card">
-            <label>Search <input name="q" value="{{ query }}" placeholder="Name or role" /></label>
-            <label>Role
+          <form class="inline" id="employees-filter-form" method="get" action="/employees#employees-card" data-no-confirm="true">
+            <label>Name Search <input id="employees-search-input" type="search" name="q" value="{{ query }}" placeholder="Search employee name" autocomplete="off" /></label>
+            <label>Designation
               <select name="role">
                 <option value="">All</option>
                 {% for role in role_order %}
@@ -56,12 +154,27 @@
                 {% endfor %}
               </select>
             </label>
+            <label>Category
+              <select name="category">
+                <option value="">All</option>
+                {% for opt in category_opts %}
+                  <option value="{{ opt }}" {% if filter_category == opt %}selected{% endif %}>{{ opt }}</option>
+                {% endfor %}
+              </select>
+            </label>
             <label>Gradation
               <select name="gradation">
                 <option value="">All</option>
                 {% for opt in gradation_opts %}
                   <option value="{{ opt }}" {% if filter_gradation == opt %}selected{% endif %}>{{ opt }}</option>
                 {% endfor %}
+              </select>
+            </label>
+            <label>CLI Status
+              <select name="cli_status">
+                <option value="" {% if not filter_cli_status %}selected{% endif %}>All</option>
+                <option value="assigned" {% if filter_cli_status == 'assigned' %}selected{% endif %}>Assigned</option>
+                <option value="unassigned" {% if filter_cli_status == 'unassigned' %}selected{% endif %}>Unassigned</option>
               </select>
             </label>
             <label>Working at
@@ -74,36 +187,43 @@
             </label>
             <label>Sort
               <select name="sort" id="sort-select">
-                <option value="role" {% if sort == 'role' %}selected{% endif %}>Role, Name</option>
+                <option value="role" {% if sort == 'role' %}selected{% endif %}>Designation, Name</option>
                 <option value="name" {% if sort == 'name' %}selected{% endif %}>Name</option>
                 <option value="retirement" {% if sort == 'retirement' %}selected{% endif %}>Retirement date</option>
-                <option value="hire" {% if sort == 'hire' %}selected{% endif %}>Hire date</option>
+                <option value="category" {% if sort == 'category' %}selected{% endif %}>Category</option>
+                <option value="gradation" {% if sort == 'gradation' %}selected{% endif %}>Gradation</option>
                 <option value="cli" {% if sort == 'cli' %}selected{% endif %}>CLI</option>
                 <option value="working_at" {% if sort == 'working_at' %}selected{% endif %}>Working at</option>
               </select>
             </label>
-            <button type="submit">Filter</button>
-            <a class="ghost" href="/employees#employees-card">Reset</a>
-            <div class="summary-chip">Total: {{ employees | length }}</div>
+              <button type="submit" data-no-confirm="true">Filter</button>
+              <a class="ghost filter-reset-link" href="/employees#employees-card">Reset</a>
+              <div class="summary-chip" id="employees-total-chip">Total: {{ total_count }}</div>
+              <div class="summary-chip">Page {{ page }} of {{ total_pages }}</div>
           </form>
+          <div class="column-toggle" id="employees-column-toggle">
+            <button type="button" class="ghost small" id="employees-column-button">Columns</button>
+            <div class="column-toggle-panel" id="employees-column-panel" hidden></div>
+          </div>
           <div class="table-wrap">
-          <table class="employee-table paged">
+            <table class="employee-table paged" id="employees-table">
               <thead>
                 <tr>
                   <th>Sl No.</th>
                   <th>Name</th>
-                  <th>Role</th>
+                  <th>HRMS ID</th>
+                  <th>CREW ID</th>
+                  <th>Designation</th>
                 <th>Retirement</th>
                 <th>PME Due</th>
                 <th>Technical Due</th>
                 <th>Transportation Due</th>
                   <th>Category</th>
                   <th>PF No</th>
-                  <th>HRMS</th>
                   <th>Gradation</th>
                   <th>CLI</th>
                   <th>DOB</th>
-                  <th>Status</th>
+                  <th>Date of Appointment</th>
                   <th class="working-at-col">Working At</th>
                   <th class="actions-col">Actions</th>
                 </tr>
@@ -111,96 +231,38 @@
               <tbody>
                 {% for e in employees %}
                 <tr>
-                  <td>{{ loop.index }}</td>
-                  <td>{{ e.name }}</td>
-                  <td>{{ e.role }}</td>
-                <td>{{ e.retirement_date | dmy if e.retirement_date else '' }}</td>
-                <td>{{ e.pme_due | dmy }}</td>
-                <td>{{ e.technical_due | dmy }}</td>
-                <td>{{ e.transportation_due | dmy }}</td>
-                  <td>{{ e.category or '' }}</td>
-                  <td>{{ e.pf_no or '' }}</td>
-                  <td>{{ e.hrms or '' }}</td>
-                  <td>{{ e.gradation or '' }}</td>
-                  <td>{{ e.cli or '' }}</td>
-                  <td>{{ e.dob | dmy }}</td>
-                  <td>{{ e.status or '' }}</td>
-                  <td class="working-at-col">{{ e.working_at or '' }}</td>
+                  <td><span class="employee-data-pill employee-data-pill-index">{{ page_start + loop.index }}</span></td>
+                  <td><span class="employee-data-pill employee-data-pill-name">{{ e.name }}</span></td>
+                  <td>{% if e.hrms %}<span class="employee-data-pill employee-data-pill-id">{{ e.hrms }}</span>{% endif %}</td>
+                  <td>{% if e.crew_id %}<span class="employee-data-pill employee-data-pill-id">{{ e.crew_id }}</span>{% endif %}</td>
+                  <td><span class="employee-data-pill employee-data-pill-role">{{ e.role }}</span></td>
+                <td>{% if e.retirement_date %}<span class="employee-date-pill employee-date-pill-retirement">{{ e.retirement_date | dmy }}</span>{% endif %}</td>
+                <td>{% if e.pme_due %}<span class="employee-date-pill employee-date-pill-due">{{ e.pme_due | dmy }}</span>{% endif %}</td>
+                <td>{% if e.technical_due %}<span class="employee-date-pill employee-date-pill-due">{{ e.technical_due | dmy }}</span>{% endif %}</td>
+                <td>{% if e.transportation_due %}<span class="employee-date-pill employee-date-pill-due">{{ e.transportation_due | dmy }}</span>{% endif %}</td>
+                  <td>{% if e.category %}<span class="employee-data-pill employee-data-pill-category" data-category="{{ e.category | trim | upper }}">{{ e.category }}</span>{% endif %}</td>
+                  <td>{% if e.pf_no %}<span class="employee-data-pill employee-data-pill-id">{{ e.pf_no }}</span>{% endif %}</td>
+                  <td>{% if e.gradation %}<span class="employee-data-pill employee-data-pill-gradation" data-gradation="{{ e.gradation | trim | upper }}">{{ e.gradation }}</span>{% endif %}</td>
+                  <td>{% if e.cli or e.cli_id %}<span class="employee-data-pill employee-data-pill-cli">{{ e.cli | cli_label(e.cli_id) }}</span>{% endif %}</td>
+                  <td>{% if e.dob %}<span class="employee-date-pill employee-date-pill-birth">{{ e.dob | dmy }}</span>{% endif %}</td>
+                  <td>{% if e.doa %}<span class="employee-date-pill">{{ e.doa | dmy }}</span>{% endif %}</td>
+                  <td class="working-at-col">{% if e.working_at %}<span class="designation-pill">{{ e.working_at }}</span>{% endif %}</td>
                   <td class="actions-cell actions-col">
-                    <details class="actions-toggle">
-                      <summary></summary>
-                      <div>
-                        <a class="ghost small" href="/employees/{{ e.id }}">Edit</a>
-                        <form method="post" action="/employees/{{ e.id }}/delete" onsubmit="return confirm('Delete {{ e.name }}?');" style="display:inline;">
-                          <button type="submit" class="danger small">Delete</button>
-                        </form>
-                      </div>
-                    </details>
+                    <a class="ghost small employee-edit-link" href="/employees/{{ e.id }}?return_to={{ employee_return_to_query }}" data-employee-name="{{ e.name }}">Edit</a>
+                    <form method="post" action="/employees/{{ e.id }}/delete" class="employee-delete-form" data-employee-name="{{ e.name }}" style="display:inline;">
+                      <input type="hidden" name="return_to" value="{{ employee_return_to }}" />
+                      <button type="submit" class="danger small">Delete</button>
+                    </form>
                   </td>
                 </tr>
                 {% endfor %}
               </tbody>
             </table>
           </div>
+          <p class="hint warning-text" id="employees-empty-state" hidden>No employee matched this search.</p>
         </details>
       </section>
 
-      <section class="card collapsible" id="cli-roster">
-        <details {% if roster_open %}open{% endif %}>
-          <summary>CLI Roster</summary>
-          <form class="inline" method="get" action="/employees#cli-roster">
-            <input type="hidden" name="q" value="{{ request.query_params.get('q','') }}" />
-            <input type="hidden" name="role" value="{{ request.query_params.get('role','') }}" />
-            <input type="hidden" name="working_at" value="{{ request.query_params.get('working_at','') }}" />
-            <input type="hidden" name="cli" value="{{ request.query_params.get('cli','') }}" />
-            <input type="hidden" name="gradation" value="{{ request.query_params.get('gradation','') }}" />
-            <input type="hidden" name="sort" value="{{ request.query_params.get('sort','') }}" />
-            <label>Name
-              <input name="roster_name" value="{{ roster_name }}" placeholder="Search name" />
-            </label>
-            <label>CLI
-              <select name="roster_cli">
-                <option value="">All</option>
-                {% for opt in cli_opts %}
-                  <option value="{{ opt }}" {% if roster_cli == opt %}selected{% endif %}>{{ opt }}</option>
-                {% endfor %}
-              </select>
-            </label>
-            <label>Gradation
-              <select name="roster_gradation">
-                <option value="">All</option>
-                {% for opt in gradation_opts %}
-                  <option value="{{ opt }}" {% if roster_gradation == opt %}selected{% endif %}>{{ opt }}</option>
-                {% endfor %}
-              </select>
-            </label>
-            <button type="submit">Filter</button>
-            <a class="ghost" href="/employees#cli-roster">Reset</a>
-          </form>
-          <div class="table-wrap">
-          <table class="employee-table paged">
-              <thead>
-                <tr>
-                  <th>CLI</th>
-                  <th>Name</th>
-                  <th>Role</th>
-                  <th>Gradation</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for e in cli_roster %}
-                <tr>
-                  <td>{{ e.cli }}</td>
-                  <td><a href="/employees/{{ e.id }}">{{ e.name }}</a></td>
-                  <td>{{ e.role }}</td>
-                  <td>{{ e.gradation or '' }}</td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        </details>
-      </section>
     </main>
   </div>
   <script>
@@ -224,6 +286,13 @@
       const sortSelect = document.getElementById('sort-select');
       const cliSelect = document.getElementById('filter-cli');
       const workingSelect = document.getElementById('filter-working');
+      const employeesFilterForm = document.getElementById('employees-filter-form');
+      const employeesSearchInput = document.getElementById('employees-search-input');
+      const employeesTable = document.getElementById('employees-table');
+      const employeesTotalChip = document.getElementById('employees-total-chip');
+      const employeesEmptyState = document.getElementById('employees-empty-state');
+      const columnButton = document.getElementById('employees-column-button');
+      const columnPanel = document.getElementById('employees-column-panel');
       const sync = () => {
         const sortVal = sortSelect ? sortSelect.value : '';
         const cliActive = sortVal === 'cli';
@@ -235,9 +304,485 @@
         sortSelect.addEventListener('change', sync);
         sync();
       }
+
+      if (employeesFilterForm && employeesSearchInput && employeesTable && employeesTable.tBodies.length) {
+        const employeeRows = Array.from(employeesTable.tBodies[0].rows || []);
+        let composing = false;
+
+        const normalizeText = (value) =>
+          (value || '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+        const rowSearchText = (row) => {
+          if (!row.dataset.searchText) {
+            const nameCell = row.cells?.[1];
+            row.dataset.searchText = normalizeText(nameCell?.textContent || '');
+          }
+          return row.dataset.searchText;
+        };
+
+        const applyLiveSearch = () => {
+          if (composing) return;
+          const query = normalizeText(employeesSearchInput.value);
+          const terms = query ? query.split(' ').filter(Boolean) : [];
+          let matched = 0;
+
+          employeeRows.forEach((row) => {
+            const haystack = rowSearchText(row);
+            const matches = !terms.length || terms.every((term) => haystack.includes(term));
+            row.dataset.filterHidden = matches ? 'false' : 'true';
+            if (matches) {
+              matched += 1;
+            }
+          });
+
+          if (employeesTotalChip) {
+            employeesTotalChip.textContent = `Total: ${matched}`;
+          }
+          if (employeesEmptyState) {
+            employeesEmptyState.hidden = matched !== 0;
+          }
+          employeesTable.dispatchEvent(
+            new CustomEvent('table-pager:refresh', { detail: { resetPage: true } })
+          );
+        };
+
+        employeesSearchInput.addEventListener('input', applyLiveSearch);
+        employeesSearchInput.addEventListener('search', applyLiveSearch);
+        employeesSearchInput.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            applyLiveSearch();
+          }
+        });
+        employeesSearchInput.addEventListener('compositionstart', () => {
+          composing = true;
+        });
+        employeesSearchInput.addEventListener('compositionend', () => {
+          composing = false;
+          applyLiveSearch();
+        });
+
+        applyLiveSearch();
+      }
+
+      if (employeesTable && columnButton && columnPanel) {
+        const storageKey = 'employeesColumnVisibility';
+        const stored = (() => {
+          try {
+            return JSON.parse(localStorage.getItem(storageKey) || '{}');
+          } catch (err) {
+            return {};
+          }
+        })();
+
+        const headers = Array.from(employeesTable.querySelectorAll('thead th'));
+        const rows = Array.from(employeesTable.querySelectorAll('tbody tr'));
+        const buildRow = (idx, label) => {
+          const wrapper = document.createElement('label');
+          wrapper.className = 'column-toggle-item';
+          const input = document.createElement('input');
+          input.type = 'checkbox';
+          input.checked = stored[idx] !== false;
+          input.addEventListener('change', () => {
+            stored[idx] = input.checked;
+            try {
+              localStorage.setItem(storageKey, JSON.stringify(stored));
+            } catch (err) {}
+            toggleColumn(idx, input.checked);
+          });
+          const text = document.createElement('span');
+          text.textContent = label;
+          wrapper.append(input, text);
+          return wrapper;
+        };
+
+        const toggleColumn = (idx, visible) => {
+          const display = visible ? '' : 'none';
+          if (headers[idx]) headers[idx].style.display = display;
+          rows.forEach((row) => {
+            const cell = row.cells[idx];
+            if (cell) cell.style.display = display;
+          });
+        };
+
+        columnPanel.innerHTML = '';
+        headers.forEach((header, idx) => {
+          const label = (header.textContent || '').trim() || `Column ${idx + 1}`;
+          const item = buildRow(idx, label);
+          columnPanel.appendChild(item);
+        });
+
+        headers.forEach((_, idx) => {
+          if (stored[idx] === false) {
+            toggleColumn(idx, false);
+          }
+        });
+
+        columnButton.addEventListener('click', () => {
+          columnPanel.hidden = !columnPanel.hidden;
+        });
+        document.addEventListener('click', (event) => {
+          if (!columnPanel.hidden && !columnPanel.contains(event.target) && event.target !== columnButton) {
+            columnPanel.hidden = true;
+          }
+        });
+      }
+
+      document.querySelectorAll('.employee-edit-link').forEach((link) => {
+        link.addEventListener('click', (event) => {
+          const name = link.dataset.employeeName || 'this employee';
+          if (!window.confirm(`Open edit page for ${name}?`)) {
+            event.preventDefault();
+          }
+        });
+      });
+
+      document.querySelectorAll('.employee-delete-form').forEach((form) => {
+        form.addEventListener('submit', (event) => {
+          const name = form.dataset.employeeName || 'this employee';
+          if (!window.confirm(`Delete ${name}? This cannot be undone.`)) {
+            event.preventDefault();
+          }
+        });
+      });
+
+      document.querySelectorAll('[data-password-gated-form]').forEach((form) => {
+        const passwordInput = form.querySelector('[data-password-gated-input]');
+        const submitButton = form.querySelector('[data-password-gated-button]');
+        if (!passwordInput || !submitButton) return;
+
+        const requiredCode = form.dataset.passwordGatedCode || '11111';
+        const syncButtonState = () => {
+          submitButton.disabled = passwordInput.value.trim() !== requiredCode;
+        };
+
+        passwordInput.addEventListener('input', syncButtonState);
+        syncButtonState();
+      });
+
+      if (employeesTable) {
+        let frozenIndex = null;
+          const clearFrozen = () => {
+            employeesTable.querySelectorAll('.col-frozen').forEach((cell) => {
+              cell.classList.remove('col-frozen', 'col-frozen-active');
+              cell.style.left = '';
+            });
+          };
+          const applyFrozen = (idx) => {
+            clearFrozen();
+            frozenIndex = idx;
+            const headerRow = employeesTable.tHead && employeesTable.tHead.rows[0];
+            const allRows = Array.from(employeesTable.tBodies[0]?.rows || []);
+            if (!headerRow) return;
+            let left = 0;
+            for (let i = 0; i < idx; i += 1) {
+              left += headerRow.cells[i]?.offsetWidth || 0;
+            }
+            const markCell = (cell) => {
+              if (!cell) return;
+              cell.classList.add('col-frozen', 'col-frozen-active');
+              cell.style.left = `${left}px`;
+            };
+            markCell(headerRow.cells[idx]);
+            allRows.forEach((row) => markCell(row.cells[idx]));
+          };
+        const headers = employeesTable.querySelectorAll('thead th');
+          headers.forEach((th, idx) => {
+            th.style.cursor = 'pointer';
+            th.addEventListener('click', () => {
+              if (frozenIndex === idx) {
+                clearFrozen();
+                frozenIndex = null;
+              } else {
+                applyFrozen(idx);
+              }
+            });
+          });
+
+          const clearRowSelection = () => {
+            employeesTable.querySelectorAll('tbody tr').forEach((row) => {
+              row.classList.remove('table-paged-active', 'table-paged-active-odd', 'table-paged-active-even');
+            });
+          };
+
+          document.addEventListener('click', (event) => {
+            if (employeesTable.contains(event.target)) {
+              return;
+            }
+            clearRowSelection();
+          });
+        }
+
+      const syncForm = document.querySelector('[data-google-sync-form]');
+      const syncLive = document.getElementById('google-sync-live');
+      const syncWarning = document.getElementById('google-sync-warning');
+      const syncBackup = document.getElementById('google-sync-backup');
+      const syncReport = document.getElementById('google-sync-report');
+      const syncAdded = document.getElementById('google-sync-added');
+      const syncUpdated = document.getElementById('google-sync-updated');
+      const syncDeleted = document.getElementById('google-sync-deleted');
+      const syncAutoCorrected = document.getElementById('google-sync-autocorrected');
+      const syncPreviewActions = document.getElementById('google-sync-preview-actions');
+      const syncApplyButton = document.getElementById('google-sync-apply');
+      const syncCancelPreviewButton = document.getElementById('google-sync-cancel-preview');
+      const syncDetailsWrap = document.getElementById('google-sync-details-wrap');
+      const syncDetailsList = document.getElementById('google-sync-details-list');
+      const syncDetailsToggle = document.getElementById('google-sync-details-toggle');
+      const syncWarningWrap = document.getElementById('google-sync-warning-wrap');
+      const syncWarningList = document.getElementById('google-sync-warning-list');
+      const syncButton = document.querySelector('[data-sync-button]');
+      if (syncForm && syncLive && syncWarning && syncBackup && syncReport && syncAdded && syncUpdated && syncDeleted && syncAutoCorrected && syncPreviewActions && syncApplyButton && syncCancelPreviewButton && syncDetailsWrap && syncDetailsList && syncDetailsToggle && syncWarningWrap && syncWarningList && syncButton) {
+        let syncDetailsExpanded = false;
+        let currentSyncDetails = [];
+        let pendingSyncReady = false;
+        const setCardVisible = (element, visible) => {
+          element.hidden = !visible;
+          element.style.display = visible ? '' : 'none';
+        };
+        const resetPreviewActions = () => {
+          pendingSyncReady = false;
+          setCardVisible(syncPreviewActions, false);
+          setCardVisible(syncReport, false);
+          syncAdded.innerHTML = '';
+          syncUpdated.innerHTML = '';
+          syncDeleted.innerHTML = '';
+          syncAutoCorrected.innerHTML = '';
+          currentSyncDetails = [];
+          syncDetailsExpanded = false;
+          renderSyncDetails();
+          syncWarningWrap.hidden = true;
+          syncWarningList.innerHTML = '';
+          syncWarning.textContent = '';
+          syncBackup.textContent = '';
+        };
+        setCardVisible(syncReport, false);
+        setCardVisible(syncPreviewActions, false);
+        const renderSyncDetails = () => {
+          syncDetailsList.innerHTML = '';
+          if (!currentSyncDetails.length) {
+            syncDetailsWrap.hidden = true;
+            syncDetailsToggle.hidden = true;
+            syncDetailsToggle.setAttribute('aria-expanded', 'false');
+            return;
+          }
+          syncDetailsWrap.hidden = false;
+          const visibleItems = syncDetailsExpanded ? currentSyncDetails : currentSyncDetails.slice(0, 5);
+          visibleItems.forEach((item) => {
+            const li = document.createElement('li');
+            li.textContent = item;
+            syncDetailsList.appendChild(li);
+          });
+          if (currentSyncDetails.length > 5) {
+            syncDetailsToggle.hidden = false;
+            syncDetailsToggle.textContent = syncDetailsExpanded ? 'Show less' : `Show more (${currentSyncDetails.length - 5} more)`;
+            syncDetailsToggle.setAttribute('aria-expanded', syncDetailsExpanded ? 'true' : 'false');
+          } else {
+            syncDetailsToggle.hidden = true;
+            syncDetailsToggle.setAttribute('aria-expanded', 'false');
+          }
+        };
+        syncDetailsToggle.addEventListener('click', () => {
+          syncDetailsExpanded = !syncDetailsExpanded;
+          renderSyncDetails();
+        });
+        syncForm.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          if (!window.confirm('Preview Google Sheet changes before saving?')) {
+            return;
+          }
+          syncButton.disabled = true;
+          const originalText = syncButton.textContent;
+          syncButton.textContent = 'Previewing...';
+          syncLive.className = 'hint';
+          syncLive.textContent = 'Preview started...';
+          syncWarning.textContent = '';
+          syncBackup.textContent = '';
+          setCardVisible(syncReport, false);
+          resetPreviewActions();
+          syncAdded.innerHTML = '';
+          syncUpdated.innerHTML = '';
+          syncDeleted.innerHTML = '';
+          syncAutoCorrected.innerHTML = '';
+          currentSyncDetails = [];
+          syncDetailsExpanded = false;
+          renderSyncDetails();
+          syncWarningWrap.hidden = true;
+          syncWarningList.innerHTML = '';
+          try {
+            const formData = new FormData(syncForm);
+            const response = await fetch(syncForm.action, {
+              method: 'POST',
+              headers: { 'X-Requested-With': 'fetch' },
+              body: formData,
+            });
+            const data = await response.json();
+            syncLive.textContent = data.message || (response.ok ? 'Preview complete.' : 'Sync failed.');
+            syncLive.className = response.ok ? 'hint success-text' : 'error-text';
+            syncWarning.textContent = data.warning_message || '';
+            syncWarning.className = data.warning_message ? 'hint warning-text' : 'hint warning-text';
+            syncBackup.textContent = data.backup_notice || '';
+            if (response.ok && data.preview && data.has_changes) {
+              pendingSyncReady = true;
+              setCardVisible(syncPreviewActions, true);
+            } else {
+              resetPreviewActions();
+            }
+            const addedItems = Array.isArray(data.added_details) ? data.added_details : [];
+            const updatedItems = Array.isArray(data.updated_details) ? data.updated_details : [];
+            const deletedItems = Array.isArray(data.deleted_details) ? data.deleted_details : [];
+            const autoCorrectedItems = Array.isArray(data.auto_corrected_details) ? data.auto_corrected_details : [];
+            const renderReportList = (listEl, items) => {
+              listEl.innerHTML = '';
+              if (!items.length) {
+                const li = document.createElement('li');
+                li.textContent = 'No changes';
+                listEl.appendChild(li);
+                return;
+              }
+              items.forEach((item) => {
+                const li = document.createElement('li');
+                li.textContent = item;
+                listEl.appendChild(li);
+              });
+            };
+            renderReportList(syncAdded, addedItems);
+            renderReportList(syncUpdated, updatedItems);
+            renderReportList(syncAutoCorrected, autoCorrectedItems);
+            renderReportList(syncDeleted, deletedItems);
+            setCardVisible(syncReport, !!(addedItems.length || updatedItems.length || autoCorrectedItems.length || deletedItems.length));
+
+            currentSyncDetails = Array.isArray(data.sync_details) ? data.sync_details : [];
+            syncDetailsExpanded = false;
+            renderSyncDetails();
+            const warningDetails = Array.isArray(data.warning_details) ? data.warning_details : [];
+            if (warningDetails.length) {
+              syncWarningWrap.hidden = false;
+              syncWarningList.innerHTML = '';
+              warningDetails.forEach((item) => {
+                const li = document.createElement('li');
+                li.textContent = item;
+                syncWarningList.appendChild(li);
+              });
+            }
+          } catch (error) {
+            syncLive.textContent = 'Preview failed. Please try again.';
+            syncLive.className = 'error-text';
+            syncWarning.textContent = '';
+            syncBackup.textContent = '';
+            setCardVisible(syncReport, false);
+            resetPreviewActions();
+            syncAdded.innerHTML = '';
+            syncUpdated.innerHTML = '';
+            syncDeleted.innerHTML = '';
+          syncAutoCorrected.innerHTML = '';
+            currentSyncDetails = [];
+            syncDetailsExpanded = false;
+            renderSyncDetails();
+            syncWarningWrap.hidden = true;
+            syncWarningList.innerHTML = '';
+          } finally {
+            const requiredCode = syncForm.dataset.passwordGatedCode || '11111';
+            const passwordInput = syncForm.querySelector('[data-password-gated-input]');
+            syncButton.disabled = !passwordInput || passwordInput.value.trim() !== requiredCode;
+            syncButton.textContent = originalText;
+            window.location.hash = 'google-sync-card';
+          }
+        });
+        syncApplyButton.addEventListener('click', async () => {
+          if (!pendingSyncReady) return;
+          if (!window.confirm('Save the previewed Google Sheet changes to the employee database now?')) {
+            return;
+          }
+          syncApplyButton.disabled = true;
+          syncCancelPreviewButton.disabled = true;
+          syncButton.disabled = true;
+          const originalApplyText = syncApplyButton.textContent;
+          syncApplyButton.textContent = 'Saving...';
+          try {
+            const formData = new FormData(syncForm);
+            const response = await fetch('/employees/sync-google', {
+              method: 'POST',
+              headers: { 'X-Requested-With': 'fetch' },
+              body: formData,
+            });
+            const data = await response.json();
+            syncLive.textContent = data.message || (response.ok ? 'Sync complete.' : 'Sync failed.');
+            syncLive.className = response.ok ? 'hint success-text' : 'error-text';
+            syncWarning.textContent = data.warning_message || '';
+            syncBackup.textContent = data.backup_notice || '';
+            const addedItems = Array.isArray(data.added_details) ? data.added_details : [];
+            const updatedItems = Array.isArray(data.updated_details) ? data.updated_details : [];
+            const deletedItems = Array.isArray(data.deleted_details) ? data.deleted_details : [];
+            const autoCorrectedItems = Array.isArray(data.auto_corrected_details) ? data.auto_corrected_details : [];
+            const renderReportList = (listEl, items) => {
+              listEl.innerHTML = '';
+              if (!items.length) {
+                const li = document.createElement('li');
+                li.textContent = 'No changes';
+                listEl.appendChild(li);
+                return;
+              }
+              items.forEach((item) => {
+                const li = document.createElement('li');
+                li.textContent = item;
+                listEl.appendChild(li);
+              });
+            };
+            renderReportList(syncAdded, addedItems);
+            renderReportList(syncUpdated, updatedItems);
+            renderReportList(syncAutoCorrected, autoCorrectedItems);
+            renderReportList(syncDeleted, deletedItems);
+            setCardVisible(syncReport, !!(addedItems.length || updatedItems.length || autoCorrectedItems.length || deletedItems.length));
+            currentSyncDetails = Array.isArray(data.sync_details) ? data.sync_details : [];
+            syncDetailsExpanded = false;
+            renderSyncDetails();
+            const warningDetails = Array.isArray(data.warning_details) ? data.warning_details : [];
+            if (warningDetails.length) {
+              syncWarningWrap.hidden = false;
+              syncWarningList.innerHTML = '';
+              warningDetails.forEach((item) => {
+                const li = document.createElement('li');
+                li.textContent = item;
+                syncWarningList.appendChild(li);
+              });
+            } else {
+              syncWarningWrap.hidden = true;
+              syncWarningList.innerHTML = '';
+            }
+            resetPreviewActions();
+          } catch (error) {
+            syncLive.textContent = 'Saving sync changes failed. Please try again.';
+            syncLive.className = 'error-text';
+          } finally {
+            const requiredCode = syncForm.dataset.passwordGatedCode || '11111';
+            const passwordInput = syncForm.querySelector('[data-password-gated-input]');
+            syncButton.disabled = !passwordInput || passwordInput.value.trim() !== requiredCode;
+            syncApplyButton.disabled = false;
+            syncCancelPreviewButton.disabled = false;
+            syncApplyButton.textContent = originalApplyText;
+            window.location.hash = 'google-sync-card';
+          }
+        });
+        syncCancelPreviewButton.addEventListener('click', () => {
+          resetPreviewActions();
+          syncLive.textContent = 'Preview discarded. No changes were saved.';
+          syncLive.className = 'hint';
+        });
+      }
     })();
   </script>
-  <script src="/static/table-pager.js?v={{ asset_ver }}"></script>
-  <script src="/static/sidebar-toggle.js?v={{ asset_ver }}"></script>
+  <script src="/static/sidebar-toggle.js"></script>
+  <script src="/static/table-pager.js"></script>
+  <script src="/static/table-export.js"></script>
+  <script src="/static/button-confirm.js"></script>
 </body>
 </html>
+
+
+
+
+
+
+
+
+
