@@ -376,11 +376,37 @@ button:hover { filter: brightness(1.05); }
 .metric-card-total .metric-meter-notes {
   color: #fffbea;
 }
+.ssts-recovery-section {
+  background: linear-gradient(135deg, rgba(15, 56, 40, 0.9), rgba(18, 82, 58, 0.74));
+  border-color: rgba(122, 239, 180, 0.22);
+}
+.ssts-online-section details > summary {
+  background: linear-gradient(135deg, rgba(24, 80, 52, 0.9), rgba(19, 121, 88, 0.72));
+  border-color: rgba(122, 239, 180, 0.32);
+  color: #effff6;
+}
+.ssts-online-section details > summary:hover,
+.ssts-online-section details[open] > summary {
+  background: linear-gradient(135deg, rgba(32, 110, 70, 0.94), rgba(28, 144, 102, 0.78));
+  border-color: rgba(148, 247, 205, 0.46);
+  color: #f7fff9;
+}
 .ssts-online-section .employee-table thead th {
   background: linear-gradient(135deg, rgba(18, 87, 57, 0.98), rgba(15, 114, 82, 0.98));
 }
 .ssts-online-section .employee-table thead th:hover {
   background: linear-gradient(135deg, rgba(24, 102, 68, 0.99), rgba(18, 130, 94, 0.99));
+}
+.ssts-offline-section details > summary {
+  background: linear-gradient(135deg, rgba(98, 30, 30, 0.9), rgba(138, 47, 47, 0.72));
+  border-color: rgba(255, 153, 153, 0.3);
+  color: #fff3f3;
+}
+.ssts-offline-section details > summary:hover,
+.ssts-offline-section details[open] > summary {
+  background: linear-gradient(135deg, rgba(118, 34, 34, 0.94), rgba(156, 54, 54, 0.8));
+  border-color: rgba(255, 179, 179, 0.42);
+  color: #fff8f8;
 }
 .ssts-offline-section .employee-table thead th {
   background: linear-gradient(135deg, rgba(92, 24, 24, 0.98), rgba(126, 39, 39, 0.98));
@@ -400,7 +426,7 @@ button:hover { filter: brightness(1.05); }
   margin-top: 18px;
 }
 h2 { margin-top: 0; color: #f1f4ff; }
-.table-wrap { overflow-x: auto; }
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .card { width: 100%; }
 .table-wrap { width: 100%; }
 table { width: 100%; border-collapse: collapse; color: #e5e7f0; table-layout: auto; }
@@ -1455,11 +1481,53 @@ ul { padding-left: 18px; margin: 6px 0; }
   .dashboard-summary-row {
     grid-template-columns: 1fr;
   }
+  .content {
+    padding: 16px 18px 28px;
+  }
+  .header-actions {
+    width: 100%;
+  }
+  .header-actions .ghost.small,
+  .header-actions .danger.small,
+  .header-actions .ghost,
+  .header-actions .danger {
+    flex: 1 1 180px;
+    justify-content: center;
+    text-align: center;
+  }
   .report-tabs {
     width: 100%;
+    gap: 8px;
+    padding: 8px;
   }
   .report-tab {
     flex: 1 1 220px;
+    min-width: 0;
+    text-align: center;
+  }
+  .grid {
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  }
+  .metric-card {
+    min-height: 0;
+  }
+  .card-head-inline {
+    align-items: flex-start;
+  }
+  .detail-date-filter {
+    padding: 12px;
+  }
+  .detail-date-filter .filter-field {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+  .table-wrap {
+    margin: 0 -4px;
+    padding-bottom: 4px;
+  }
+  .employee-table th,
+  .employee-table td {
+    padding: 9px 8px;
   }
   .detail-date-filter {
     align-items: stretch;
@@ -1538,8 +1606,57 @@ ul { padding-left: 18px; margin: 6px 0; }
   .layout { flex-direction: column; }
   .sidebar { width: 100%; height: auto; position: relative; border-right: none; border-bottom: 1px solid rgba(255,255,255,0.06); }
   .content { padding: 16px; }
+  header {
+    align-items: stretch;
+  }
+  .header-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .header-actions .ghost.small,
+  .header-actions .danger.small,
+  .header-actions .ghost,
+  .header-actions .danger {
+    width: 100%;
+  }
+  .report-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding: 6px;
+    border-radius: 16px;
+    scroll-snap-type: x proximity;
+  }
+  .report-tab {
+    flex: 0 0 88%;
+    scroll-snap-align: start;
+  }
+  .grid {
+    grid-template-columns: 1fr;
+  }
+  .card,
+  .detail-panel {
+    padding: 14px;
+    border-radius: 16px;
+  }
+  .metric-value,
+  .metric-card-total .metric-value {
+    font-size: 1.8rem;
+  }
   .metric-meter-notes {
     flex-direction: column;
     gap: 6px;
+  }
+  .detail-date-filter {
+    padding: 10px;
+    border-radius: 14px;
+  }
+  .detail-panel-head h3 {
+    font-size: 1rem;
+  }
+  .employee-table {
+    min-width: 560px;
+  }
+  .employee-table th {
+    position: static;
   }
 }
