@@ -8,12 +8,14 @@
   const isMobile = () => !!mediaQuery?.matches;
 
   const storageKey = () => (isMobile() ? STORAGE_KEY_MOBILE : STORAGE_KEY_DESKTOP);
+  const isDashboard = () => window.location.pathname === "/";
 
   const update = () => {
     if (!btn) return;
     const hidden = document.body.classList.contains("nav-hidden");
     const mobile = isMobile();
     document.body.classList.toggle("nav-mobile", mobile);
+    document.body.classList.toggle("brand-icon-hidden", !isDashboard());
     btn.textContent = mobile ? (hidden ? "\u2630" : "\u00d7") : hidden ? "\u203a" : "\u2039";
     btn.setAttribute("aria-expanded", hidden ? "false" : "true");
     if (mobile) {

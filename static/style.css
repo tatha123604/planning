@@ -59,6 +59,21 @@ body {
   overflow-wrap: anywhere;
 }
 .brand .dot { width: 14px; height: 14px; border-radius: 50%; background: linear-gradient(135deg, #12bde7, #66e1b6); box-shadow: 0 0 12px rgba(18,189,231,0.9); }
+.brand-icon-hidden .brand {
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 12px 14px;
+  text-align: left;
+}
+.brand-icon-hidden .brand-mark,
+.brand-icon-hidden .brand .dot {
+  display: none;
+}
+.brand-icon-hidden .brand-title,
+.brand-icon-hidden .brand > span {
+  font-size: 1rem;
+}
 .side-links { display: flex; flex-direction: column; gap: 10px; }
 .side-links a {
   display: flex;
