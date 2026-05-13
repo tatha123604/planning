@@ -55,6 +55,17 @@ ASSET_VER = "v20260512b"
 templates.env.globals["asset_ver"] = ASSET_VER
 
 
+def format_cli_label(cli_name: str | None, cli_id: str | None = None) -> str:
+    name = (cli_name or "").strip()
+    cli_id_clean = (cli_id or "").strip()
+    if name and cli_id_clean:
+        return f"{name} ({cli_id_clean})"
+    return name or cli_id_clean
+
+
+templates.env.filters["cli_label"] = format_cli_label
+
+
 def filter_hire_by(value, days: int = 30):
     if not value:
         return None
@@ -1273,7 +1284,9 @@ def employees_page(
     role: Optional[str] = None,
     working_at: Optional[str] = None,
     cli: Optional[str] = None,
+    category: Optional[str] = None,
     gradation: Optional[str] = None,
+    cli_status: Optional[str] = None,
     sort: str = "role",
     roster_name: Optional[str] = None,
     roster_cli: Optional[str] = None,
@@ -1294,6 +1307,7 @@ def employees_page(
         if key not in cli_opts_map:
             cli_opts_map[key] = val.strip()
     cli_opts = [v for _, v in sorted(cli_opts_map.items(), key=lambda item: item[0])]
+    category_opts = sorted({e.category for e in employees_all if e.category})
     gradation_opts = sorted({e.gradation for e in employees_all if e.gradation})
     employees = list(employees_all)
 
@@ -1315,9 +1329,16 @@ def employees_page(
     if cli:
         cli_lower = cli.strip().lower()
         employees = [e for e in employees if e.cli and cli_lower in e.cli.strip().lower()]
+    if category:
+        category_lower = category.lower()
+        employees = [e for e in employees if e.category and category_lower in e.category.lower()]
     if gradation:
         grad_lower = gradation.lower()
         employees = [e for e in employees if e.gradation and grad_lower in e.gradation.lower()]
+    if cli_status == "assigned":
+        employees = [e for e in employees if e.cli or e.cli_id]
+    elif cli_status == "unassigned":
+        employees = [e for e in employees if not e.cli and not e.cli_id]
 
     def sort_key(e: Employee):
         if sort == "name":
@@ -1326,6 +1347,10 @@ def employees_page(
             return (e.retirement_date or date.max, e.name)
         if sort == "hire":
             return (e.hire_date, e.name)
+        if sort == "category":
+            return ((e.category or "").lower(), e.name)
+        if sort == "gradation":
+            return ((e.gradation or "").lower(), e.name)
         if sort == "cli":
             return ((e.cli or "").strip().lower(), e.name)
         if sort == "working_at":
@@ -1333,6 +1358,12 @@ def employees_page(
         return (role_sort_key(e.role), e.name)
 
     employees = sorted(employees, key=sort_key)
+    total_count = len(employees)
+    page = 1
+    total_pages = 1
+    page_start = 0
+    employee_return_to = str(request.url)
+    employee_return_to_query = urlparse.quote(employee_return_to, safe="")
 
     cli_roster = [e for e in employees_all if e.cli]
     if roster_name:
@@ -1355,10 +1386,13 @@ def employees_page(
             "active_page": "employees",
             "query": q or "",
             "filter_role": role or "",
+            "filter_category": category or "",
             "filter_gradation": gradation or "",
+            "filter_cli_status": cli_status or "",
             "sort": sort,
             "working_opts": working_opts,
             "cli_opts": cli_opts,
+            "category_opts": category_opts,
             "gradation_opts": gradation_opts,
             "cli_roster": cli_roster,
             "roster_name": roster_name or "",
@@ -1366,6 +1400,19 @@ def employees_page(
             "roster_gradation": roster_gradation or "",
             "employees_open": employees_open,
             "roster_open": roster_open,
+            "total_count": total_count,
+            "page": page,
+            "total_pages": total_pages,
+            "page_start": page_start,
+            "employee_return_to": employee_return_to,
+            "employee_return_to_query": employee_return_to_query,
+            "sync_error": "",
+            "sync_notice": "",
+            "sync_warning": "",
+            "sync_backup": "",
+            "sync_backup_label": "",
+            "google_sync_ready": False,
+            "google_sync_range": "",
         },
     )
 
@@ -1527,6 +1574,8 @@ def reports_page(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     role: Optional[str] = None,
+    unassigned_name: Optional[str] = None,
+    unassigned_role: Optional[str] = None,
     session: Session = Depends(get_session),
 ):
     start = _parse_date_cookie(request, "reports_start_date", start_date)
@@ -1580,22 +1629,32 @@ def reports_page(
     if role:
         retiring_list = [e for e in retiring_list if e.role == role]
     retiring_list = sorted(retiring_list, key=lambda e: (e.retirement_date, role_sort_key(e.role), e.name))
+    unassigned_cli_staff = [e for e in employees if not e.cli and not e.cli_id]
+    if unassigned_name:
+        name_lower = unassigned_name.lower()
+        unassigned_cli_staff = [e for e in unassigned_cli_staff if name_lower in e.name.lower()]
+    if unassigned_role:
+        unassigned_cli_staff = [e for e in unassigned_cli_staff if e.role == unassigned_role]
+    unassigned_cli_staff = sorted(unassigned_cli_staff, key=lambda e: (role_sort_key(e.role), e.name))
     response = templates.TemplateResponse(
         "reports.html",
         {
             "request": request,
             "active_page": "reports",
-        "start_date": start,
-        "end_date": end,
-        "retirements": retirements,
-        "role_filter": role or "",
-        "retiring_list": retiring_list,
-        "dashboard_link": f"/?as_of={start.isoformat()}&horizon_months={horizon_months}",
-        "cli_distribution": cli_distribution,
-        "role_headers": role_headers,
-        "working_summary": working_summary,
-    },
-)
+            "start_date": start,
+            "end_date": end,
+            "retirements": retirements,
+            "role_filter": role or "",
+            "retiring_list": retiring_list,
+            "dashboard_link": f"/?as_of={start.isoformat()}&horizon_months={horizon_months}",
+            "cli_distribution": cli_distribution,
+            "role_headers": role_headers,
+            "working_summary": working_summary,
+            "unassigned_name": unassigned_name or "",
+            "unassigned_role": unassigned_role or "",
+            "unassigned_cli_staff": unassigned_cli_staff,
+        },
+    )
     response.set_cookie("as_of", end.isoformat())
     response.set_cookie("reports_start_date", start.isoformat())
     response.set_cookie("reports_end_date", end.isoformat())
