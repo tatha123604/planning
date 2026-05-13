@@ -709,6 +709,7 @@
                 <th>Train No</th>
                 <th>Rake No</th>
                 <th>Device ID</th>
+                <th>Crew Name</th>
                 <th>ORG</th>
                 <th>DEST</th>
                 <th>40+ Count</th>
@@ -727,6 +728,7 @@
                 </td>
                 <td>{{ row.rake_no }}</td>
                 <td>{{ row.device_id }}</td>
+                <td>{{ row.crew_name }}</td>
                 <td>{{ row.org }}</td>
                 <td>{{ row.dest }}</td>
                 <td>{{ row.occurrence_count }}</td>
@@ -735,7 +737,7 @@
               </tr>
               {% else %}
               <tr>
-                <td colspan="9">No 40+ speed train found for the selected date.</td>
+                <td colspan="10">No 40+ speed train found for the selected date.</td>
               </tr>
               {% endfor %}
             </tbody>
@@ -761,6 +763,7 @@
                   <th>Train No</th>
                   <th>Rake No</th>
                   <th>Device ID</th>
+                  <th>Crew Name</th>
                   <th>ORG</th>
                   <th>DEST</th>
                   <th>Srl</th>
@@ -769,6 +772,7 @@
                   <th>Act Arr</th>
                   <th>Sch Dep</th>
                   <th>Act Dep</th>
+                  <th>Stop Time</th>
                   <th>Geofence Enter Speed</th>
                   <th>PF Enter Speed</th>
                   <th>PF Distance</th>
@@ -782,6 +786,7 @@
                   <td>{{ row.train_no }}</td>
                   <td>{{ row.rake_no }}</td>
                   <td>{{ row.device_id }}</td>
+                  <td>{{ row.crew_name }}</td>
                   <td>{{ row.org }}</td>
                   <td>{{ row.dest }}</td>
                   <td>{{ row.srl_no }}</td>
@@ -790,6 +795,7 @@
                   <td>{{ row.act_arr }}</td>
                   <td>{{ row.sch_dep }}</td>
                   <td>{{ row.act_dep }}</td>
+                  <td>{{ row.stop_time }}</td>
                   <td>{{ row.geofence_enter_speed }}</td>
                   <td>{{ row.pf_enter_speed }}</td>
                   <td>{{ row.pf_distance }}</td>
@@ -797,7 +803,7 @@
                 </tr>
                 {% else %}
                 <tr>
-                  <td colspan="16">No train selected yet, or this train has no 40+ speed rows.</td>
+                  <td colspan="18">No train selected yet, or this train has no 40+ speed rows.</td>
                 </tr>
                 {% endfor %}
               </tbody>

@@ -414,6 +414,7 @@ def _build_pf_report_rows_for_train(
         "device_id": train.get("device_id"),
         "org": str(train.get("org") or ""),
         "dest": str(train.get("dest") or ""),
+        "crew_name": str(train.get("crew_name") or ""),
     }
     params = {
         "train_date": report_day.isoformat(),
@@ -443,6 +444,7 @@ def _build_pf_report_rows_for_train(
                 "sch_dep": _format_time_value(train.get("dep")),
                 "act_arr": _format_time_value(train.get("act_arr")),
                 "act_dep": _format_time_value(train.get("act_dep")),
+                "stop_time": "",
                 "geofence_enter_speed": "",
                 "pf_enter_speed": "",
                 "pf_distance": "",
@@ -463,6 +465,8 @@ def _build_pf_report_rows_for_train(
                 "sch_dep": _format_time_value(item.get("sch_dep")),
                 "act_arr": _format_time_value(item.get("act_arr")),
                 "act_dep": _format_time_value(item.get("act_dep")),
+                "crew_name": str(item.get("crew_name") or base_row.get("crew_name") or ""),
+                "stop_time": _format_time_value(item.get("stop_time")),
                 "geofence_enter_speed": item.get("geofence_enter_speed")
                 if item.get("geofence_enter_speed") is not None
                 else "",
@@ -481,6 +485,7 @@ def _build_pf_report_rows_for_train(
             "sch_dep": _format_time_value(train.get("dep")),
             "act_arr": _format_time_value(train.get("act_arr")),
             "act_dep": _format_time_value(train.get("act_dep")),
+            "stop_time": "",
             "geofence_enter_speed": "",
             "pf_enter_speed": "",
             "pf_distance": "",
@@ -617,11 +622,14 @@ def _build_ssts_pf_speed_analysis_result(report_day: date) -> dict[str, object]:
                 "device_id": row.get("device_id") or "",
                 "org": str(row.get("org") or ""),
                 "dest": str(row.get("dest") or ""),
+                "crew_name": str(row.get("crew_name") or ""),
                 "occurrence_count": 0,
                 "max_geofence_enter_speed": "",
                 "max_pf_enter_speed": "",
             },
         )
+        if not summary.get("crew_name") and row.get("crew_name"):
+            summary["crew_name"] = str(row.get("crew_name") or "")
         summary["occurrence_count"] = int(summary.get("occurrence_count") or 0) + 1
         geofence_speed = _pf_speed_value(row.get("geofence_enter_speed"))
         pf_speed = _pf_speed_value(row.get("pf_enter_speed"))
