@@ -254,7 +254,7 @@
                 <td>{{ row.name }}</td>
                 <td>{{ row.uniqueid }}</td>
                 <td>{{ row.lastupdate_label }}</td>
-                <td>
+                <td data-sort-value="{{ row.timeline_summary or row.lastupdate_label or row.name }}">
                   <div class="timeline-card">
                     <div class="timeline-scale">
                       <span>00:00</span>
@@ -272,7 +272,7 @@
                     </div>
                   </div>
                 </td>
-                <td>
+                <td data-sort-value="{{ row.timeline_summary or '' }}">
                   {% if row.timeline_summary %}
                   <div class="timeline-summary-list">{{ row.timeline_summary }}</div>
                   {% else %}

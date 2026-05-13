@@ -233,6 +233,8 @@
       const getCellText = (row) => {
         const cell = row.cells?.[sortColumn];
         if (!cell) return "";
+        const explicitSortValue = cell.dataset?.sortValue;
+        if (explicitSortValue) return normalizeText(explicitSortValue);
         // Prefer visible text; ignore inputs/buttons for remark editor etc.
         return normalizeText(cell.innerText || cell.textContent || "");
       };
