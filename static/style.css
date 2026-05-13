@@ -594,6 +594,19 @@ ul { padding-left: 18px; margin: 6px 0; }
 .employee-table tr.active td { background: rgba(102, 225, 182, 0.15); }
 .employee-table .working-at-col { min-width: 120px; max-width: 160px; }
 .employee-table .actions-col { width: 1%; padding-left: 6px; padding-right: 6px; }
+.station-highlight {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(123, 215, 255, 0.18), rgba(18, 189, 231, 0.10));
+  border: 1px solid rgba(123, 215, 255, 0.28);
+  color: #e8fbff;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+}
 .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
 .actions-cell { white-space: nowrap; min-width: 116px; }
 .ghost.small, .danger.small { padding: 6px 10px; font-size: 12px; }
