@@ -1063,6 +1063,7 @@ ul { padding-left: 18px; margin: 6px 0; }
   display: grid;
   grid-template-columns: repeat(2, minmax(220px, 300px));
   justify-content: end;
+  align-items: stretch;
   gap: 16px;
   margin: 10px 0 18px;
   margin-left: auto;
@@ -1070,7 +1071,8 @@ ul { padding-left: 18px; margin: 6px 0; }
 }
 .analysis-summary-card {
   min-height: 148px;
-  height: auto;
+  height: 100%;
+  align-self: stretch;
 }
 .analysis-summary-card .metric-card-body {
   gap: 6px;
