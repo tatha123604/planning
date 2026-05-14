@@ -1470,11 +1470,15 @@ def build_ssts_report_context(
                 end_time: datetime,
                 *,
                 count_for_periods: bool = False,
-            ) -> dict[str, object]:
+            ) -> dict[str, object] | None:
+                if end_time <= start_time:
+                    return None
                 duration_minutes = max(0, int((end_time - start_time).total_seconds() // 60))
                 display_end = end_time - timedelta(minutes=1)
                 return {
                     "state": state,
+                    "start_time": start_time,
+                    "end_time": end_time,
                     "start_label": _format_ist_time(start_time),
                     "end_label": _format_ist_time(display_end),
                     "duration_label": _format_duration(duration_minutes) or "",
@@ -1492,14 +1496,14 @@ def build_ssts_report_context(
                     continue
                 duration_minutes = max(0, int((point_time - segment_start).total_seconds() // 60))
                 if duration_minutes > 0:
-                    segments.append(
-                        build_segment(
-                            current_state,
-                            segment_start,
-                            point_time,
-                            count_for_periods=duration_minutes >= SSTS_OFFLINE_THRESHOLD_MINUTES,
-                        )
+                    segment = build_segment(
+                        current_state,
+                        segment_start,
+                        point_time,
+                        count_for_periods=duration_minutes >= SSTS_OFFLINE_THRESHOLD_MINUTES,
                     )
+                    if segment is not None:
+                        segments.append(segment)
                 current_state = point_state
                 segment_start = point_time
 
@@ -1526,26 +1530,58 @@ def build_ssts_report_context(
                 display_end_time = current_segment_end
                 if current_state == "online" and lastupdate_time is not None:
                     display_end_time = min(current_segment_end, max(current_segment_start, lastupdate_time))
-                segments.append(
-                    build_segment(
-                        current_state,
-                        current_segment_start,
-                        display_end_time,
-                        count_for_periods=duration_minutes >= SSTS_OFFLINE_THRESHOLD_MINUTES,
-                    )
+                segment = build_segment(
+                    current_state,
+                    current_segment_start,
+                    display_end_time,
+                    count_for_periods=duration_minutes >= SSTS_OFFLINE_THRESHOLD_MINUTES,
                 )
+                if segment is not None:
+                    segments.append(segment)
+                elif current_state == "online":
+                    followup_offline_start = current_segment_start
 
             if followup_offline_start is not None and followup_offline_start < reference_end:
                 offline_duration_minutes = max(0, int((reference_end - followup_offline_start).total_seconds() // 60))
                 if offline_duration_minutes > 0:
-                    segments.append(
-                        build_segment(
-                            "offline",
-                            followup_offline_start,
-                            reference_end,
-                            count_for_periods=offline_duration_minutes >= SSTS_OFFLINE_THRESHOLD_MINUTES,
-                        )
+                    segment = build_segment(
+                        "offline",
+                        followup_offline_start,
+                        reference_end,
+                        count_for_periods=offline_duration_minutes >= SSTS_OFFLINE_THRESHOLD_MINUTES,
                     )
+                    if segment is not None:
+                        segments.append(segment)
+
+            normalized_segments: list[dict[str, object]] = []
+            for segment in sorted(segments, key=lambda item: item["start_time"]):
+                if not normalized_segments:
+                    normalized_segments.append(segment)
+                    continue
+                previous_segment = normalized_segments[-1]
+                if (
+                    previous_segment["state"] == segment["state"]
+                    and segment["start_time"] <= previous_segment["end_time"]
+                ):
+                    merged_end = max(previous_segment["end_time"], segment["end_time"])
+                    merged_duration_minutes = max(
+                        0,
+                        int((merged_end - previous_segment["start_time"]).total_seconds() // 60),
+                    )
+                    previous_segment["end_time"] = merged_end
+                    previous_segment["end_label"] = _format_ist_time(merged_end - timedelta(minutes=1))
+                    previous_segment["duration_label"] = _format_duration(merged_duration_minutes) or ""
+                    previous_segment["width_percent"] = round((merged_duration_minutes / (24 * 60)) * 100, 2)
+                    previous_segment["summary_label"] = (
+                        f"{previous_segment['start_label']} to {previous_segment['end_label']} "
+                        f"{'offline' if previous_segment['state'] == 'offline' else 'online'}"
+                    )
+                    previous_segment["count_for_periods"] = (
+                        merged_duration_minutes >= SSTS_OFFLINE_THRESHOLD_MINUTES
+                    )
+                    continue
+                normalized_segments.append(segment)
+            segments = normalized_segments
 
             offline_periods = sum(
                 1 for segment in segments if segment["state"] == "offline" and segment.get("count_for_periods")
