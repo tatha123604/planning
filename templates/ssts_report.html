@@ -323,6 +323,8 @@
               Showing selected summary details for {{ selected_day_label }} from snapshot
               {{ selected_day_run.observed_at.astimezone(IST).strftime("%d-%m-%Y %H:%M IST") }}.
             </p>
+            {% elif selected_day_label %}
+            <p>No SSTS snapshot is available for {{ selected_day_label }}.</p>
             {% else %}
             <p>Select a date, then click a value in the summary table to open the matching detail table.</p>
             {% endif %}

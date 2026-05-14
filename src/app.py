@@ -723,6 +723,28 @@ def _parse_ssts_timestamp(value: str | None) -> datetime | None:
         return None
 
 
+def _parse_report_date(value: str | None) -> date | None:
+    if not value:
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    for separator in ("/", "-"):
+        parts = normalized.split(separator)
+        if len(parts) == 3 and len(parts[0]) == 2 and len(parts[1]) == 2 and len(parts[2]) == 4:
+            try:
+                day_value = int(parts[0])
+                month_value = int(parts[1])
+                year_value = int(parts[2])
+                return date(year_value, month_value, day_value)
+            except ValueError:
+                return None
+    try:
+        return date.fromisoformat(normalized)
+    except ValueError:
+        return None
+
+
 def _minutes_since(now_utc: datetime, lastupdate: datetime | None) -> int | None:
     if not lastupdate:
         return None
@@ -1341,7 +1363,8 @@ def build_ssts_report_context(
     for run in runs:
         if run.fetch_status != "ok":
             continue
-        latest_by_day.setdefault(run.observed_at.date(), run)
+        observed_day_ist = _ensure_utc(run.observed_at).astimezone(IST).date()
+        latest_by_day.setdefault(observed_day_ist, run)
     daily_summary = []
     for day, run in sorted(latest_by_day.items(), key=lambda item: item[0], reverse=True)[:7]:
         rows = _snapshots_for_run(session, run.id or 0)
@@ -1365,7 +1388,7 @@ def build_ssts_report_context(
     ]
     analysis_day_value = analysis_day if analysis_day in latest_by_day else None
     if analysis_day_value is None:
-        analysis_day_value = selected_day if selected_day in latest_by_day else None
+        analysis_day_value = selected_day
     if analysis_day_value is None and analysis_day_options:
         analysis_day_value = date.fromisoformat(str(analysis_day_options[0]["day_iso"]))
 
@@ -1380,7 +1403,7 @@ def build_ssts_report_context(
         selected_day_runs = [
             run
             for run in runs
-            if run.fetch_status == "ok" and run.observed_at.date() == analysis_day_value
+            if run.fetch_status == "ok" and _ensure_utc(run.observed_at).astimezone(IST).date() == analysis_day_value
         ]
         selected_day_runs.sort(key=lambda item: item.observed_at)
         day_rows_by_run = {
@@ -1590,7 +1613,7 @@ def build_ssts_report_context(
     )
 
     available_days = [item["day_iso"] for item in daily_summary]
-    selected_day_value = selected_day if selected_day in latest_by_day else None
+    selected_day_value = selected_day
     if selected_day_value is None and available_days:
         selected_day_value = date.fromisoformat(str(available_days[0]))
     selected_day_run = latest_by_day.get(selected_day_value) if selected_day_value else None
@@ -2361,24 +2384,12 @@ def ssts_report_page(
 ):
     sync_result = refresh_ssts_snapshot(session, force=bool(force))
     active_report_tab = report_tab if report_tab in {"online_offline", "pf_entering"} else "online_offline"
-    selected_day_value: date | None = None
-    if selected_day:
-        try:
-            selected_day_value = date.fromisoformat(selected_day)
-        except ValueError:
-            selected_day_value = None
-    analysis_day_value: date | None = None
-    if analysis_day:
-        try:
-            analysis_day_value = date.fromisoformat(analysis_day)
-        except ValueError:
-            analysis_day_value = None
+    selected_day_value = _parse_report_date(selected_day)
+    analysis_day_value = _parse_report_date(analysis_day)
     pf_day_value = selected_day_value or date.today()
-    if pf_day:
-        try:
-            pf_day_value = date.fromisoformat(pf_day)
-        except ValueError:
-            pf_day_value = selected_day_value or date.today()
+    parsed_pf_day = _parse_report_date(pf_day)
+    if parsed_pf_day is not None:
+        pf_day_value = parsed_pf_day
     context = build_ssts_report_context(session, selected_day=selected_day_value, analysis_day=analysis_day_value)
     pf_context = {
         "pf_report_day": pf_day_value.isoformat(),
@@ -2457,10 +2468,9 @@ def ssts_report_page(
 
 @app.post("/ssts-report/pf-analysis/start")
 async def start_ssts_pf_analysis(pf_day: str = Form(...)):
-    try:
-        report_day = date.fromisoformat(pf_day)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail="Invalid PF analysis date.") from exc
+    report_day = _parse_report_date(pf_day)
+    if report_day is None:
+        raise HTTPException(status_code=400, detail="Invalid PF analysis date.")
 
     task_id = uuid4().hex
     _set_ssts_pf_analysis_task(
