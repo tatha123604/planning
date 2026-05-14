@@ -53,7 +53,7 @@ def format_dmy(value):
     except Exception:
         return str(value)
 templates.env.filters["dmy"] = format_dmy
-ASSET_VER = "v20260514a"
+ASSET_VER = "v20260514b"
 templates.env.globals["asset_ver"] = ASSET_VER
 
 
