@@ -1092,6 +1092,10 @@ ul { padding-left: 18px; margin: 6px 0; }
   margin: 0;
   width: 100%;
   max-width: 240px;
+  align-self: start;
+}
+.analysis-summary-header > .analysis-summary-card + .analysis-summary-card {
+  margin-top: 0 !important;
 }
 .analysis-summary-card .metric-card-body {
   flex: 1 1 auto;
