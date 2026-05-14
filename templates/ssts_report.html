@@ -208,8 +208,8 @@
       </section>
 
       <section class="card collapsible ssts-mixed-section">
-        <div class="card-head-inline">
-          <div>
+        <div class="analysis-summary-header">
+          <div class="analysis-summary-copy">
             <h2>Detailed Analysis</h2>
             {% if selected_analysis_day_label %}
             <p>Graphical day-wise rake timeline for {{ selected_analysis_day_label }}, built from 5-minute status records with current online/offline stretches shown directly in the timeline.</p>
@@ -217,27 +217,27 @@
             <p>Select a date to view each rake's ordered online/offline timeline from 5-minute status records, with the last two columns counting periods longer than 2 hours.</p>
             {% endif %}
           </div>
+          {% if selected_analysis_day_label %}
+          <div class="analysis-summary-grid">
+            <article class="card metric-card metric-card-offline analysis-summary-card">
+              <div class="metric-card-body">
+                <span class="metric-label">Continuous Offline Rakes</span>
+                <strong class="metric-value">{{ selected_analysis_summary.continuous_offline_count }}</strong>
+                <div class="analysis-summary-meta">{{ selected_analysis_summary.day_label }}</div>
+                <p>Rakes that stayed offline throughout the selected day.</p>
+              </div>
+            </article>
+            <article class="card metric-card metric-card-online analysis-summary-card">
+              <div class="metric-card-body">
+                <span class="metric-label">Online/Offline Rakes</span>
+                <strong class="metric-value">{{ selected_analysis_summary.mixed_online_offline_count }}</strong>
+                <div class="analysis-summary-meta">{{ selected_analysis_summary.day_label }}</div>
+                <p>Rakes that showed both online and offline status on the selected day.</p>
+              </div>
+            </article>
+          </div>
+          {% endif %}
         </div>
-        {% if selected_analysis_day_label %}
-        <div class="analysis-summary-grid">
-          <article class="card metric-card metric-card-offline analysis-summary-card">
-            <div class="metric-card-body">
-              <span class="metric-label">Continuous Offline Rakes</span>
-              <strong class="metric-value">{{ selected_analysis_summary.continuous_offline_count }}</strong>
-              <div class="analysis-summary-meta">{{ selected_analysis_summary.day_label }}</div>
-              <p>Rakes that stayed offline throughout the selected day.</p>
-            </div>
-          </article>
-          <article class="card metric-card metric-card-online analysis-summary-card">
-            <div class="metric-card-body">
-              <span class="metric-label">Online/Offline Rakes</span>
-              <strong class="metric-value">{{ selected_analysis_summary.mixed_online_offline_count }}</strong>
-              <div class="analysis-summary-meta">{{ selected_analysis_summary.day_label }}</div>
-              <p>Rakes that showed both online and offline status on the selected day.</p>
-            </div>
-          </article>
-        </div>
-        {% endif %}
         <form class="detail-date-filter" method="get" action="/ssts-report">
           <div class="filter-field">
             <label for="analysis-day-select">Analysis Date</label>
