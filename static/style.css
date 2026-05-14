@@ -1076,17 +1076,22 @@ ul { padding-left: 18px; margin: 6px 0; }
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: stretch;
+  justify-items: stretch;
   gap: 16px;
   margin: 10px 0 18px;
   margin-left: auto;
   max-width: 616px;
 }
 .analysis-summary-card {
+  display: flex;
   min-height: 156px;
   height: 156px;
   margin: 0;
+  width: 100%;
+  justify-self: stretch;
 }
 .analysis-summary-card .metric-card-body {
+  flex: 1 1 auto;
   gap: 6px;
   padding: 10px 14px;
   min-height: 100%;
