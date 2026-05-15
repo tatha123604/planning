@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, timedelta, timezone
 import math
@@ -7,6 +8,7 @@ from io import BytesIO
 import json
 import os
 from pathlib import Path
+import shutil
 from typing import Optional
 import re
 import threading
@@ -26,7 +28,7 @@ from sqlalchemy import case, func
 from sqlmodel import Session, select
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from .db import get_session, init_db
+from .db import DB_PATH, engine, get_session, init_db
 from .logic import (
     ROLE_ORDER,
     apply_promotions,
@@ -44,6 +46,9 @@ from .models import Employee, Requirement, SstsDeviceSnapshot, SstsSnapshotRun
 from .seed import seed_all
 
 BASE_PATH = Path(__file__).resolve().parent.parent
+GOOGLE_EMPLOYEE_STATION_TABS = ["North", "South", "KOAA", "DDJ", "RHA", "NH", "BT"]
+EMPLOYEE_SYNC_BACKUP_DIR = DB_PATH.parent / "employee_sync_backups"
+GOOGLE_SHEETS_READONLY_SCOPE = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 templates = Jinja2Templates(directory=str(BASE_PATH / "templates"))
 # Jinja filter for dd-mm-yyyy display
 def format_dmy(value):
@@ -58,23 +63,199 @@ ASSET_VER = "v20260514c"
 templates.env.globals["asset_ver"] = ASSET_VER
 
 
+CLI_NAME_MANUAL_ALIASES = {
+    "ATKHAN": "ABU TAYAB KHAN",
+    "SAMARESHMONDAL": "SAMARESH MANDAL",
+    "SANJAYKRGUPTA": "SANJAY KUMAR GUPTA",
+    "SHIVASANKARMONDAL": "SHIVA SHANKAR MANDAL",
+    "SIDDHARTHABISWAS": "SIDHARTHA BISWAS",
+    "SUMITBHATTACHARJEE": "SUMIT BHATTACHERJEE",
+    "SUSOVANKAR": "SUSHOVAN KAR",
+    "TAMOJITNANDY": "TAMOJIT NANDI",
+    "TAPASKRDE": "TAPAS KUMAR DE I",
+}
+
+
+def _normalize_cli_tokens(value: str) -> list[str]:
+    text = str(value or "").strip()
+    text = re.sub(r"\s*\([A-Za-z]{2,}[A-Za-z0-9-]*\d+[A-Za-z0-9-]*\)\s*$", "", text)
+    cleaned = re.sub(r"[^A-Za-z]+", " ", text).strip()
+    return [token for token in cleaned.upper().split() if token]
+
+
+def _cli_names_equivalent(a: Optional[str], b: Optional[str]) -> bool:
+    if not a or not b:
+        return False
+    if a.strip().casefold() == b.strip().casefold():
+        return True
+    tokens_a = _normalize_cli_tokens(a)
+    tokens_b = _normalize_cli_tokens(b)
+    if not tokens_a or not tokens_b:
+        return False
+    if tokens_a[-1] != tokens_b[-1]:
+        return False
+    shorter, longer = (tokens_a, tokens_b) if len(tokens_a) <= len(tokens_b) else (tokens_b, tokens_a)
+    for idx, token in enumerate(shorter[:-1]):
+        if idx >= len(longer) - 1:
+            return False
+        target = longer[idx]
+        if token == target:
+            continue
+        if len(token) == 1 and target.startswith(token):
+            continue
+        return False
+    return True
+
+
+def _ensure_employee_sync_backup_dir() -> Path:
+    EMPLOYEE_SYNC_BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    return EMPLOYEE_SYNC_BACKUP_DIR
+
+
+def _create_employee_sync_backup(tag: str = "pre_sync") -> str:
+    backup_dir = _ensure_employee_sync_backup_dir()
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"employee_sync_{tag}_{timestamp}.db"
+    target = backup_dir / filename
+    shutil.copy2(DB_PATH, target)
+    return filename
+
+
+def _latest_employee_sync_backup() -> tuple[Optional[Path], str]:
+    backup_dir = _ensure_employee_sync_backup_dir()
+    backups = sorted(backup_dir.glob("employee_sync_*.db"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if not backups:
+        return None, ""
+    latest = backups[0]
+    label = latest.name.replace("employee_sync_", "").replace(".db", "").replace("_", " ")
+    return latest, label
+
+
+def _split_cli_name_and_inline_id(value: object | None) -> tuple[str, str]:
+    text = " ".join(str(value or "").strip().split())
+    if not text:
+        return "", ""
+    match = re.match(
+        r"^(?P<name>.*?)(?:\s*\((?P<id>[A-Za-z]{2,}[A-Za-z0-9-]*\d+[A-Za-z0-9-]*)\))\s*$",
+        text,
+    )
+    if not match:
+        return text, ""
+    name_text = " ".join((match.group("name") or "").split())
+    inline_id = " ".join((match.group("id") or "").split())
+    if not name_text:
+        return text, ""
+    return name_text, inline_id
+
+
+def _clean_cli_id(value: object | None) -> str:
+    text = " ".join(str(value or "").strip().split())
+    return text.upper() if text else ""
+
+
+def _clean_cli_name(value: object | None) -> str:
+    text, _ = _split_cli_name_and_inline_id(value)
+    return text.upper() if text else ""
+
+
+def _cli_name_key(value: object | None) -> str:
+    return "".join(ch for ch in _clean_cli_name(value) if ch.isalnum())
+
+
+def _cli_initial_alias(value: object | None) -> str:
+    tokens = [token for token in re.split(r"[^A-Z0-9]+", _clean_cli_name(value)) if token]
+    if len(tokens) < 2:
+        return ""
+    initials = " ".join(token[0] for token in tokens[:-1] if token)
+    return f"{initials} {tokens[-1]}".strip()
+
+
+def _cli_name_score(value: object | None) -> tuple[int, int, int]:
+    tokens = [token for token in re.split(r"[^A-Z0-9]+", _clean_cli_name(value)) if token]
+    long_tokens = sum(1 for token in tokens if len(token) > 1)
+    return (long_tokens, len(tokens), len("".join(tokens)))
+
+
+def _build_cli_name_maps(rows) -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
+    alias_map = {key: _clean_cli_name(value) for key, value in CLI_NAME_MANUAL_ALIASES.items() if value}
+    names_by_id: dict[str, set[str]] = {}
+    for cli_name, cli_id in rows:
+        name_text = _clean_cli_name(cli_name)
+        id_text = _clean_cli_id(cli_id)
+        if name_text:
+            alias_map.setdefault(_cli_name_key(name_text), name_text)
+        if id_text and name_text:
+            names_by_id.setdefault(id_text, set()).add(name_text)
+
+    canonical_by_id: dict[str, str] = {}
+    id_sets_by_name_key: dict[str, set[str]] = {}
+    for id_text, names in names_by_id.items():
+        canonical = max(names, key=_cli_name_score)
+        canonical_by_id[id_text] = canonical
+        alias_map[_cli_name_key(canonical)] = canonical
+        alias_name = _cli_initial_alias(canonical)
+        if alias_name:
+            alias_map.setdefault(_cli_name_key(alias_name), canonical)
+        id_sets_by_name_key.setdefault(_cli_name_key(canonical), set()).add(id_text)
+
+    id_by_name: dict[str, str] = {
+        key: next(iter(ids))
+        for key, ids in id_sets_by_name_key.items()
+        if key and len(ids) == 1
+    }
+    return canonical_by_id, alias_map, id_by_name
+
+
+def _canonicalize_cli_name(
+    cli_name: object | None,
+    cli_id: object | None = None,
+    *,
+    canonical_by_id: dict[str, str] | None = None,
+    alias_map: dict[str, str] | None = None,
+    id_by_name: dict[str, str] | None = None,
+) -> tuple[str | None, str | None]:
+    raw_name, inline_id = _split_cli_name_and_inline_id(cli_name)
+    id_text = _clean_cli_id(cli_id) or _clean_cli_id(inline_id)
+    name_text = _clean_cli_name(raw_name)
+    lookup = dict(CLI_NAME_MANUAL_ALIASES)
+    if alias_map:
+        lookup.update(alias_map)
+
+    if id_text and canonical_by_id and canonical_by_id.get(id_text):
+        name_text = canonical_by_id[id_text]
+    elif name_text:
+        mapped = lookup.get(_cli_name_key(name_text))
+        if mapped:
+            name_text = _clean_cli_name(mapped)
+
+    if not id_text and name_text and id_by_name:
+        inferred_id = id_by_name.get(_cli_name_key(name_text))
+        if inferred_id:
+            id_text = inferred_id
+            if canonical_by_id and canonical_by_id.get(id_text):
+                name_text = canonical_by_id[id_text]
+
+    return name_text or None, id_text or None
+
+
 def format_cli_label(cli_name: str | None, cli_id: str | None = None) -> str:
-    name = (cli_name or "").strip()
-    cli_id_clean = (cli_id or "").strip()
-    if name and cli_id_clean:
-        return f"{name} ({cli_id_clean})"
-    return name or cli_id_clean
+    name_text, id_text = _canonicalize_cli_name(cli_name, cli_id)
+    if name_text and id_text:
+        return f"{name_text} ({id_text})"
+    return name_text or id_text or ""
 
 
 templates.env.filters["cli_label"] = format_cli_label
 
 
 def _employee_cli_label(employee: Employee) -> str:
-    return format_cli_label(employee.cli, employee.cli_id)
+    cli_name, cli_id = _canonicalize_cli_name(employee.cli, employee.cli_id)
+    return format_cli_label(cli_name, cli_id)
 
 
 def _employee_cli_key(employee: Employee) -> str:
-    return _employee_cli_label(employee).lower()
+    cli_name, cli_id = _canonicalize_cli_name(employee.cli, employee.cli_id)
+    return (cli_id or "").lower() or _cli_name_key(cli_name).lower()
 
 
 def filter_hire_by(value, days: int = 30):
@@ -1783,6 +1964,17 @@ def logout():
     return response
 
 
+def _safe_return_to(value: str | None, fallback: str = "/employees") -> str:
+    target = (value or "").strip()
+    if not target:
+        return fallback
+    if not target.startswith("/"):
+        return fallback
+    if target.startswith("//"):
+        return fallback
+    return target
+
+
 @app.get("/")
 def index(
     request: Request,
@@ -1854,10 +2046,11 @@ def employees_page(
     category: Optional[str] = None,
     working_at: Optional[str] = None,
     cli: Optional[str] = None,
+    cli_status: Optional[str] = None,
     gradation: Optional[str] = None,
     sort: str = "role",
     page: int = 1,
-    per_page: int = 10,
+    per_page: int = 100,
     roster_name: Optional[str] = None,
     roster_cli: Optional[str] = None,
     roster_gradation: Optional[str] = None,
@@ -1886,14 +2079,8 @@ def employees_page(
     category_opts = sorted({value for value in session.exec(select(Employee.category).distinct()) if value})
     gradation_opts = sorted({value for value in session.exec(select(Employee.gradation).distinct()) if value})
 
-    page = max(int(page or 1), 1)
-    per_page_selected = int(per_page if per_page is not None else 10)
-    if per_page_selected not in {0, 10, 20, 50, 100, 200, 500}:
-        if per_page_selected <= 0:
-            per_page_selected = 0
-        else:
-            per_page_selected = max(10, min(per_page_selected, 500))
-    show_all = per_page_selected == 0
+    page = 1
+    per_page = 0
 
     query_employees = select(Employee)
     if role:
@@ -1903,12 +2090,16 @@ def employees_page(
         query_employees = query_employees.where(func.lower(Employee.category) == category_lower)
     if working_at:
         query_employees = query_employees.where(Employee.working_at.ilike(f"%{working_at}%"))
+    if cli_status == "assigned":
+        query_employees = query_employees.where(func.trim(func.coalesce(Employee.cli, "")) != "")
+    elif cli_status == "unassigned":
+        query_employees = query_employees.where(func.trim(func.coalesce(Employee.cli, "")) == "")
     if gradation:
         query_employees = query_employees.where(Employee.gradation.ilike(f"%{gradation}%"))
 
     total_count = 0
     employees: list[Employee] = []
-    if q or cli:
+    if q or cli or cli_status:
         employees_all = session.exec(query_employees).all()
         employees = list(employees_all)
         if q:
@@ -1917,9 +2108,6 @@ def employees_page(
                 e
                 for e in employees
                 if q_lower in e.name.lower()
-                or q_lower in e.role.lower()
-                or (e.cli and q_lower in _employee_cli_label(e).lower())
-                or (e.gradation and q_lower in e.gradation.lower())
             ]
         if cli:
             cli_lower = cli.strip().lower()
@@ -1967,7 +2155,8 @@ def employees_page(
         else:
             query_employees = query_employees.order_by(role_case, Employee.name)
 
-        total_count = session.exec(select(func.count()).select_from(query_employees.subquery())).one()
+        employees = session.exec(query_employees).all()
+        total_count = len(employees)
 
     cli_roster: list[Employee] = []
     if roster_filter_active:
@@ -1985,24 +2174,12 @@ def employees_page(
         cli_roster = [e for e in cli_roster if e.gradation and grad_lower in e.gradation.lower()]
     cli_roster = sorted(cli_roster, key=lambda e: (_employee_cli_key(e), e.name))
 
-    effective_per_page = max(total_count, 1) if show_all else per_page_selected
-    total_pages = max(1, (total_count + effective_per_page - 1) // effective_per_page)
-    page = min(page, total_pages)
-    page_start = (page - 1) * effective_per_page
-
-    if q or cli:
-        if not show_all:
-            employees = employees[page_start : page_start + effective_per_page]
-    elif show_all:
-        employees = session.exec(query_employees).all()
-    else:
-        employees = session.exec(query_employees.offset(page_start).limit(effective_per_page)).all()
-
-    prev_url = str(request.url.include_query_params(page=page - 1, per_page=per_page_selected)) if page > 1 else ""
-    next_url = str(request.url.include_query_params(page=page + 1, per_page=per_page_selected)) if page < total_pages else ""
-
-    employee_return_to = str(request.url)
-    employee_return_to_query = urlparse.quote(employee_return_to, safe="")
+    total_pages = 1
+    page_start = 0
+    prev_url = ""
+    next_url = ""
+    employee_return_to = f"{request.url.path}{('?' + request.url.query) if request.url.query else ''}#employees-card"
+    employee_return_to_query = urlparse.quote(employee_return_to, safe="/")
 
     return templates.TemplateResponse(
         "employees.html",
@@ -2011,8 +2188,8 @@ def employees_page(
             "employees": employees,
             "total_count": total_count,
             "page": page,
-            "per_page": effective_per_page,
-            "per_page_selected": per_page_selected,
+            "per_page": per_page,
+            "per_page_selected": per_page,
             "total_pages": total_pages,
             "page_start": page_start,
             "prev_url": prev_url,
@@ -2022,6 +2199,7 @@ def employees_page(
             "query": q or "",
             "filter_role": role or "",
             "filter_category": category or "",
+            "filter_cli_status": cli_status or "",
             "filter_gradation": gradation or "",
             "sort": sort,
             "working_opts": working_opts,
@@ -2036,15 +2214,178 @@ def employees_page(
             "roster_open": roster_open,
             "employee_return_to": employee_return_to,
             "employee_return_to_query": employee_return_to_query,
-            "sync_error": sync_error or "",
             "sync_notice": sync_notice or "",
             "sync_warning": sync_warning or "",
-            "sync_backup": "",
-            "sync_backup_label": "",
-            "google_sync_ready": False,
-            "google_sync_range": "",
+            "sync_error": sync_error or "",
+            "sync_backup": request.query_params.get("sync_backup", ""),
+            "sync_backup_label": _latest_employee_sync_backup()[1],
+            "google_sync_ready": _google_sheet_sync_ready(),
+            "google_sync_range": ", ".join(GOOGLE_EMPLOYEE_STATION_TABS),
         },
     )
+
+
+def _run_google_sheet_sync(session: Session, *, commit_changes: bool) -> dict[str, object]:
+    backup_label = ""
+    if commit_changes:
+        try:
+            backup_label = _create_employee_sync_backup()
+        except Exception:
+            backup_label = ""
+    sources, source_label = _fetch_google_employee_rows()
+    added = 0
+    updated = 0
+    warnings: list[str] = []
+    sync_details: list[str] = []
+    sync_stats: dict[str, int] = {"unchanged": 0}
+    global_pf_counts: Counter[str] = Counter()
+    global_hrms_counts: Counter[str] = Counter()
+
+    for rows, _, _ in sources:
+        if not rows:
+            continue
+        header_raw = next((r for r in rows if any(cell not in (None, "", " ") for cell in r)), None)
+        if header_raw is None:
+            continue
+        header_norm = [_employee_norm(h) for h in header_raw]
+        mapped_cols = [EMPLOYEE_ALIAS_MAP.get(h, "") for h in header_norm]
+        col_index: dict[str, int] = {}
+        for idx, canonical in enumerate(mapped_cols):
+            if canonical and canonical not in col_index:
+                col_index[canonical] = idx
+        for row in rows[rows.index(header_raw) + 1 :]:
+            if "pf_no" in col_index:
+                idx = col_index["pf_no"]
+                if idx < len(row) and row[idx] not in (None, ""):
+                    global_pf_counts[str(row[idx]).strip()] += 1
+            if "hrms" in col_index:
+                idx = col_index["hrms"]
+                if idx < len(row) and row[idx] not in (None, ""):
+                    global_hrms_counts[str(row[idx]).strip()] += 1
+
+    for rows, sheet_name, working_at in sources:
+        added_rows, updated_rows = _import_employee_rows(
+            session,
+            rows,
+            source_label=f"Google Sheet ({sheet_name})",
+            working_at_override=working_at,
+            warnings=warnings,
+            sync_details=sync_details,
+            sync_stats=sync_stats,
+            global_pf_counts=global_pf_counts,
+            global_hrms_counts=global_hrms_counts,
+            commit_changes=commit_changes,
+        )
+        added += added_rows
+        updated += updated_rows
+
+    if not commit_changes:
+        session.rollback()
+
+    unchanged = sync_stats.get("unchanged", 0)
+    skipped = sync_stats.get("skipped", 0)
+    if added == 0 and updated == 0 and skipped == 0:
+        message_text = "No change found"
+    else:
+        prefix = "Google Sheet sync complete" if commit_changes else "Preview ready"
+        message_text = f"{prefix}: {added} added, {updated} updated, {unchanged} unchanged, {skipped} skipped from {source_label}."
+    warning_text = ""
+    if warnings:
+        preview = "; ".join(warnings[:3])
+        if len(warnings) > 3:
+            preview += f"; and {len(warnings) - 3} more"
+        warning_text = f"Auto-corrected {len(warnings)} date value(s): {preview}"
+    backup_notice = ""
+    if commit_changes:
+        backup_notice = f"Backup saved: {backup_label}" if backup_label else "Backup failed to save."
+    added_details = [item for item in sync_details if item.startswith("Added ")]
+    updated_details = [item for item in sync_details if item.startswith("Updated ")]
+    auto_corrected_details = [item for item in sync_details if item.startswith("Auto-corrected ")]
+    return {
+        "message": message_text,
+        "warning_message": warning_text,
+        "warning_details": warnings,
+        "sync_details": sync_details,
+        "added_details": added_details,
+        "updated_details": updated_details,
+        "auto_corrected_details": auto_corrected_details,
+        "deleted_details": [],
+        "backup_notice": backup_notice,
+        "has_changes": bool(added or updated or skipped),
+    }
+
+
+@app.post("/employees/sync-google-preview")
+def preview_google_sheet_sync(
+    request: Request,
+    action_password: str = Form(...),
+    session: Session = Depends(get_session),
+):
+    wants_json = request.headers.get("x-requested-with", "").lower() == "fetch"
+    try:
+        _validate_sensitive_action_password(action_password)
+        payload = _run_google_sheet_sync(session, commit_changes=False)
+        if wants_json:
+            return JSONResponse({"ok": True, **payload, "preview": True})
+        return RedirectResponse(
+            url=f"/employees?sync_notice={urlparse.quote(str(payload['message']))}#google-sync-card",
+            status_code=303,
+        )
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "Google Sheet preview failed."
+        if wants_json:
+            return JSONResponse({"ok": False, "message": detail}, status_code=exc.status_code)
+        return RedirectResponse(url=f"/employees?sync_error={urlparse.quote(detail)}#google-sync-card", status_code=303)
+    except Exception as exc:
+        if wants_json:
+            return JSONResponse({"ok": False, "message": str(exc)}, status_code=500)
+        return RedirectResponse(url=f"/employees?sync_error={urlparse.quote(str(exc))}#google-sync-card", status_code=303)
+
+
+@app.post("/employees/sync-google")
+def sync_employees_from_google_sheet(
+    request: Request,
+    action_password: str = Form(...),
+    session: Session = Depends(get_session),
+):
+    wants_json = request.headers.get("x-requested-with", "").lower() == "fetch"
+    try:
+        _validate_sensitive_action_password(action_password)
+        payload = _run_google_sheet_sync(session, commit_changes=True)
+        if wants_json:
+            return JSONResponse({"ok": True, **payload})
+        message = urlparse.quote(str(payload["message"]))
+        redirect_url = f"/employees?sync_notice={message}&sync_backup={urlparse.quote(str(payload['backup_notice']))}#google-sync-card"
+        if payload.get("warning_message"):
+            redirect_url = (
+                f"/employees?sync_notice={message}&sync_warning={urlparse.quote(str(payload['warning_message']))}"
+                f"&sync_backup={urlparse.quote(str(payload['backup_notice']))}#google-sync-card"
+            )
+        return RedirectResponse(url=redirect_url, status_code=303)
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "Google Sheet sync failed."
+        if wants_json:
+            return JSONResponse({"ok": False, "message": detail}, status_code=exc.status_code)
+        return RedirectResponse(url=f"/employees?sync_error={urlparse.quote(detail)}#google-sync-card", status_code=303)
+    except Exception as exc:
+        if wants_json:
+            return JSONResponse({"ok": False, "message": str(exc)}, status_code=500)
+        return RedirectResponse(url=f"/employees?sync_error={urlparse.quote(str(exc))}#google-sync-card", status_code=303)
+
+
+@app.post("/employees/restore-backup")
+def restore_employee_backup(
+    request: Request,
+    action_password: str = Form(...),
+):
+    _validate_sensitive_action_password(action_password)
+    backup_path, backup_label = _latest_employee_sync_backup()
+    if not backup_path:
+        raise HTTPException(status_code=400, detail="No backup available yet.")
+    engine.dispose()
+    shutil.copy2(backup_path, DB_PATH)
+    notice = urlparse.quote(f"Backup restored: {backup_label}")
+    return RedirectResponse(url=f"/employees?sync_notice={notice}#google-sync-card", status_code=303)
 
 
 @app.get("/employees/{emp_id}")
@@ -2052,6 +2393,10 @@ def edit_employee_page(emp_id: int, request: Request, session: Session = Depends
     employee = session.get(Employee, emp_id)
     if not employee:
         raise HTTPException(status_code=404, detail="Employee not found")
+    return_to = _safe_return_to(
+        request.query_params.get("return_to") or request.headers.get("referer"),
+        fallback="/employees",
+    )
     return templates.TemplateResponse(
         "employees_edit.html",
         {
@@ -2059,6 +2404,7 @@ def edit_employee_page(emp_id: int, request: Request, session: Session = Depends
             "employee": employee,
             "role_order": ROLE_ORDER,
             "active_page": "employees",
+            "return_to": return_to,
         },
     )
 
@@ -2066,6 +2412,7 @@ def edit_employee_page(emp_id: int, request: Request, session: Session = Depends
 @app.post("/employees/{emp_id}")
 def update_employee(
     emp_id: int,
+    return_to: Optional[str] = Form(None),
     name: str = Form(...),
     role: str = Form(...),
     retirement_date: str = Form(...),
@@ -2074,6 +2421,7 @@ def update_employee(
     category: Optional[str] = Form(None),
     pf_no: Optional[str] = Form(None),
     hrms: Optional[str] = Form(None),
+    crew_id: Optional[str] = Form(None),
     dob: Optional[str] = Form(None),
     doa: Optional[str] = Form(None),
     do_report: Optional[str] = Form(None),
@@ -2082,6 +2430,7 @@ def update_employee(
     working_at: Optional[str] = Form(None),
     gradation: Optional[str] = Form(None),
     cli: Optional[str] = Form(None),
+    cli_id: Optional[str] = Form(None),
     pme_due: Optional[str] = Form(None),
     technical_due: Optional[str] = Form(None),
     transportation_due: Optional[str] = Form(None),
@@ -2104,31 +2453,36 @@ def update_employee(
     employee.category = category.strip() if category else None
     employee.pf_no = pf_no.strip() if pf_no else None
     employee.hrms = hrms.strip() if hrms else None
+    employee.crew_id = crew_id.strip() if crew_id else None
     employee.dob = to_date(dob)
     employee.doa = to_date(doa)
     employee.do_report = to_date(do_report)
     employee.seniority_rank = to_int(seniority_rank)
-    employee.status = status.strip() if status else None
+    employee.status = status.strip() if status else employee.status
     employee.working_at = working_at.strip() if working_at else None
     employee.gradation = gradation.strip() if gradation else None
-    employee.cli = cli.strip() if cli else None
+    employee.cli, employee.cli_id = _canonicalize_cli_name(cli, cli_id)
     employee.pme_due = to_date(pme_due)
     employee.technical_due = to_date(technical_due)
     employee.transportation_due = to_date(transportation_due)
 
     session.add(employee)
     session.commit()
-    return RedirectResponse("/", status_code=303)
+    return RedirectResponse(_safe_return_to(return_to, fallback="/employees"), status_code=303)
 
 
 @app.post("/employees/{emp_id}/delete")
-def delete_employee(emp_id: int, session: Session = Depends(get_session)):
+def delete_employee(
+    emp_id: int,
+    return_to: Optional[str] = Form(None),
+    session: Session = Depends(get_session),
+):
     employee = session.get(Employee, emp_id)
     if not employee:
         raise HTTPException(status_code=404, detail="Employee not found")
     session.delete(employee)
     session.commit()
-    return RedirectResponse("/", status_code=303)
+    return RedirectResponse(_safe_return_to(return_to, fallback="/employees"), status_code=303)
 
 
 @app.get("/uploads")
@@ -2852,6 +3206,685 @@ def api_plan(
             "promotion_plan": promotion_plan,
         }
     )
+
+
+def _normalize_employee_cli_names(session: Session) -> int:
+    employees = session.exec(select(Employee)).all()
+    canonical_by_id, alias_map, id_by_name = _build_cli_name_maps((employee.cli, employee.cli_id) for employee in employees)
+    changed = 0
+    for employee in employees:
+        new_cli, new_cli_id = _canonicalize_cli_name(
+            employee.cli,
+            employee.cli_id,
+            canonical_by_id=canonical_by_id,
+            alias_map=alias_map,
+            id_by_name=id_by_name,
+        )
+        if employee.cli != new_cli or employee.cli_id != new_cli_id:
+            employee.cli = new_cli
+            employee.cli_id = new_cli_id
+            changed += 1
+    if changed:
+        session.commit()
+    return changed
+
+
+EMPLOYEE_ALIAS_MAP = {
+    "name": "name",
+    "employeename": "name",
+    "empname": "name",
+    "staffname": "name",
+    "crewname": "name",
+    "personname": "name",
+    "degn": "role",
+    "designation": "role",
+    "design": "role",
+    "role": "role",
+    "hiredate": "hire_date",
+    "dateofapptt": "hire_date",
+    "dateofappt": "hire_date",
+    "dateofappointment": "hire_date",
+    "doa": "doa",
+    "retirementdate": "retirement_date",
+    "dor": "retirement_date",
+    "promotionrole": "promotion_role",
+    "promotionreadydate": "promotion_ready_date",
+    "category": "category",
+    "pf": "pf_no",
+    "pfno": "pf_no",
+    "pfnolen": "pf_no",
+    "hrms": "hrms",
+    "hrmsid": "hrms",
+    "crewid": "crew_id",
+    "crewidno": "crew_id",
+    "dob": "dob",
+    "doareport": "do_report",
+    "doreport": "do_report",
+    "status": "status",
+    "workingat": "working_at",
+    "lobby": "working_at",
+    "workingplace": "working_at",
+    "gradation": "gradation",
+    "cli": "cli",
+    "pme": "pme_due",
+    "pmedue": "pme_due",
+    "pme_due": "pme_due",
+    "technical": "technical_due",
+    "technicaldue": "technical_due",
+    "technical_due": "technical_due",
+    "transportation": "transportation_due",
+    "transportationdue": "transportation_due",
+    "transportation_due": "transportation_due",
+    "cliid": "cli_id",
+    "cli_id": "cli_id",
+}
+
+
+def _employee_norm(value: object | None) -> str:
+    return "".join(ch for ch in str(value).lower() if ch.isalnum()) if value is not None else ""
+
+
+def _derive_hire_date(dob_val: date | None, retirement_val: date | None) -> date | None:
+    if dob_val:
+        try:
+            return dob_val.replace(year=dob_val.year + 25)
+        except ValueError:
+            return dob_val.replace(month=2, day=28, year=dob_val.year + 25)
+    if retirement_val:
+        return retirement_val - timedelta(days=35 * 365)
+    return None
+
+
+def _attempt_date_string_fix(value: str) -> tuple[date | None, str | None]:
+    s = (value or "").strip()
+    if not s:
+        return None, None
+    match = re.match(r"^\s*(\d{1,2})[./-](\d{1,2})[./-](\d{5})\s*$", s)
+    if not match:
+        return None, None
+    day, month, year = match.groups()
+    candidates: list[tuple[int, str]] = []
+    seen: set[str] = set()
+    for idx in range(len(year)):
+        trimmed = year[:idx] + year[idx + 1 :]
+        if len(trimmed) != 4 or trimmed in seen:
+            continue
+        seen.add(trimmed)
+        try:
+            parsed_year = int(trimmed)
+        except ValueError:
+            continue
+        if not (1900 <= parsed_year <= 2100):
+            continue
+        candidates.append((abs(parsed_year - date.today().year), trimmed))
+    candidates.sort(key=lambda item: item[0])
+    for _, trimmed in candidates:
+        candidate = f"{int(day):02d}/{int(month):02d}/{trimmed}"
+        try:
+            return datetime.strptime(candidate, "%d/%m/%Y").date(), candidate
+        except ValueError:
+            continue
+    return None, None
+
+
+def _excel_to_date_with_correction(
+    val: object,
+    warnings: Optional[list[str]],
+    source_label: str,
+    row_hint: str,
+    field_name: str,
+) -> date | None:
+    try:
+        return _excel_to_date(val)
+    except ValueError:
+        if isinstance(val, str):
+            fixed_date, fixed_text = _attempt_date_string_fix(val)
+            if fixed_date is not None:
+                if warnings is not None:
+                    warnings.append(f"{source_label} {row_hint}: {field_name} {val!r} -> {fixed_text}")
+                return fixed_date
+        raise
+
+
+def _format_sync_value(value: object | None) -> str:
+    if isinstance(value, date):
+        return value.strftime("%d/%m/%Y")
+    if value is None:
+        return "blank"
+    text = str(value).strip()
+    return text if text else "blank"
+
+
+GOOGLE_SYNC_UPDATED_FIELDS = {
+    "CREW ID",
+    "Designation",
+    "PME Due",
+    "Technical Due",
+    "Transportation Due",
+    "Gradation",
+    "CLI",
+    "Working At",
+}
+
+
+def _google_sync_change_label(changed_labels: list[str]) -> str:
+    if any(label in GOOGLE_SYNC_UPDATED_FIELDS for label in changed_labels):
+        return "Updated"
+    return "Auto-corrected"
+
+
+def _clean_import_text(value: object | None) -> str | None:
+    text = str(value or "").strip()
+    return text or None
+
+
+def _normalize_import_name(value: object | None) -> str | None:
+    text = _clean_import_text(value)
+    if text is None:
+        return None
+    text = text.upper()
+    text = re.sub(r"\([^)]*\)", " ", text)
+    text = re.sub(r"\b(I|II|III|IV|V|VI|VII|VIII|IX|X)\b", " ", text)
+    text = re.sub(r"[^A-Z0-9]+", " ", text)
+    return " ".join(text.split()) or None
+
+
+def _import_employee_rows(
+    session: Session,
+    rows: list[tuple | list],
+    source_label: str = "sheet",
+    working_at_override: Optional[str] = None,
+    warnings: Optional[list[str]] = None,
+    sync_details: Optional[list[str]] = None,
+    sync_stats: Optional[dict[str, int]] = None,
+    global_pf_counts: Optional[Counter[str]] = None,
+    global_hrms_counts: Optional[Counter[str]] = None,
+    commit_changes: bool = True,
+) -> tuple[int, int]:
+    if not rows:
+        raise HTTPException(status_code=400, detail=f"{source_label} is empty.")
+
+    header_raw = None
+    for r in rows:
+        if any(cell not in (None, "", " ") for cell in r):
+            header_raw = r
+            break
+    if header_raw is None:
+        raise HTTPException(status_code=400, detail=f"{source_label} appears empty (no header row).")
+
+    header_norm = [_employee_norm(h) for h in header_raw]
+    mapped_cols = [EMPLOYEE_ALIAS_MAP.get(h, "") for h in header_norm]
+    col_index: dict[str, int] = {}
+    for idx, canonical in enumerate(mapped_cols):
+        if canonical and canonical not in col_index:
+            col_index[canonical] = idx
+
+    required_cols = {"name", "role"}
+    missing_required = required_cols - set(col_index)
+    if missing_required:
+        first_row = rows[rows.index(header_raw)]
+        if isinstance(first_row[0], (int, float)) and isinstance(first_row[1], str) and len(first_row) >= 14:
+            positional_map = {
+                "name": 1,
+                "role": 2,
+                "pf_no": 3,
+                "hrms": 4,
+                "category": 6,
+                "gradation": 7,
+                "working_at": 10,
+                "cli": 11,
+                "dob": 12,
+                "retirement_date": 13,
+                "pme_due": 14,
+                "technical_due": 15,
+                "transportation_due": 16,
+            }
+            for key, idx in positional_map.items():
+                if key not in col_index and idx < len(first_row):
+                    col_index[key] = idx
+            missing_required = required_cols - set(col_index)
+    if missing_required:
+        raise HTTPException(status_code=400, detail=f"Missing columns in {source_label}: {', '.join(sorted(missing_required))}")
+
+    if global_pf_counts is None:
+        global_pf_counts = Counter()
+    if global_hrms_counts is None:
+        global_hrms_counts = Counter()
+
+    existing_cli_rows = session.exec(select(Employee.cli, Employee.cli_id)).all()
+    canonical_by_id, alias_map, id_by_name = _build_cli_name_maps(existing_cli_rows)
+
+    added = 0
+    updated = 0
+    data_rows = rows[rows.index(header_raw) + 1 :]
+    source_pf_counts: Counter[str] = Counter()
+    source_hrms_counts: Counter[str] = Counter()
+    for row in data_rows:
+        if "pf_no" in col_index:
+            idx = col_index["pf_no"]
+            if idx < len(row) and row[idx] not in (None, ""):
+                source_pf_counts[str(row[idx]).strip()] += 1
+        if "hrms" in col_index:
+            idx = col_index["hrms"]
+            if idx < len(row) and row[idx] not in (None, ""):
+                source_hrms_counts[str(row[idx]).strip()] += 1
+
+    for row in data_rows:
+        def get(col: str) -> object | None:
+            idx = col_index.get(col)
+            if idx is None or idx >= len(row):
+                return None
+            return row[idx]
+
+        def has_col(col: str) -> bool:
+            return col in col_index
+
+        name = get("name")
+        role_raw = get("role")
+        if name in (None, "") or role_raw in (None, ""):
+            continue
+        row_hint = str(name).strip()
+        raw_hrms = get("hrms")
+        if raw_hrms not in (None, ""):
+            row_hint = f"{row_hint} ({str(raw_hrms).strip()})"
+        raw_crew_id = get("crew_id")
+        if raw_crew_id not in (None, "") and raw_hrms in (None, ""):
+            row_hint = f"{row_hint} ({str(raw_crew_id).strip()})"
+
+        try:
+            hire_date = _excel_to_date_with_correction(get("hire_date"), warnings, source_label, row_hint, "hire_date") if has_col("hire_date") else None
+            retirement_date = _excel_to_date_with_correction(get("retirement_date"), warnings, source_label, row_hint, "retirement_date") if has_col("retirement_date") else None
+            promo_ready = _excel_to_date_with_correction(get("promotion_ready_date"), warnings, source_label, row_hint, "promotion_ready_date") if has_col("promotion_ready_date") else None
+            dob = _excel_to_date_with_correction(get("dob"), warnings, source_label, row_hint, "dob") if has_col("dob") else None
+            doa = _excel_to_date_with_correction(get("doa"), warnings, source_label, row_hint, "doa") if has_col("doa") else None
+            do_report = _excel_to_date_with_correction(get("do_report"), warnings, source_label, row_hint, "do_report") if has_col("do_report") else None
+            pme_due = _excel_to_date_with_correction(get("pme_due"), warnings, source_label, row_hint, "pme_due") if has_col("pme_due") else None
+            technical_due = _excel_to_date_with_correction(get("technical_due"), warnings, source_label, row_hint, "technical_due") if has_col("technical_due") else None
+            transportation_due = _excel_to_date_with_correction(get("transportation_due"), warnings, source_label, row_hint, "transportation_due") if has_col("transportation_due") else None
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Date parse error in {source_label}: {exc}") from exc
+
+        role = normalize_role(str(role_raw))
+        promo_role = normalize_role(str(get("promotion_role"))) if has_col("promotion_role") and get("promotion_role") else None
+        category = str(get("category")).strip() if has_col("category") and get("category") else None
+        pf_no = str(get("pf_no")).strip() if has_col("pf_no") and get("pf_no") else None
+        hrms = str(get("hrms")).strip() if has_col("hrms") and get("hrms") else None
+        crew_id = str(get("crew_id")).strip() if has_col("crew_id") and get("crew_id") else None
+        status_val = str(get("status")).strip() if has_col("status") and get("status") else None
+        working_at = str(get("working_at")).strip() if has_col("working_at") and get("working_at") else None
+        if working_at:
+            working_at = " ".join(working_at.split())
+        elif working_at_override:
+            working_at = working_at_override
+
+        existing = None
+        if pf_no and (source_pf_counts.get(pf_no, 0) > 1 or global_pf_counts.get(pf_no, 0) > 1):
+            if sync_stats is not None:
+                sync_stats["skipped"] = sync_stats.get("skipped", 0) + 1
+            if warnings is not None:
+                warnings.append(f"{source_label} {row_hint}: skipped because PF No {pf_no} appears multiple times in the Google Sheet.")
+            continue
+        if hrms and (source_hrms_counts.get(hrms, 0) > 1 or global_hrms_counts.get(hrms, 0) > 1):
+            if sync_stats is not None:
+                sync_stats["skipped"] = sync_stats.get("skipped", 0) + 1
+            if warnings is not None:
+                warnings.append(f"{source_label} {row_hint}: skipped because HRMS {hrms} appears multiple times in the Google Sheet.")
+            continue
+
+        pf_matches = session.exec(select(Employee).where(Employee.pf_no == pf_no)).all() if pf_no else []
+        hrms_matches = session.exec(select(Employee).where(Employee.hrms == hrms)).all() if hrms else []
+        if len(pf_matches) > 1:
+            if sync_stats is not None:
+                sync_stats["skipped"] = sync_stats.get("skipped", 0) + 1
+            if warnings is not None:
+                warnings.append(f"{source_label} {row_hint}: skipped because PF No {pf_no} matches multiple employees in the current database.")
+            continue
+        if len(hrms_matches) > 1:
+            if sync_stats is not None:
+                sync_stats["skipped"] = sync_stats.get("skipped", 0) + 1
+            if warnings is not None:
+                warnings.append(f"{source_label} {row_hint}: skipped because HRMS {hrms} matches multiple employees in the current database.")
+            continue
+        if pf_matches and hrms_matches and pf_matches[0].id != hrms_matches[0].id:
+            if sync_stats is not None:
+                sync_stats["skipped"] = sync_stats.get("skipped", 0) + 1
+            if warnings is not None:
+                warnings.append(f"{source_label} {row_hint}: skipped because PF No {pf_no} and HRMS {hrms} point to different employees.")
+            continue
+
+        both_matches = [employee for employee in pf_matches if hrms and employee.hrms == hrms] if pf_matches and hrms else []
+        if len(both_matches) == 1:
+            existing = both_matches[0]
+        elif pf_matches:
+            existing = pf_matches[0]
+        elif hrms_matches:
+            existing = hrms_matches[0]
+        else:
+            if crew_id:
+                crew_matches = session.exec(select(Employee).where(Employee.crew_id == crew_id)).all()
+                if len(crew_matches) > 1:
+                    if sync_stats is not None:
+                        sync_stats["skipped"] = sync_stats.get("skipped", 0) + 1
+                    if warnings is not None:
+                        warnings.append(f"{source_label} {row_hint}: skipped because CREW ID {crew_id} matches multiple employees in the current database.")
+                    continue
+                if len(crew_matches) == 1:
+                    existing = crew_matches[0]
+
+            if existing is None:
+                exact_matches = session.exec(select(Employee).where(Employee.name == str(name).strip(), Employee.role == role)).all()
+                if len(exact_matches) == 1 and not exact_matches[0].pf_no and not exact_matches[0].hrms:
+                    existing = exact_matches[0]
+                else:
+                    normalized_name = _normalize_import_name(name)
+                    role_candidates = session.exec(select(Employee).where(Employee.role == role)).all()
+                    fallback_candidates = []
+                    for candidate in role_candidates:
+                        if _normalize_import_name(candidate.name) != normalized_name:
+                            continue
+                        working_at_compatible = not working_at or not candidate.working_at or candidate.working_at == working_at
+                        dob_compatible = dob is None or candidate.dob is None or candidate.dob == dob
+                        if working_at_compatible and dob_compatible:
+                            fallback_candidates.append(candidate)
+                    if len(fallback_candidates) == 1:
+                        existing = fallback_candidates[0]
+                    elif len(fallback_candidates) > 1:
+                        if sync_stats is not None:
+                            sync_stats["skipped"] = sync_stats.get("skipped", 0) + 1
+                        if warnings is not None:
+                            warnings.append(f"{source_label} {row_hint}: skipped because name/role fallback matched multiple existing employees.")
+                        continue
+
+            if existing is None and pf_no is None and hrms is None and crew_id is None:
+                if sync_stats is not None:
+                    sync_stats["skipped"] = sync_stats.get("skipped", 0) + 1
+                if warnings is not None:
+                    warnings.append(f"{source_label} {row_hint}: skipped because PF No, HRMS, and CREW ID are blank and no unique existing employee match was found.")
+                continue
+
+        if hire_date is None and (has_col("hire_date") or has_col("doa") or has_col("dob") or has_col("retirement_date")):
+            hire_date = doa or _derive_hire_date(dob, retirement_date)
+        if hire_date is None and existing is not None:
+            hire_date = existing.hire_date
+        if hire_date is None:
+            raise HTTPException(status_code=400, detail=f"hire_date missing in {source_label} and could not be derived.")
+
+        if existing:
+            retirement_target = retirement_date if has_col("retirement_date") else existing.retirement_date
+            promo_role_target = promo_role if has_col("promotion_role") else existing.promotion_role
+            promo_ready_target = promo_ready if has_col("promotion_ready_date") else existing.promotion_ready_date
+            category_target = category if has_col("category") else existing.category
+            pf_no_target = pf_no if has_col("pf_no") else existing.pf_no
+            hrms_target = hrms if has_col("hrms") else existing.hrms
+            crew_id_target = crew_id if has_col("crew_id") else existing.crew_id
+            raw_cli_id = str(get("cli_id")).strip() if has_col("cli_id") and get("cli_id") else (None if has_col("cli_id") else existing.cli_id)
+            dob_target = dob if has_col("dob") else existing.dob
+            doa_target = doa if has_col("doa") else existing.doa
+            do_report_target = do_report if has_col("do_report") else existing.do_report
+            status_target = status_val if has_col("status") else existing.status
+            working_at_target = working_at if (has_col("working_at") or working_at_override is not None) else existing.working_at
+            new_gradation = str(get("gradation")).strip() if has_col("gradation") and get("gradation") else (None if has_col("gradation") else existing.gradation)
+            raw_cli = str(get("cli")).strip() if has_col("cli") and get("cli") else (None if has_col("cli") else existing.cli)
+            existing_cli_clean, existing_cli_id_clean = _canonicalize_cli_name(
+                existing.cli,
+                existing.cli_id,
+                canonical_by_id=canonical_by_id,
+                alias_map=alias_map,
+                id_by_name=id_by_name,
+            )
+            new_cli, cli_id_target = _canonicalize_cli_name(
+                raw_cli,
+                raw_cli_id,
+                canonical_by_id=canonical_by_id,
+                alias_map=alias_map,
+                id_by_name=id_by_name,
+            )
+            if _cli_names_equivalent(existing_cli_clean, new_cli) and existing_cli_clean:
+                new_cli = existing_cli_clean
+            pme_due_target = pme_due if has_col("pme_due") else existing.pme_due
+            technical_due_target = technical_due if has_col("technical_due") else existing.technical_due
+            transportation_due_target = transportation_due if has_col("transportation_due") else existing.transportation_due
+            field_updates = [
+                ("Name", existing.name, str(name).strip()),
+                ("Designation", existing.role, role),
+                ("APPOINT DATE", existing.hire_date, hire_date),
+                ("Retirement Date", existing.retirement_date, retirement_target),
+                ("Promotion Designation", existing.promotion_role, promo_role_target),
+                ("Promotion Ready Date", existing.promotion_ready_date, promo_ready_target),
+                ("Category", existing.category, category_target),
+                ("PF No", existing.pf_no, pf_no_target),
+                ("HRMS ID", existing.hrms, hrms_target),
+                ("CREW ID", existing.crew_id, crew_id_target),
+                ("CLI ID", existing_cli_id_clean, cli_id_target),
+                ("DOB", existing.dob, dob_target),
+                ("DOA", existing.doa, doa_target),
+                ("DO Report", existing.do_report, do_report_target),
+                ("Status", existing.status, status_target),
+                ("Working At", existing.working_at, working_at_target),
+                ("Gradation", existing.gradation, new_gradation),
+                ("CLI", existing_cli_clean, new_cli),
+                ("PME Due", existing.pme_due, pme_due_target),
+                ("Technical Due", existing.technical_due, technical_due_target),
+                ("Transportation Due", existing.transportation_due, transportation_due_target),
+            ]
+            changed_field_entries = [
+                (label, old_value, new_value)
+                for label, old_value, new_value in field_updates
+                if old_value != new_value
+            ]
+            changed_fields = [
+                f"{label}: {_format_sync_value(old_value)} -> {_format_sync_value(new_value)}"
+                for label, old_value, new_value in changed_field_entries
+            ]
+            change_kind = _google_sync_change_label([label for label, _, _ in changed_field_entries])
+
+            existing.name = str(name).strip()
+            existing.role = role
+            existing.hire_date = hire_date
+            existing.retirement_date = retirement_target
+            existing.promotion_role = promo_role_target
+            existing.promotion_ready_date = promo_ready_target
+            existing.category = category_target
+            existing.pf_no = pf_no_target
+            existing.hrms = hrms_target
+            existing.crew_id = crew_id_target
+            existing.cli_id = cli_id_target
+            existing.dob = dob_target
+            existing.doa = doa_target
+            existing.do_report = do_report_target
+            existing.status = status_target
+            existing.working_at = working_at_target
+            existing.gradation = new_gradation
+            existing.cli = new_cli
+            existing.pme_due = pme_due_target
+            existing.technical_due = technical_due_target
+            existing.transportation_due = transportation_due_target
+            if changed_fields:
+                updated += 1
+                if sync_details is not None:
+                    sync_details.append(f"{change_kind} {row_hint}: {'; '.join(changed_fields)}")
+            elif sync_stats is not None:
+                sync_stats["unchanged"] = sync_stats.get("unchanged", 0) + 1
+        else:
+            new_cli, new_cli_id = _canonicalize_cli_name(
+                str(get("cli")).strip() if "cli" in col_index and get("cli") else None,
+                str(get("cli_id")).strip() if "cli_id" in col_index and get("cli_id") else None,
+                canonical_by_id=canonical_by_id,
+                alias_map=alias_map,
+                id_by_name=id_by_name,
+            )
+            session.add(
+                Employee(
+                    name=str(name).strip(),
+                    role=role,
+                    hire_date=hire_date,
+                    retirement_date=retirement_date,
+                    promotion_role=promo_role,
+                    promotion_ready_date=promo_ready,
+                    category=category,
+                    pf_no=pf_no,
+                    hrms=hrms,
+                    crew_id=crew_id,
+                    cli_id=new_cli_id,
+                    dob=dob,
+                    doa=doa,
+                    do_report=do_report,
+                    status=status_val,
+                    working_at=working_at,
+                    gradation=str(get("gradation")).strip() if "gradation" in col_index and get("gradation") else None,
+                    cli=new_cli,
+                    pme_due=pme_due,
+                    technical_due=technical_due,
+                    transportation_due=transportation_due,
+                )
+            )
+            added += 1
+            if sync_details is not None:
+                sync_details.append(f"Added {row_hint}: Designation {_format_sync_value(role)}; Working At {_format_sync_value(working_at)}")
+
+    if commit_changes:
+        session.commit()
+        _normalize_employee_cli_names(session)
+    unchanged = sync_stats.get("unchanged", 0) if sync_stats is not None else 0
+    skipped = sync_stats.get("skipped", 0) if sync_stats is not None else 0
+    if added == 0 and updated == 0 and unchanged == 0 and skipped == 0:
+        raise HTTPException(status_code=400, detail=f"No rows imported from {source_label}. Check the sheet data or headers.")
+    return added, updated
+
+
+def _google_sheet_sync_ready() -> bool:
+    return bool(
+        os.getenv("GOOGLE_SHEETS_EMPLOYEE_SPREADSHEET_ID", "").strip()
+        and (
+            os.getenv("GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON", "").strip()
+            or os.getenv("GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE", "").strip()
+        )
+    )
+
+
+def _normalize_google_sheet_range(sheet_range: str) -> str:
+    raw = (sheet_range or "").strip()
+    if "!" not in raw:
+        return raw
+    sheet_name, cell_range = raw.split("!", 1)
+    sheet_name = sheet_name.strip()
+    if not sheet_name:
+        return raw
+    if sheet_name.startswith("'") and sheet_name.endswith("'"):
+        return f"{sheet_name}!{cell_range}"
+    if any(ch.isspace() for ch in sheet_name):
+        escaped = sheet_name.replace("'", "''")
+        return f"'{escaped}'!{cell_range}"
+    return f"{sheet_name}!{cell_range}"
+
+
+def _sheet_name_key(value: str) -> str:
+    value = (value or "").strip()
+    if value.startswith("'") and value.endswith("'"):
+        value = value[1:-1].replace("''", "'")
+    return " ".join(value.split()).casefold()
+
+
+def _resolve_google_sheet_range(service, spreadsheet_id: str, requested_range: str) -> str:
+    raw = (requested_range or "").strip() or "Employees!A:ZZ"
+    if "!" in raw:
+        requested_name, cell_range = raw.split("!", 1)
+    else:
+        requested_name, cell_range = raw, "A:ZZ"
+    requested_name = requested_name.strip()
+    cell_range = cell_range.strip() or "A:ZZ"
+    metadata = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+    titles = [
+        sheet.get("properties", {}).get("title", "").strip()
+        for sheet in metadata.get("sheets", [])
+        if sheet.get("properties", {}).get("title")
+    ]
+    if not titles:
+        raise HTTPException(status_code=400, detail="Google Sheet has no visible tabs.")
+
+    wanted_key = _sheet_name_key(requested_name)
+    actual_title = next((title for title in titles if _sheet_name_key(title) == wanted_key), None)
+    if not actual_title:
+        available = ", ".join(titles)
+        raise HTTPException(status_code=400, detail=f"Google Sheet tab '{requested_name}' was not found. Available tabs: {available}")
+    return _normalize_google_sheet_range(f"{actual_title}!{cell_range}")
+
+
+def _list_google_sheet_titles(service, spreadsheet_id: str) -> list[str]:
+    metadata = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+    return [
+        sheet.get("properties", {}).get("title", "").strip()
+        for sheet in metadata.get("sheets", [])
+        if sheet.get("properties", {}).get("title")
+    ]
+
+
+def _fetch_google_employee_rows() -> tuple[list[tuple[list[list[str]], str, Optional[str]]], str]:
+    spreadsheet_id = os.getenv("GOOGLE_SHEETS_EMPLOYEE_SPREADSHEET_ID", "").strip()
+    requested_range = os.getenv("GOOGLE_SHEETS_EMPLOYEE_RANGE", "").strip() or "Employees!A:ZZ"
+    if not spreadsheet_id:
+        raise HTTPException(status_code=400, detail="Google Sheet sync is not configured: missing GOOGLE_SHEETS_EMPLOYEE_SPREADSHEET_ID.")
+
+    service_account_json = os.getenv("GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON", "").strip()
+    service_account_file = os.getenv("GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE", "").strip()
+    if not service_account_json and not service_account_file:
+        raise HTTPException(status_code=400, detail="Google Sheet sync is not configured: missing service account credentials.")
+
+    try:
+        from google.oauth2 import service_account
+        from googleapiclient.discovery import build
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Google Sheets client libraries are not installed on the server.") from exc
+
+    try:
+        if service_account_json:
+            info = json.loads(service_account_json)
+            credentials = service_account.Credentials.from_service_account_info(
+                info,
+                scopes=GOOGLE_SHEETS_READONLY_SCOPE,
+            )
+        else:
+            credentials = service_account.Credentials.from_service_account_file(
+                service_account_file,
+                scopes=GOOGLE_SHEETS_READONLY_SCOPE,
+            )
+        service = build("sheets", "v4", credentials=credentials, cache_discovery=False)
+        titles = _list_google_sheet_titles(service, spreadsheet_id)
+        if not titles:
+            raise HTTPException(status_code=400, detail="Google Sheet has no visible tabs.")
+
+        title_map = {_sheet_name_key(title): title for title in titles}
+        sources: list[tuple[list[list[str]], str, Optional[str]]] = []
+        for station_name in GOOGLE_EMPLOYEE_STATION_TABS:
+            actual_title = title_map.get(_sheet_name_key(station_name))
+            if not actual_title:
+                continue
+            sheet_range = _normalize_google_sheet_range(f"{actual_title}!A:ZZ")
+            result = service.spreadsheets().values().get(
+                spreadsheetId=spreadsheet_id,
+                range=sheet_range,
+            ).execute()
+            rows = result.get("values", [])
+            if rows and len(rows) > 1:
+                sources.append((rows, actual_title, station_name))
+
+        if sources:
+            return sources, ", ".join(station for _, _, station in sources)
+
+        sheet_range = _resolve_google_sheet_range(service, spreadsheet_id, requested_range)
+        result = service.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id,
+            range=sheet_range,
+        ).execute()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Could not read Google Sheet: {exc}") from exc
+
+    rows = result.get("values", [])
+    if not rows:
+        raise HTTPException(status_code=400, detail="Google Sheet returned no rows.")
+    return [(rows, sheet_range, None)], sheet_range
 
 
 def _excel_to_date(val: object) -> date | None:
