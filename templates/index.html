@@ -40,14 +40,49 @@
       <header>
         <div>
           <h1>Dashboard</h1>
-          <p>Plan staffing, recruiting backfills, and promotions by seniority (single-date view).</p>
+          <p>Track current staffing and key reports in a single-date view.</p>
         </div>
         <div class="header-actions">
           <a class="ghost small" href="/logout">Logout</a>
         </div>
       </header>
 
-      <section class="dashboard-grid">
+      <section class="card">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap;">
+          <div>
+            <h2>Reports</h2>
+            <p class="hint">Staff Positions by Working Location</p>
+          </div>
+          <a class="ghost small" href="/reports">Open full reports</a>
+        </div>
+        <div class="table-wrap">
+          <table class="employee-table paged metric-table">
+            <thead>
+              <tr>
+                <th>Working At</th>
+                {% for role in role_headers %}
+                  <th>{{ role }}</th>
+                {% endfor %}
+                <th>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in working_summary %}
+                <tr>
+                  <td>{% if row.working_at %}<span class="designation-pill">{{ row.working_at }}</span>{% endif %}</td>
+                  {% for role in role_headers %}
+                    <td>{{ row.counts[role] }}</td>
+                  {% endfor %}
+                  <td>{{ row.total }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="grid dashboard-grid">
+      
         <div class="card dashboard-headcount-card">
           <h2>Headcount vs Requirement</h2>
           <p class="hint">Target date: {{ target_date | dmy }}</p>
@@ -69,49 +104,6 @@
               {% endfor %}
             </tbody>
           </table>
-        </div>
-
-        <div class="dashboard-summary-row">
-          <div class="card dashboard-summary-card">
-            <h2>Recruiting Actions</h2>
-            {% if recruit_plan %}
-              {% for role, steps in recruit_plan.items() %}
-                <h3>{{ role }}</h3>
-                <ul>
-                  {% for step in steps %}<li>{{ step }}</li>{% endfor %}
-                </ul>
-              {% endfor %}
-            {% else %}
-              <p>No hiring needed within horizon.</p>
-            {% endif %}
-          </div>
-
-          <div class="card dashboard-summary-card">
-            <h2>Promotions</h2>
-            {% if promotion_plan %}
-              <ul>
-                {% for move in promotion_plan %}<li>{{ move }}</li>{% endfor %}
-              </ul>
-            {% else %}
-              <p>No promotions in window.</p>
-            {% endif %}
-          </div>
-
-          <div class="card dashboard-summary-card">
-            <h2>Upcoming Retirements</h2>
-            {% if retiring %}
-              {% for role, people in retiring.items() %}
-                <h3>{{ role }}</h3>
-                <ul>
-                  {% for p in people %}
-                    <li>{{ p.name }} ({{ p.retirement_date | dmy if p.retirement_date else '' }})</li>
-                  {% endfor %}
-                </ul>
-              {% endfor %}
-            {% else %}
-              <p>None within horizon.</p>
-            {% endif %}
-          </div>
         </div>
       </section>
     </main>

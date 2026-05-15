@@ -667,6 +667,44 @@ def build_cli_distribution(employees: list[Employee]) -> list[dict[str, int | st
     ]
 
 
+def build_working_location_summary(
+    employees: list[Employee],
+) -> tuple[list[str], list[dict[str, object]]]:
+    """Aggregate CCR staff counts by working location and role."""
+    dynamic_roles = sorted({e.role for e in employees if e.role not in ROLE_ORDER})
+    role_headers = ROLE_ORDER + [r for r in dynamic_roles if r not in ROLE_ORDER]
+    working_summary: list[dict[str, object]] = []
+    working_map: dict[str, dict[str, int]] = {}
+    allowed_working = [
+        "CC(R) BT",
+        "CC(R) DDJ",
+        "CC(R) NH",
+        "CC(R) NORTH",
+        "CC(R) RHA",
+        "CC(R) KOAA",
+        "CC(R) SOUTH",
+    ]
+    allowed_norm = {loc.upper(): loc for loc in allowed_working}
+    for e in employees:
+        loc_raw = (e.working_at or "").strip()
+        loc_key = loc_raw.upper()
+        if loc_key not in allowed_norm:
+            continue
+        loc = allowed_norm[loc_key]
+        working_map.setdefault(loc, {}).setdefault(e.role, 0)
+        working_map[loc][e.role] += 1
+    for loc in sorted(working_map.keys(), key=lambda value: value.lower()):
+        counts = {role: working_map[loc].get(role, 0) for role in role_headers}
+        working_summary.append(
+            {
+                "working_at": loc,
+                "counts": counts,
+                "total": sum(counts.values()),
+            }
+        )
+    return role_headers, working_summary
+
+
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -1771,6 +1809,7 @@ def index(
 
     requirements = sorted(session.exec(select(Requirement)).all(), key=lambda r: role_sort_key(r.role))
     employees = sorted(employees_now, key=lambda e: (role_sort_key(e.role), e.name))
+    role_headers, working_summary = build_working_location_summary(employees_now)
 
     response = templates.TemplateResponse(
         "index.html",
@@ -1788,6 +1827,8 @@ def index(
             "retire_counts": retire_counts,
             "target_date": target_date,
             "role_order": ROLE_ORDER,
+            "role_headers": role_headers,
+            "working_summary": working_summary,
             "active_page": "dashboard",
         },
     )
@@ -2104,38 +2145,7 @@ def reports_page(
     horizon_months = 0
     employees = session.exec(select(Employee)).all()
     cli_distribution = build_cli_distribution(employees)
-    dynamic_roles = sorted({e.role for e in employees if e.role not in ROLE_ORDER})
-    role_headers = ROLE_ORDER + [r for r in dynamic_roles if r not in ROLE_ORDER]
-    working_summary = []
-    working_map: dict[str, dict[str, int]] = {}
-    allowed_working = [
-        "CC(R) BT",
-        "CC(R) DDJ",
-        "CC(R) NH",
-        "CC(R) NORTH",
-        "CC(R) RHA",
-        "CC(R) KOAA",
-        "CC(R) SOUTH",
-    ]
-    allowed_norm = {loc.upper(): loc for loc in allowed_working}
-    for e in employees:
-        loc_raw = (e.working_at or "").strip()
-        loc_key = loc_raw.upper()
-        if loc_key not in allowed_norm:
-            continue  # skip non-CCR entries
-        loc = allowed_norm[loc_key]  # use canonical casing
-        role_key = e.role
-        working_map.setdefault(loc, {}).setdefault(role_key, 0)
-        working_map[loc][role_key] += 1
-    for loc in sorted(working_map.keys(), key=lambda x: x.lower()):
-        counts = {r: working_map[loc].get(r, 0) for r in role_headers}
-        working_summary.append(
-            {
-                "working_at": loc,
-                "counts": counts,
-                "total": sum(counts.values()),
-            }
-        )
+    role_headers, working_summary = build_working_location_summary(employees)
     retirements: dict[str, int] = {}
     retiring_list = []
     for e in employees:
