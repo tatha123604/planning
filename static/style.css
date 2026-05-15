@@ -502,6 +502,14 @@ button:hover { filter: brightness(1.05); }
 .ssts-mixed-section .paged thead th:hover {
   background: linear-gradient(135deg, rgba(26, 98, 72, 0.98), rgba(136, 52, 52, 0.96));
 }
+.ssts-mixed-section .detailed-analysis-table thead th,
+.ssts-mixed-section .detailed-analysis-table.paged thead th {
+  background: linear-gradient(135deg, rgba(176, 95, 18, 0.98), rgba(224, 129, 27, 0.98));
+}
+.ssts-mixed-section .detailed-analysis-table thead th:hover,
+.ssts-mixed-section .detailed-analysis-table.paged thead th:hover {
+  background: linear-gradient(135deg, rgba(196, 108, 22, 0.99), rgba(242, 144, 32, 0.99));
+}
 .card + .card {
   margin-top: 18px;
 }
