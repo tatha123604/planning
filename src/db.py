@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
 from sqlmodel import SQLModel, Session, create_engine
 
 BASE_PATH = Path(__file__).resolve().parent.parent
@@ -15,7 +16,11 @@ engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 
 def init_db() -> None:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    SQLModel.metadata.create_all(engine)
+    try:
+        SQLModel.metadata.create_all(engine)
+    except OperationalError as exc:
+        if "already exists" not in str(exc).lower():
+            raise
     # lightweight migrations: add missing columns and relax retirement_date to allow NULL
     with engine.begin() as conn:
         cols = conn.execute(text("PRAGMA table_info(employee);")).fetchall()
@@ -156,22 +161,26 @@ def init_db() -> None:
                 """
             ))
             conn.execute(text("DROP TABLE employee_old;"))
-        conn.execute(
-            text(
-                "CREATE INDEX IF NOT EXISTS ix_sstsdevicesnapshot_run_id_device_id "
-                "ON sstsdevicesnapshot (run_id, device_id);"
+        ssts_table_exists = conn.execute(
+            text("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sstsdevicesnapshot';")
+        ).fetchone()
+        if ssts_table_exists:
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_sstsdevicesnapshot_run_id_device_id "
+                    "ON sstsdevicesnapshot (run_id, device_id);"
+                )
             )
-        )
-        conn.execute(
-            text(
-                "CREATE INDEX IF NOT EXISTS ix_sstsdevicesnapshot_observed_day_offline "
-                "ON sstsdevicesnapshot (observed_day, offline_minutes);"
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_sstsdevicesnapshot_observed_day_offline "
+                    "ON sstsdevicesnapshot (observed_day, offline_minutes);"
+                )
             )
-        )
-        ssts_cols = conn.execute(text("PRAGMA table_info(sstsdevicesnapshot);")).fetchall()
-        ssts_names = {c[1] for c in ssts_cols}
-        if ssts_cols and "remark" not in ssts_names:
-            conn.execute(text("ALTER TABLE sstsdevicesnapshot ADD COLUMN remark TEXT;"))
+            ssts_cols = conn.execute(text("PRAGMA table_info(sstsdevicesnapshot);")).fetchall()
+            ssts_names = {c[1] for c in ssts_cols}
+            if ssts_cols and "remark" not in ssts_names:
+                conn.execute(text("ALTER TABLE sstsdevicesnapshot ADD COLUMN remark TEXT;"))
 
 
 def get_session() -> Session:

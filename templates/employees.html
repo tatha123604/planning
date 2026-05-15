@@ -170,6 +170,13 @@
                 {% endfor %}
               </select>
             </label>
+            <label>CLI Status
+              <select name="cli_status">
+                <option value="" {% if not filter_cli_status %}selected{% endif %}>All</option>
+                <option value="assigned" {% if filter_cli_status == 'assigned' %}selected{% endif %}>Assigned</option>
+                <option value="unassigned" {% if filter_cli_status == 'unassigned' %}selected{% endif %}>Unassigned</option>
+              </select>
+            </label>
             <label>Working at
               <select name="working_at" id="filter-working">
                 <option value="">All</option>
@@ -189,45 +196,17 @@
                 <option value="working_at" {% if sort == 'working_at' %}selected{% endif %}>Working at</option>
               </select>
             </label>
-              <input type="hidden" name="page" id="employees-page-input" value="1" />
-              <input type="hidden" name="per_page" id="employees-per-page-input" value="{{ per_page_selected }}" />
               <button type="submit" data-no-confirm="true">Filter</button>
               <a class="ghost filter-reset-link" href="/employees#employees-card">Reset</a>
-              <div class="summary-chip summary-chip-total" id="employees-total-chip">Total: {{ total_count }}</div>
-              <div class="summary-chip summary-chip-page">Page {{ page }} of {{ total_pages }}</div>
+              <div class="summary-chip" id="employees-total-chip">Total: {{ total_count }}</div>
+              <div class="summary-chip">Page {{ page }} of {{ total_pages }}</div>
           </form>
-          <div class="pager pager-employees">
-            <div class="pager-links">
-              {% if prev_url %}
-                <a class="ghost pager-link pager-link-prev" href="{{ prev_url }}#employees-card">Prev</a>
-              {% else %}
-                <span class="ghost pager-link pager-link-prev disabled">Prev</span>
-              {% endif %}
-              {% if next_url %}
-                <a class="ghost pager-link pager-link-next" href="{{ next_url }}#employees-card">Next</a>
-              {% else %}
-                <span class="ghost pager-link pager-link-next disabled">Next</span>
-              {% endif %}
-            </div>
-            <div class="pager-rows">
-              <label class="pager-rows-label" for="employees-per-page-select">Rows</label>
-              <select id="employees-per-page-select" class="pager-rows-select" aria-label="Rows per page">
-                <option value="10" {% if per_page_selected == 10 %}selected{% endif %}>10</option>
-                <option value="20" {% if per_page_selected == 20 %}selected{% endif %}>20</option>
-                <option value="50" {% if per_page_selected == 50 %}selected{% endif %}>50</option>
-                <option value="100" {% if per_page_selected == 100 %}selected{% endif %}>100</option>
-                <option value="200" {% if per_page_selected == 200 %}selected{% endif %}>200</option>
-                <option value="500" {% if per_page_selected == 500 %}selected{% endif %}>500</option>
-                <option value="0" {% if per_page_selected == 0 %}selected{% endif %}>All</option>
-              </select>
-            </div>
-          </div>
           <div class="column-toggle" id="employees-column-toggle">
             <button type="button" class="ghost small" id="employees-column-button">Columns</button>
             <div class="column-toggle-panel" id="employees-column-panel" hidden></div>
           </div>
           <div class="table-wrap">
-            <table class="employee-table" id="employees-table">
+            <table class="employee-table paged" id="employees-table">
               <thead>
                 <tr>
                   <th>Sl No.</th>
@@ -280,7 +259,7 @@
               </tbody>
             </table>
           </div>
-          <p class="hint warning-text" id="employees-empty-state" {% if employees %}hidden{% endif %}>No employee matched this search.</p>
+          <p class="hint warning-text" id="employees-empty-state" hidden>No employee matched this search.</p>
         </details>
       </section>
 
@@ -290,27 +269,10 @@
     (() => {
       const brand = document.querySelector('.brand');
       if (!brand) return;
-      const NAV_STORAGE_KEY = 'sdah-nav-hidden';
-      const applyStoredNavState = () => {
-        let hidden = false;
-        try {
-          hidden = window.localStorage.getItem(NAV_STORAGE_KEY) === '1';
-        } catch (error) {
-          hidden = document.body.classList.contains('nav-hidden');
-        }
-        document.body.classList.toggle('nav-hidden', hidden);
-      };
       brand.style.cursor = 'pointer';
       brand.setAttribute('title', 'Click to hide/show navigation');
       brand.setAttribute('tabindex', '0');
-      const toggle = () => {
-        const hidden = !document.body.classList.contains('nav-hidden');
-        document.body.classList.toggle('nav-hidden', hidden);
-        try {
-          window.localStorage.setItem(NAV_STORAGE_KEY, hidden ? '1' : '0');
-        } catch (error) {
-        }
-      };
+      const toggle = () => document.body.classList.toggle('nav-hidden');
       brand.addEventListener('click', toggle);
       brand.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -318,7 +280,7 @@
           toggle();
         }
       });
-      applyStoredNavState();
+      document.body.classList.remove('nav-hidden');
 
       // Enable/disable CLI & Working filters based on sort selection
       const sortSelect = document.getElementById('sort-select');
@@ -326,10 +288,9 @@
       const workingSelect = document.getElementById('filter-working');
       const employeesFilterForm = document.getElementById('employees-filter-form');
       const employeesSearchInput = document.getElementById('employees-search-input');
-      const employeesPerPageSelect = document.getElementById('employees-per-page-select');
-      const employeesPageInput = document.getElementById('employees-page-input');
-      const employeesPerPageInput = document.getElementById('employees-per-page-input');
       const employeesTable = document.getElementById('employees-table');
+      const employeesTotalChip = document.getElementById('employees-total-chip');
+      const employeesEmptyState = document.getElementById('employees-empty-state');
       const columnButton = document.getElementById('employees-column-button');
       const columnPanel = document.getElementById('employees-column-panel');
       const sync = () => {
@@ -344,47 +305,53 @@
         sync();
       }
 
-      if (employeesFilterForm && employeesSearchInput) {
+      if (employeesFilterForm && employeesSearchInput && employeesTable && employeesTable.tBodies.length) {
+        const employeeRows = Array.from(employeesTable.tBodies[0].rows || []);
         let composing = false;
 
-        const submitEmployeeFilters = () => {
-          if (employeesPageInput) {
-            employeesPageInput.value = '1';
+        const normalizeText = (value) =>
+          (value || '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+        const rowSearchText = (row) => {
+          if (!row.dataset.searchText) {
+            const nameCell = row.cells?.[1];
+            row.dataset.searchText = normalizeText(nameCell?.textContent || '');
           }
-          const params = new URLSearchParams();
-          Array.from(new FormData(employeesFilterForm).entries()).forEach(([name, value]) => {
-            const text = String(value ?? '').trim();
-            if (!text && name !== 'page') {
-              return;
-            }
-            if (name === 'page') {
-              params.set('page', '1');
-              return;
-            }
-            params.append(name, text);
-          });
-          window.location.assign(`/employees?${params.toString()}#employees-card`);
+          return row.dataset.searchText;
         };
 
-        const scheduleEmployeeSearch = () => {
+        const applyLiveSearch = () => {
           if (composing) return;
-          window.clearTimeout(window.__employeeSearchTimer);
-          window.__employeeSearchTimer = window.setTimeout(submitEmployeeFilters, 260);
+          const query = normalizeText(employeesSearchInput.value);
+          const terms = query ? query.split(' ').filter(Boolean) : [];
+          let matched = 0;
+
+          employeeRows.forEach((row) => {
+            const haystack = rowSearchText(row);
+            const matches = !terms.length || terms.every((term) => haystack.includes(term));
+            row.dataset.filterHidden = matches ? 'false' : 'true';
+            if (matches) {
+              matched += 1;
+            }
+          });
+
+          if (employeesTotalChip) {
+            employeesTotalChip.textContent = `Total: ${matched}`;
+          }
+          if (employeesEmptyState) {
+            employeesEmptyState.hidden = matched !== 0;
+          }
+          employeesTable.dispatchEvent(
+            new CustomEvent('table-pager:refresh', { detail: { resetPage: true } })
+          );
         };
 
-        employeesFilterForm.addEventListener('submit', (event) => {
-          event.preventDefault();
-          window.clearTimeout(window.__employeeSearchTimer);
-          submitEmployeeFilters();
-        });
-
-        employeesSearchInput.addEventListener('input', scheduleEmployeeSearch);
-        employeesSearchInput.addEventListener('search', scheduleEmployeeSearch);
+        employeesSearchInput.addEventListener('input', applyLiveSearch);
+        employeesSearchInput.addEventListener('search', applyLiveSearch);
         employeesSearchInput.addEventListener('keydown', (event) => {
           if (event.key === 'Enter') {
             event.preventDefault();
-            window.clearTimeout(window.__employeeSearchTimer);
-            submitEmployeeFilters();
+            applyLiveSearch();
           }
         });
         employeesSearchInput.addEventListener('compositionstart', () => {
@@ -392,18 +359,10 @@
         });
         employeesSearchInput.addEventListener('compositionend', () => {
           composing = false;
-          scheduleEmployeeSearch();
+          applyLiveSearch();
         });
 
-        if (employeesPerPageSelect) {
-          employeesPerPageSelect.addEventListener('change', () => {
-            window.clearTimeout(window.__employeeSearchTimer);
-            if (employeesPerPageInput) {
-              employeesPerPageInput.value = employeesPerPageSelect.value;
-            }
-            submitEmployeeFilters();
-          });
-        }
+        applyLiveSearch();
       }
 
       if (employeesTable && columnButton && columnPanel) {
@@ -813,6 +772,7 @@
     })();
   </script>
   <script src="/static/sidebar-toggle.js"></script>
+  <script src="/static/table-pager.js"></script>
   <script src="/static/table-export.js"></script>
   <script src="/static/button-confirm.js"></script>
 </body>

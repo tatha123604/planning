@@ -757,6 +757,16 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return PlainTextResponse("Authentication required. Please sign in again and retry the export.", status_code=401)
         return RedirectResponse(url="/login", status_code=302)
 
+
+def _sensitive_action_password() -> str:
+    return os.getenv("SENSITIVE_ACTION_PASSWORD") or "11111"
+
+
+def _validate_sensitive_action_password(password: str | None) -> None:
+    if (password or "") != _sensitive_action_password():
+        raise HTTPException(status_code=403, detail="Code validation failed. Enter the current action code to continue.")
+
+
 def _parse_as_of(request: Request, as_of: Optional[str]) -> date:
     """Resolve as_of date from query or cookie; fallback to today."""
     if as_of:
