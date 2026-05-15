@@ -640,11 +640,14 @@ def _build_table_pdf_bytes(
             text_x = x + padding_x
             text_y = top_y - padding_y - font_size
             current_text_color = text_color
+            current_font_name = font_name
             class_text = (cell_class_row[cell_index] if cell_class_row and cell_index < len(cell_class_row) else "").lower()
-            if "pf-speed-alert" in class_text:
+            if "pf-speed-alert" in class_text or "station-alert" in class_text:
                 current_text_color = (0.769, 0.102, 0.102)
+            if "station-alert" in class_text:
+                current_font_name = "F2"
             for line in cell_lines:
-                add_text(commands, font_name, font_size, text_x, text_y, line, current_text_color)
+                add_text(commands, current_font_name, font_size, text_x, text_y, line, current_text_color)
                 text_y -= line_height
             x += width
         return bottom_y
@@ -3039,7 +3042,7 @@ async def export_table_xlsx(request: Request):
         payload = await request.json()
     except json.JSONDecodeError as exc:
         raise HTTPException(status_code=400, detail="Invalid export payload.") from exc
-    title, headers, rows, report_date_label = _coerce_export_table_payload(payload)
+    title, headers, rows, report_date_label, cell_classes = _coerce_export_table_payload(payload)
 
     wb = Workbook()
     ws = wb.active
@@ -3063,6 +3066,14 @@ async def export_table_xlsx(request: Request):
         cell.fill = header_fill
         cell.font = header_font
         cell.alignment = header_alignment
+
+    alert_font = Font(bold=True, color="C41A1A")
+    for row_offset, class_row in enumerate(cell_classes, start=1):
+        sheet_row = header_row_index + row_offset
+        for column_index, class_text in enumerate(class_row, start=1):
+            class_name = str(class_text or "").lower()
+            if "station-alert" in class_name or "pf-speed-alert" in class_name:
+                ws.cell(row=sheet_row, column=column_index).font = alert_font
 
     ws.freeze_panes = f"A{header_row_index + 1}"
     last_row = header_row_index + max(len(rows), 1)

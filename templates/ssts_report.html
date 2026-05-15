@@ -698,7 +698,7 @@
             </div>
           </div>
           <div class="table-wrap">
-            <table class="employee-table paged" data-exportable="true" data-export-name="ssts_pf_detail_{{ pf_analysis_selected_train or 'none' }}_{{ pf_report_day }}">
+            <table class="employee-table paged" data-exportable="true" data-export-name="ssts_pf_detail_{{ pf_analysis_selected_train or 'none' }}_{{ pf_report_day }}" data-export-title="SSTS Platfrom Analysis Report">
               <thead>
                 <tr>
                   <th>Date</th>
@@ -730,7 +730,7 @@
                   <td>{{ row.crew_name }}</td>
                   <td>{{ row.org }}</td>
                   <td>{{ row.dest }}</td>
-                  <td><span class="station-highlight">{{ row.station }}</span></td>
+                  <td class="{% if row.pf_enter_speed not in ['', none] and (row.pf_enter_speed | float) > 40 %}station-alert{% endif %}"><span class="station-highlight">{{ row.station }}</span></td>
                   <td>{{ row.sch_arr }}</td>
                   <td>{{ row.act_arr }}</td>
                   <td>{{ row.sch_dep }}</td>

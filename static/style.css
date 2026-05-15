@@ -1090,6 +1090,11 @@ ul { padding-left: 18px; margin: 6px 0; }
   border-color: rgba(143, 225, 255, 0.42);
   color: #ffffff;
 }
+.station-alert,
+.station-alert .station-highlight {
+  color: #ff6b6b;
+  font-weight: 800;
+}
 .timeline-card {
   min-width: 220px;
   display: grid;

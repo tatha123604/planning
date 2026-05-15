@@ -62,6 +62,10 @@
   };
 
   const getTableTitle = (table, tableIndex) => {
+    const explicitTitle = normalizeText(table?.dataset?.exportTitle);
+    if (explicitTitle) {
+      return explicitTitle;
+    }
     const details = table.closest("details");
     if (details) {
       const summary = Array.from(details.children).find((child) => child.tagName === "SUMMARY");
