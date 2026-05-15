@@ -306,16 +306,19 @@ def _parse_export_report_date(value: object | None) -> str:
     return ""
 
 
-def _coerce_export_table_payload(payload: object) -> tuple[str, list[str], list[list[str]], str]:
+def _coerce_export_table_payload(payload: object) -> tuple[str, list[str], list[list[str]], str, list[list[str]]]:
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="Export payload must be an object.")
 
     headers_payload = payload.get("headers")
     rows_payload = payload.get("rows")
+    cell_classes_payload = payload.get("cell_classes")
     if not isinstance(headers_payload, list) or not headers_payload:
         raise HTTPException(status_code=400, detail="Export requires at least one column.")
     if rows_payload is not None and not isinstance(rows_payload, list):
         raise HTTPException(status_code=400, detail="Export rows payload is invalid.")
+    if cell_classes_payload is not None and not isinstance(cell_classes_payload, list):
+        raise HTTPException(status_code=400, detail="Export cell classes payload is invalid.")
 
     title = _sanitize_export_title(payload.get("title"))
     report_date_label = _parse_export_report_date(payload.get("report_date"))
@@ -332,7 +335,17 @@ def _coerce_export_table_payload(payload: object) -> tuple[str, list[str], list[
         if len(normalized) < width:
             normalized.extend([""] * (width - len(normalized)))
         rows.append(normalized)
-    return title, headers, rows, report_date_label
+    cell_classes: list[list[str]] = []
+    for raw_row in cell_classes_payload or []:
+        if not isinstance(raw_row, list):
+            continue
+        normalized = [_normalize_export_text(cell) for cell in raw_row[:width]]
+        if len(normalized) < width:
+            normalized.extend([""] * (width - len(normalized)))
+        cell_classes.append(normalized)
+    while len(cell_classes) < len(rows):
+        cell_classes.append([""] * width)
+    return title, headers, rows, report_date_label, cell_classes
 
 
 def _pdf_escape_text(value: object | None) -> str:
@@ -549,6 +562,7 @@ def _build_table_pdf_bytes(
     headers: list[str],
     rows: list[list[str]],
     report_date_label: str,
+    cell_classes: list[list[str]] | None = None,
 ) -> bytes:
     page_width = 842.0
     page_height = 595.0
@@ -604,6 +618,7 @@ def _build_table_pdf_bytes(
         border_color: tuple[float, float, float],
         text_color: tuple[float, float, float],
         font_name: str,
+        cell_class_row: list[str] | None = None,
     ) -> float:
         row_height = float(row_layout["height"])
         bottom_y = top_y - row_height
@@ -620,12 +635,16 @@ def _build_table_pdf_bytes(
         padding_y = float(row_layout["padding_y"])
         font_size = float(row_layout["font_size"])
 
-        for width, cell_lines in zip(widths, cells):
+        for cell_index, (width, cell_lines) in enumerate(zip(widths, cells)):
             commands.append(f"{x + width:.2f} {bottom_y:.2f} m {x + width:.2f} {top_y:.2f} l S")
             text_x = x + padding_x
             text_y = top_y - padding_y - font_size
+            current_text_color = text_color
+            class_text = (cell_class_row[cell_index] if cell_class_row and cell_index < len(cell_class_row) else "").lower()
+            if "pf-speed-alert" in class_text:
+                current_text_color = (0.769, 0.102, 0.102)
             for line in cell_lines:
-                add_text(commands, font_name, font_size, text_x, text_y, line, text_color)
+                add_text(commands, font_name, font_size, text_x, text_y, line, current_text_color)
                 text_y -= line_height
             x += width
         return bottom_y
@@ -674,6 +693,7 @@ def _build_table_pdf_bytes(
         )
 
         for row_index, row_layout in enumerate(page_rows):
+            source_row_index = sum(len(page) for page in pages[: page_index - 1]) + row_index
             current_y = draw_row(
                 commands,
                 row_layout,
@@ -682,6 +702,7 @@ def _build_table_pdf_bytes(
                 border_color=(0.792, 0.867, 0.925),
                 text_color=(0.122, 0.180, 0.239),
                 font_name="F1",
+                cell_class_row=(cell_classes[source_row_index] if cell_classes and source_row_index < len(cell_classes) else None),
             )
 
         stream_body = "\n".join(commands).encode("latin-1", "replace")
@@ -3084,8 +3105,8 @@ async def export_table_pdf(request: Request):
     except json.JSONDecodeError as exc:
         raise HTTPException(status_code=400, detail="Invalid export payload.") from exc
 
-    title, headers, rows, report_date_label = _coerce_export_table_payload(payload)
-    pdf_bytes = _build_table_pdf_bytes(title, headers, rows, report_date_label)
+    title, headers, rows, report_date_label, cell_classes = _coerce_export_table_payload(payload)
+    pdf_bytes = _build_table_pdf_bytes(title, headers, rows, report_date_label, cell_classes)
     filename = _sanitize_export_filename(title, "pdf")
     return StreamingResponse(
         BytesIO(pdf_bytes),

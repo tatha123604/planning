@@ -119,11 +119,30 @@
       }
       return keepIndexes.map((index) => normalizeText(padded[index]));
     });
+    const cellClasses = bodyRows
+      .filter((row) => row?.dataset?.filterHidden !== "true")
+      .map((row) => {
+        const cells = Array.from(row.cells || []);
+        const expanded = cells.flatMap((cell) => {
+          const className = normalizeText(cell.className);
+          const span = Math.max(1, parseInt(cell.getAttribute("colspan") || "1", 10) || 1);
+          const values = [className];
+          for (let index = 1; index < span; index += 1) {
+            values.push("");
+          }
+          return values;
+        });
+        while (expanded.length < columnCount) {
+          expanded.push("");
+        }
+        return keepIndexes.map((index) => expanded[index] || "");
+      });
 
     return {
       title: getTableTitle(table, tableIndex),
       headers: filteredHeaders,
       rows,
+      cell_classes: cellClasses,
       report_date: reportDateValue,
     };
   };
