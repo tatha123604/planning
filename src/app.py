@@ -22,6 +22,7 @@ from fastapi.templating import Jinja2Templates
 from openpyxl import load_workbook, Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
+from sqlalchemy import case, func
 from sqlmodel import Session, select
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -66,6 +67,14 @@ def format_cli_label(cli_name: str | None, cli_id: str | None = None) -> str:
 
 
 templates.env.filters["cli_label"] = format_cli_label
+
+
+def _employee_cli_label(employee: Employee) -> str:
+    return format_cli_label(employee.cli, employee.cli_id)
+
+
+def _employee_cli_key(employee: Employee) -> str:
+    return _employee_cli_label(employee).lower()
 
 
 def filter_hire_by(value, days: int = 30):
@@ -1842,113 +1851,178 @@ def employees_page(
     request: Request,
     q: Optional[str] = None,
     role: Optional[str] = None,
+    category: Optional[str] = None,
     working_at: Optional[str] = None,
     cli: Optional[str] = None,
-    category: Optional[str] = None,
     gradation: Optional[str] = None,
-    cli_status: Optional[str] = None,
     sort: str = "role",
+    page: int = 1,
+    per_page: int = 10,
     roster_name: Optional[str] = None,
     roster_cli: Optional[str] = None,
     roster_gradation: Optional[str] = None,
+    sync_notice: Optional[str] = None,
+    sync_warning: Optional[str] = None,
+    sync_error: Optional[str] = None,
     session: Session = Depends(get_session),
 ):
     roster_filter_active = any([roster_name, roster_cli, roster_gradation])
     employees_open = not roster_filter_active
     roster_open = roster_filter_active
 
-    employees_all = session.exec(select(Employee)).all()
-    raw_working = {e.working_at for e in employees_all if e.working_at}
+    employees_all: list[Employee] = []
+    raw_working = {value for value in session.exec(select(Employee.working_at).distinct()) if value}
     working_opts_filtered = {wa for wa in raw_working if wa.upper().startswith("CC(")}
     working_opts = sorted(working_opts_filtered if working_opts_filtered else raw_working)
     cli_opts_map: dict[str, str] = {}
-    for val in [e.cli for e in employees_all if e.cli]:
+    for cli_name, cli_id in session.exec(select(Employee.cli, Employee.cli_id).distinct()):
+        val = format_cli_label(cli_name, cli_id)
+        if not val:
+            continue
         key = val.strip().lower()
         if key not in cli_opts_map:
             cli_opts_map[key] = val.strip()
     cli_opts = [v for _, v in sorted(cli_opts_map.items(), key=lambda item: item[0])]
-    category_opts = sorted({e.category for e in employees_all if e.category})
-    gradation_opts = sorted({e.gradation for e in employees_all if e.gradation})
-    employees = list(employees_all)
+    category_opts = sorted({value for value in session.exec(select(Employee.category).distinct()) if value})
+    gradation_opts = sorted({value for value in session.exec(select(Employee.gradation).distinct()) if value})
 
-    if q:
-        q_lower = q.lower()
-        employees = [
-            e
-            for e in employees
-            if q_lower in e.name.lower()
-            or q_lower in e.role.lower()
-            or (e.cli and q_lower in e.cli.lower())
-            or (e.gradation and q_lower in e.gradation.lower())
-        ]
+    page = max(int(page or 1), 1)
+    per_page_selected = int(per_page if per_page is not None else 10)
+    if per_page_selected not in {0, 10, 20, 50, 100, 200, 500}:
+        if per_page_selected <= 0:
+            per_page_selected = 0
+        else:
+            per_page_selected = max(10, min(per_page_selected, 500))
+    show_all = per_page_selected == 0
+
+    query_employees = select(Employee)
     if role:
-        employees = [e for e in employees if e.role == role]
-    if working_at:
-        wa_lower = working_at.lower()
-        employees = [e for e in employees if e.working_at and wa_lower in e.working_at.lower()]
-    if cli:
-        cli_lower = cli.strip().lower()
-        employees = [e for e in employees if e.cli and cli_lower in e.cli.strip().lower()]
+        query_employees = query_employees.where(Employee.role == role)
     if category:
-        category_lower = category.lower()
-        employees = [e for e in employees if e.category and category_lower in e.category.lower()]
+        category_lower = category.strip().lower()
+        query_employees = query_employees.where(func.lower(Employee.category) == category_lower)
+    if working_at:
+        query_employees = query_employees.where(Employee.working_at.ilike(f"%{working_at}%"))
     if gradation:
-        grad_lower = gradation.lower()
-        employees = [e for e in employees if e.gradation and grad_lower in e.gradation.lower()]
-    if cli_status == "assigned":
-        employees = [e for e in employees if e.cli or e.cli_id]
-    elif cli_status == "unassigned":
-        employees = [e for e in employees if not e.cli and not e.cli_id]
+        query_employees = query_employees.where(Employee.gradation.ilike(f"%{gradation}%"))
 
-    def sort_key(e: Employee):
+    total_count = 0
+    employees: list[Employee] = []
+    if q or cli:
+        employees_all = session.exec(query_employees).all()
+        employees = list(employees_all)
+        if q:
+            q_lower = q.lower()
+            employees = [
+                e
+                for e in employees
+                if q_lower in e.name.lower()
+                or q_lower in e.role.lower()
+                or (e.cli and q_lower in _employee_cli_label(e).lower())
+                or (e.gradation and q_lower in e.gradation.lower())
+            ]
+        if cli:
+            cli_lower = cli.strip().lower()
+            employees = [e for e in employees if cli_lower in _employee_cli_label(e).lower()]
+
+        def sort_key(e: Employee):
+            if sort == "name":
+                return (e.name.lower(),)
+            if sort == "retirement":
+                return (e.retirement_date or date.max, e.name)
+            if sort == "category":
+                return ((e.category or "").lower(), e.name.lower())
+            if sort == "gradation":
+                return ((e.gradation or "").lower(), e.name.lower())
+            if sort == "hire":
+                return (e.hire_date, e.name)
+            if sort == "cli":
+                return (_employee_cli_key(e), e.name)
+            if sort == "working_at":
+                return ((e.working_at or "").lower(), e.name)
+            return (role_sort_key(e.role), e.name)
+
+        employees = sorted(employees, key=sort_key)
+        total_count = len(employees)
+    else:
+        role_case = case(
+            {role_name: idx for idx, role_name in enumerate(ROLE_ORDER)},
+            value=Employee.role,
+            else_=999,
+        )
         if sort == "name":
-            return (e.name.lower(),)
-        if sort == "retirement":
-            return (e.retirement_date or date.max, e.name)
-        if sort == "hire":
-            return (e.hire_date, e.name)
-        if sort == "category":
-            return ((e.category or "").lower(), e.name)
-        if sort == "gradation":
-            return ((e.gradation or "").lower(), e.name)
-        if sort == "cli":
-            return ((e.cli or "").strip().lower(), e.name)
-        if sort == "working_at":
-            return ((e.working_at or "").lower(), e.name)
-        return (role_sort_key(e.role), e.name)
+            query_employees = query_employees.order_by(Employee.name)
+        elif sort == "retirement":
+            query_employees = query_employees.order_by(Employee.retirement_date, Employee.name)
+        elif sort == "category":
+            query_employees = query_employees.order_by(Employee.category, Employee.name)
+        elif sort == "gradation":
+            query_employees = query_employees.order_by(Employee.gradation, Employee.name)
+        elif sort == "hire":
+            query_employees = query_employees.order_by(Employee.hire_date, Employee.name)
+        elif sort == "working_at":
+            query_employees = query_employees.order_by(Employee.working_at, Employee.name)
+        elif sort == "cli":
+            query_employees = query_employees.order_by(Employee.cli, Employee.name)
+        else:
+            query_employees = query_employees.order_by(role_case, Employee.name)
 
-    employees = sorted(employees, key=sort_key)
-    total_count = len(employees)
-    page = 1
-    total_pages = 1
-    page_start = 0
-    employee_return_to = str(request.url)
-    employee_return_to_query = urlparse.quote(employee_return_to, safe="")
+        total_count = session.exec(select(func.count()).select_from(query_employees.subquery())).one()
 
-    cli_roster = [e for e in employees_all if e.cli]
+    cli_roster: list[Employee] = []
+    if roster_filter_active:
+        if not employees_all:
+            employees_all = session.exec(select(Employee)).all()
+        cli_roster = [e for e in employees_all if e.cli]
     if roster_name:
         name_lower = roster_name.lower()
         cli_roster = [e for e in cli_roster if name_lower in e.name.lower()]
     if roster_cli:
         roster_cli_lower = roster_cli.strip().lower()
-        cli_roster = [e for e in cli_roster if e.cli and roster_cli_lower in e.cli.strip().lower()]
+        cli_roster = [e for e in cli_roster if roster_cli_lower in _employee_cli_label(e).lower()]
     if roster_gradation:
         grad_lower = roster_gradation.lower()
         cli_roster = [e for e in cli_roster if e.gradation and grad_lower in e.gradation.lower()]
-    cli_roster = sorted(cli_roster, key=lambda e: ((e.cli or "").strip().lower(), e.name))
+    cli_roster = sorted(cli_roster, key=lambda e: (_employee_cli_key(e), e.name))
+
+    effective_per_page = max(total_count, 1) if show_all else per_page_selected
+    total_pages = max(1, (total_count + effective_per_page - 1) // effective_per_page)
+    page = min(page, total_pages)
+    page_start = (page - 1) * effective_per_page
+
+    if q or cli:
+        if not show_all:
+            employees = employees[page_start : page_start + effective_per_page]
+    elif show_all:
+        employees = session.exec(query_employees).all()
+    else:
+        employees = session.exec(query_employees.offset(page_start).limit(effective_per_page)).all()
+
+    prev_url = str(request.url.include_query_params(page=page - 1, per_page=per_page_selected)) if page > 1 else ""
+    next_url = str(request.url.include_query_params(page=page + 1, per_page=per_page_selected)) if page < total_pages else ""
+
+    employee_return_to = str(request.url)
+    employee_return_to_query = urlparse.quote(employee_return_to, safe="")
 
     return templates.TemplateResponse(
         "employees.html",
         {
             "request": request,
             "employees": employees,
+            "total_count": total_count,
+            "page": page,
+            "per_page": effective_per_page,
+            "per_page_selected": per_page_selected,
+            "total_pages": total_pages,
+            "page_start": page_start,
+            "prev_url": prev_url,
+            "next_url": next_url,
             "role_order": ROLE_ORDER,
             "active_page": "employees",
             "query": q or "",
             "filter_role": role or "",
             "filter_category": category or "",
             "filter_gradation": gradation or "",
-            "filter_cli_status": cli_status or "",
             "sort": sort,
             "working_opts": working_opts,
             "cli_opts": cli_opts,
@@ -1960,15 +2034,11 @@ def employees_page(
             "roster_gradation": roster_gradation or "",
             "employees_open": employees_open,
             "roster_open": roster_open,
-            "total_count": total_count,
-            "page": page,
-            "total_pages": total_pages,
-            "page_start": page_start,
             "employee_return_to": employee_return_to,
             "employee_return_to_query": employee_return_to_query,
-            "sync_error": "",
-            "sync_notice": "",
-            "sync_warning": "",
+            "sync_error": sync_error or "",
+            "sync_notice": sync_notice or "",
+            "sync_warning": sync_warning or "",
             "sync_backup": "",
             "sync_backup_label": "",
             "google_sync_ready": False,
