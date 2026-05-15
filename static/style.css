@@ -935,9 +935,12 @@ ul { padding-left: 18px; margin: 6px 0; }
 .column-toggle-panel {
   position: absolute;
   top: calc(100% + 8px);
-  right: 0;
+  left: 0;
+  right: auto;
   z-index: 50;
   min-width: 220px;
+  width: max-content;
+  max-width: min(280px, calc(100vw - 48px));
   max-height: 320px;
   overflow: auto;
   background: rgba(12, 14, 22, 0.95);
