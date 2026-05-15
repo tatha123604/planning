@@ -1688,18 +1688,7 @@ ul { padding-left: 18px; margin: 6px 0; }
   display: none;
 }
 .nav-hidden .brand {
-  position: fixed;
-  top: 14px;
-  left: 14px;
-  transform: none;
-  opacity: 1;
-  background: rgba(17,24,39,0.98);
-  border: 1px solid rgba(255,255,255,0.22);
-  padding: 12px 14px;
-  border-radius: 12px;
-  pointer-events: auto;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.35);
-  z-index: 1000;
+  display: none;
 }
 
 .sidebar-toggle-btn {
