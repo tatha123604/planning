@@ -218,7 +218,7 @@
         </div>
       </section>
 
-      <section class="card collapsible ssts-mixed-section">
+      <section class="card collapsible ssts-mixed-section" id="detailed-analysis">
         <div class="analysis-summary-header">
           <div class="analysis-summary-copy">
             <h2>Detailed Analysis</h2>
@@ -262,6 +262,12 @@
           {% if active_detail_view %}
           <input type="hidden" name="detail_view" value="{{ active_detail_view }}" />
           {% endif %}
+          <a
+            class="ghost small"
+            href="/ssts-report?force=1&report_tab=online_offline{% if selected_analysis_day %}&analysis_day={{ selected_analysis_day }}{% endif %}{% if selected_day %}&selected_day={{ selected_day }}{% endif %}{% if active_detail_view %}&detail_view={{ active_detail_view }}{% endif %}#detailed-analysis"
+          >
+            Reload Data
+          </a>
           <noscript><button class="ghost small" type="submit">Load Date</button></noscript>
         </form>
         <div class="table-wrap">

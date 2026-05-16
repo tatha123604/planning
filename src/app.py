@@ -1024,6 +1024,13 @@ def _snapshot_offline_minutes(
     return _minutes_since(reference_utc, snapshot.lastupdate)
 
 
+def _ssts_offline_transition_time(lastupdate: datetime | None) -> datetime | None:
+    lastupdate_utc = _ensure_utc(lastupdate)
+    if lastupdate_utc is None:
+        return None
+    return lastupdate_utc + timedelta(minutes=SSTS_OFFLINE_THRESHOLD_MINUTES)
+
+
 def _ssts_is_offline(snapshot: SstsDeviceSnapshot, reference_time: datetime | None = None) -> bool:
     return (_snapshot_offline_minutes(snapshot, reference_time) or 0) > SSTS_OFFLINE_THRESHOLD_MINUTES
 
@@ -1779,19 +1786,20 @@ def build_ssts_report_context(
             current_segment_end = reference_end
             followup_offline_start: datetime | None = None
 
-            if lastupdate_time is not None:
-                bounded_lastupdate = min(reference_end, max(day_start, lastupdate_time))
+            offline_transition_time = _ssts_offline_transition_time(lastupdate_time)
+            if offline_transition_time is not None:
+                bounded_offline_start = min(reference_end, max(day_start, offline_transition_time))
                 if current_state == "offline":
-                    current_segment_start = min(current_segment_start, bounded_lastupdate)
-                elif current_state == "online" and current_segment_start < bounded_lastupdate < reference_end:
-                    current_segment_end = bounded_lastupdate
-                    followup_offline_start = bounded_lastupdate
+                    current_segment_start = min(current_segment_start, bounded_offline_start)
+                elif current_state == "online" and current_segment_start < bounded_offline_start < reference_end:
+                    current_segment_end = bounded_offline_start
+                    followup_offline_start = bounded_offline_start
 
             duration_minutes = max(0, int((current_segment_end - current_segment_start).total_seconds() // 60))
             if duration_minutes > 0:
                 display_end_time = current_segment_end
-                if current_state == "online" and lastupdate_time is not None:
-                    display_end_time = min(current_segment_end, max(current_segment_start, lastupdate_time))
+                if current_state == "online" and offline_transition_time is not None:
+                    display_end_time = min(current_segment_end, max(current_segment_start, offline_transition_time))
                 segment = build_segment(
                     current_state,
                     current_segment_start,
