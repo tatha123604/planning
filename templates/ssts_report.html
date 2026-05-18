@@ -47,8 +47,8 @@
           {% endif %}
         </div>
         <div class="header-actions">
-          <a class="ghost small" href="/ssts-report?force=1">Force Refresh</a>
-          <a class="ghost small" href="/ssts-report">Reload Report</a>
+          <a class="ghost small" href="/ssts-report?force=1{% if active_report_tab %}&report_tab={{ active_report_tab }}{% endif %}{% if selected_analysis_day %}&analysis_day={{ selected_analysis_day }}{% endif %}{% if selected_analysis_rake %}&selected_analysis_rake={{ selected_analysis_rake }}{% endif %}{% if selected_day %}&selected_day={{ selected_day }}{% endif %}{% if active_detail_view %}&detail_view={{ active_detail_view }}{% endif %}{% if pf_report_day %}&pf_day={{ pf_report_day }}{% endif %}">Force Refresh</a>
+          <a class="ghost small" href="/ssts-report?{% if active_report_tab %}report_tab={{ active_report_tab }}{% endif %}{% if selected_analysis_day %}&analysis_day={{ selected_analysis_day }}{% endif %}{% if selected_analysis_rake %}&selected_analysis_rake={{ selected_analysis_rake }}{% endif %}{% if selected_day %}&selected_day={{ selected_day }}{% endif %}{% if active_detail_view %}&detail_view={{ active_detail_view }}{% endif %}{% if pf_report_day %}&pf_day={{ pf_report_day }}{% endif %}">Reload Report</a>
           <a class="ghost small" href="/logout">Logout</a>
         </div>
       </header>
@@ -56,7 +56,7 @@
       <nav class="report-tabs" aria-label="SSTS report tabs">
         <a
           class="report-tab {{ 'active' if active_report_tab == 'online_offline' else '' }}"
-          href="/ssts-report?report_tab=online_offline{% if selected_day %}&selected_day={{ selected_day }}{% endif %}{% if active_detail_view %}&detail_view={{ active_detail_view }}{% endif %}{% if pf_report_day %}&pf_day={{ pf_report_day }}{% endif %}"
+          href="/ssts-report?report_tab=online_offline{% if selected_analysis_day %}&analysis_day={{ selected_analysis_day }}{% endif %}{% if selected_analysis_rake %}&selected_analysis_rake={{ selected_analysis_rake }}{% endif %}{% if selected_day %}&selected_day={{ selected_day }}{% endif %}{% if active_detail_view %}&detail_view={{ active_detail_view }}{% endif %}{% if pf_report_day %}&pf_day={{ pf_report_day }}{% endif %}"
         >
           online/offline Analysis Report
         </a>
@@ -256,6 +256,9 @@
               {% endfor %}
             </select>
           </div>
+          {% if selected_analysis_rake %}
+          <input type="hidden" name="selected_analysis_rake" value="{{ selected_analysis_rake }}" />
+          {% endif %}
           {% if selected_day %}
           <input type="hidden" name="selected_day" value="{{ selected_day }}" />
           {% endif %}
@@ -264,7 +267,7 @@
           {% endif %}
           <a
             class="ghost small"
-            href="/ssts-report?force=1&report_tab=online_offline{% if selected_analysis_day %}&analysis_day={{ selected_analysis_day }}{% endif %}{% if selected_day %}&selected_day={{ selected_day }}{% endif %}{% if active_detail_view %}&detail_view={{ active_detail_view }}{% endif %}#detailed-analysis"
+            href="/ssts-report?force=1&report_tab=online_offline{% if selected_analysis_day %}&analysis_day={{ selected_analysis_day }}{% endif %}{% if selected_analysis_rake %}&selected_analysis_rake={{ selected_analysis_rake }}{% endif %}{% if selected_day %}&selected_day={{ selected_day }}{% endif %}{% if active_detail_view %}&detail_view={{ active_detail_view }}{% endif %}#detailed-analysis"
           >
             Reload Data
           </a>
@@ -287,7 +290,11 @@
             <tbody>
               {% for row in selected_analysis_rows %}
               <tr>
-                <td>{{ row.name }}</td>
+                <td>
+                  <a class="summary-link" href="/ssts-report?report_tab=online_offline{% if selected_analysis_day %}&analysis_day={{ selected_analysis_day }}{% endif %}&selected_analysis_rake={{ row.device_id }}{% if selected_day %}&selected_day={{ selected_day }}{% endif %}{% if active_detail_view %}&detail_view={{ active_detail_view }}{% endif %}#analysis-rake-history">
+                    {{ row.name }}
+                  </a>
+                </td>
                 <td>{{ row.uniqueid }}</td>
                 <td>{{ row.lastupdate_label }}</td>
                 <td data-sort-value="{{ row.timeline_summary or row.lastupdate_label or row.name }}">
@@ -327,6 +334,56 @@
             </tbody>
           </table>
         </div>
+        <section class="card analysis-history-card" id="analysis-rake-history">
+          <div class="card-head-inline">
+            <div>
+              <h2>Rake ON/OFF History</h2>
+              {% if selected_analysis_rake_label and selected_analysis_day_label %}
+              <p>Snapshot-wise status history for {{ selected_analysis_rake_label }} on {{ selected_analysis_day_label }}.</p>
+              {% else %}
+              <p>Click a rake in Detailed Analysis to view its stored ON/OFF history for the selected day.</p>
+              {% endif %}
+            </div>
+          </div>
+          {% if selected_analysis_history_summary %}
+          <div class="summary-strip pf-summary-strip">
+            <span class="summary-chip">Snapshots {{ selected_analysis_history_summary.selected_count }}</span>
+            <span class="summary-chip">Online {{ selected_analysis_history_summary.online_count }}</span>
+            <span class="summary-chip">Offline {{ selected_analysis_history_summary.offline_count }}</span>
+          </div>
+          {% if selected_analysis_history_summary.timeline_summary %}
+          <p class="analysis-history-summary">{{ selected_analysis_history_summary.timeline_summary }}</p>
+          {% endif %}
+          {% endif %}
+          <div class="table-wrap">
+            <table class="employee-table paged" data-exportable="true" data-export-name="ssts_rake_history_{{ selected_analysis_rake or 'none' }}_{{ selected_analysis_day or 'latest' }}">
+              <thead>
+                <tr>
+                  <th>Snapshot Time</th>
+                  <th>Status</th>
+                  <th>Device Last Update</th>
+                  <th>Offline Duration</th>
+                  <th>Remark</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in selected_analysis_history_rows %}
+                <tr>
+                  <td>{{ row.observed_at_label }}</td>
+                  <td><span class="status-pill status-pill-{{ row.status_class }}">{{ row.status }}</span></td>
+                  <td>{{ row.lastupdate_label }}</td>
+                  <td>{{ row.offline_duration }}</td>
+                  <td>{{ row.remark }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                  <td colspan="5">No rake selected yet, or this rake has no stored snapshots for the selected analysis day.</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </section>
       </section>
 
       <section class="card collapsible ssts-mixed-section" id="daily-detail">
@@ -356,6 +413,9 @@
           </div>
           {% if selected_analysis_day %}
           <input type="hidden" name="analysis_day" value="{{ selected_analysis_day }}" />
+          {% endif %}
+          {% if selected_analysis_rake %}
+          <input type="hidden" name="selected_analysis_rake" value="{{ selected_analysis_rake }}" />
           {% endif %}
           {% if active_detail_view %}
           <input type="hidden" name="detail_view" value="{{ active_detail_view }}" />

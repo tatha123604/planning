@@ -1288,6 +1288,34 @@ ul { padding-left: 18px; margin: 6px 0; }
 .detail-panel-head p {
   margin: 0;
 }
+.analysis-history-card {
+  margin-top: 18px;
+}
+.analysis-history-summary {
+  margin: 12px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #dff3ff;
+}
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 84px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+.status-pill-online {
+  color: #08131d;
+  background: linear-gradient(135deg, #7cf0c3, #69d6ff);
+}
+.status-pill-offline {
+  color: #2c0d0d;
+  background: linear-gradient(135deg, #ff8f8f, #ffbf7a);
+}
 .top-performer-poster {
   margin: 0 0 16px;
   padding: 18px 20px 16px;

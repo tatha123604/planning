@@ -761,6 +761,7 @@ SSTS_RECENTLY_ONLINE_THRESHOLD_MINUTES = 5
 SSTS_PREVIOUSLY_OFFLINE_THRESHOLD_MINUTES = 300
 SSTS_RECENT_OFFLINE_MAX_MINUTES = 24 * 60
 SSTS_REFRESH_INTERVAL_MINUTES = 5
+SSTS_BACKGROUND_SYNC_INTERVAL_MINUTES = 60
 SSTS_PF_REPORT_CACHE_TTL_MINUTES = 20
 SSTS_PF_ANALYSIS_TASK_TTL_MINUTES = 180
 SSTS_EXCLUDED_RAKE_NAMES = {"TEST1", "TEST2"}
@@ -768,6 +769,8 @@ IST = timezone(timedelta(hours=5, minutes=30))
 _SSTS_PF_REPORT_CACHE: dict[str, tuple[datetime, dict[str, object]]] = {}
 _SSTS_PF_ANALYSIS_TASKS: dict[str, dict[str, object]] = {}
 _SSTS_PF_ANALYSIS_LOCK = threading.Lock()
+_SSTS_BACKGROUND_SYNC_STOP = threading.Event()
+_SSTS_BACKGROUND_SYNC_THREAD: threading.Thread | None = None
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -1540,6 +1543,35 @@ def refresh_ssts_snapshot(session: Session, force: bool = False) -> dict[str, ob
         }
 
 
+def _run_background_ssts_sync_once(force: bool = False) -> None:
+    with Session(engine) as session:
+        refresh_ssts_snapshot(session, force=force)
+
+
+def _background_ssts_sync_worker() -> None:
+    while not _SSTS_BACKGROUND_SYNC_STOP.is_set():
+        try:
+            _run_background_ssts_sync_once(force=False)
+        except Exception:
+            pass
+        wait_seconds = max(60, SSTS_BACKGROUND_SYNC_INTERVAL_MINUTES * 60)
+        if _SSTS_BACKGROUND_SYNC_STOP.wait(wait_seconds):
+            break
+
+
+def _ensure_background_ssts_sync() -> None:
+    global _SSTS_BACKGROUND_SYNC_THREAD
+    if _SSTS_BACKGROUND_SYNC_THREAD and _SSTS_BACKGROUND_SYNC_THREAD.is_alive():
+        return
+    _SSTS_BACKGROUND_SYNC_STOP.clear()
+    _SSTS_BACKGROUND_SYNC_THREAD = threading.Thread(
+        target=_background_ssts_sync_worker,
+        name="ssts-background-sync",
+        daemon=True,
+    )
+    _SSTS_BACKGROUND_SYNC_THREAD.start()
+
+
 def _distinct_ssts_runs(session: Session) -> list[SstsSnapshotRun]:
     return list(session.exec(select(SstsSnapshotRun).order_by(SstsSnapshotRun.observed_at.desc())).all())
 
@@ -1557,6 +1589,7 @@ def build_ssts_report_context(
     session: Session,
     selected_day: date | None = None,
     analysis_day: date | None = None,
+    selected_analysis_rake: int | None = None,
 ) -> dict[str, object]:
     runs = _distinct_ssts_runs(session)
     latest_run = next((run for run in runs if run.fetch_status == "ok"), None)
@@ -1574,6 +1607,10 @@ def build_ssts_report_context(
             "selected_analysis_day": None,
             "selected_analysis_day_label": None,
             "selected_analysis_rows": [],
+            "selected_analysis_rake": None,
+            "selected_analysis_rake_label": "",
+            "selected_analysis_history_rows": [],
+            "selected_analysis_history_summary": None,
             "selected_day": None,
             "selected_day_label": None,
             "selected_day_run": None,
@@ -1662,6 +1699,10 @@ def build_ssts_report_context(
         analysis_day_value = date.fromisoformat(str(analysis_day_options[0]["day_iso"]))
 
     selected_analysis_rows: list[dict[str, object]] = []
+    selected_analysis_history_rows: list[dict[str, object]] = []
+    selected_analysis_rake_value: str | None = None
+    selected_analysis_rake_label = ""
+    selected_analysis_history_summary: dict[str, object] | None = None
     selected_analysis_summary = {
         "day_label": analysis_day_value.strftime("%d-%m-%Y") if analysis_day_value else "",
         "continuous_offline_count": 0,
@@ -1901,6 +1942,51 @@ def build_ssts_report_context(
             )
         )
 
+        selected_rake_row = next(
+            (
+                row
+                for row in selected_analysis_rows
+                if selected_analysis_rake is not None and int(row.get("device_id") or 0) == selected_analysis_rake
+            ),
+            None,
+        )
+        if selected_rake_row is not None:
+            selected_analysis_rake_value = str(selected_analysis_rake)
+            selected_analysis_rake_label = str(selected_rake_row.get("name") or "")
+            for run in selected_day_runs:
+                run_time = _ensure_utc(run.observed_at)
+                if run_time is None:
+                    continue
+                matching_snapshot = next(
+                    (
+                        snapshot
+                        for snapshot in day_rows_by_run.get(run.id or 0, [])
+                        if snapshot.device_id == selected_analysis_rake
+                    ),
+                    None,
+                )
+                if matching_snapshot is None:
+                    continue
+                snapshot_state = "offline" if _ssts_is_offline(matching_snapshot) else "online"
+                snapshot_offline_minutes = _snapshot_offline_minutes(matching_snapshot, run_time)
+                selected_analysis_history_rows.append(
+                    {
+                        "observed_at_label": _format_ist(run_time, include_seconds=True),
+                        "status": "Offline" if snapshot_state == "offline" else "Online",
+                        "status_class": snapshot_state,
+                        "lastupdate_label": _format_ist(matching_snapshot.lastupdate, include_seconds=True),
+                        "offline_duration": _format_duration(snapshot_offline_minutes) or "",
+                        "remark": matching_snapshot.remark or "",
+                    }
+                )
+
+            selected_analysis_history_summary = {
+                "selected_count": len(selected_analysis_history_rows),
+                "online_count": sum(1 for row in selected_analysis_history_rows if row["status_class"] == "online"),
+                "offline_count": sum(1 for row in selected_analysis_history_rows if row["status_class"] == "offline"),
+                "timeline_summary": str(selected_rake_row.get("timeline_summary") or ""),
+            }
+
     recently_online = []
     for device_id, latest_row in latest_map.items():
         if not _ssts_is_online_now(latest_row, reference_time=current_reference_time):
@@ -1961,6 +2047,10 @@ def build_ssts_report_context(
         "selected_analysis_day": analysis_day_value.isoformat() if analysis_day_value else None,
         "selected_analysis_day_label": analysis_day_value.strftime("%d-%m-%Y") if analysis_day_value else None,
         "selected_analysis_rows": selected_analysis_rows,
+        "selected_analysis_rake": selected_analysis_rake_value,
+        "selected_analysis_rake_label": selected_analysis_rake_label,
+        "selected_analysis_history_rows": selected_analysis_history_rows,
+        "selected_analysis_history_summary": selected_analysis_history_summary,
         "selected_analysis_summary": selected_analysis_summary,
         "selected_day": selected_day_value.isoformat() if selected_day_value else None,
         "selected_day_label": selected_day_value.strftime("%d-%m-%Y") if selected_day_value else None,
@@ -1978,6 +2068,12 @@ def on_startup() -> None:
         seed_all(session)
     finally:
         session.close()
+    _ensure_background_ssts_sync()
+
+
+@app.on_event("shutdown")
+def on_shutdown() -> None:
+    _SSTS_BACKGROUND_SYNC_STOP.set()
 
 
 @app.get("/health")
@@ -2895,6 +2991,7 @@ def ssts_report_page(
     report_tab: str = "online_offline",
     selected_day: str | None = None,
     analysis_day: str | None = None,
+    selected_analysis_rake: str | None = None,
     detail_view: str | None = None,
     pf_day: str | None = None,
     pf_task_id: str | None = None,
@@ -2905,11 +3002,22 @@ def ssts_report_page(
     active_report_tab = report_tab if report_tab in {"online_offline", "pf_entering"} else "online_offline"
     selected_day_value = _parse_report_date(selected_day)
     analysis_day_value = _parse_report_date(analysis_day)
+    selected_analysis_rake_value: int | None = None
+    if selected_analysis_rake:
+        try:
+            selected_analysis_rake_value = int(selected_analysis_rake)
+        except ValueError:
+            selected_analysis_rake_value = None
     pf_day_value = selected_day_value or date.today()
     parsed_pf_day = _parse_report_date(pf_day)
     if parsed_pf_day is not None:
         pf_day_value = parsed_pf_day
-    context = build_ssts_report_context(session, selected_day=selected_day_value, analysis_day=analysis_day_value)
+    context = build_ssts_report_context(
+        session,
+        selected_day=selected_day_value,
+        analysis_day=analysis_day_value,
+        selected_analysis_rake=selected_analysis_rake_value,
+    )
     pf_context = {
         "pf_report_day": pf_day_value.isoformat(),
         "pf_report_day_label": pf_day_value.strftime("%d-%m-%Y"),
