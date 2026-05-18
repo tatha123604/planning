@@ -345,6 +345,23 @@
               {% endif %}
             </div>
           </div>
+          <form class="detail-date-filter" method="get" action="/ssts-report">
+            <div class="filter-field">
+              <label for="analysis-history-day">History Date</label>
+              <input id="analysis-history-day" type="date" name="analysis_day" value="{{ selected_analysis_day or '' }}" onchange="this.form.submit()" />
+            </div>
+            {% if selected_analysis_rake %}
+            <input type="hidden" name="selected_analysis_rake" value="{{ selected_analysis_rake }}" />
+            {% endif %}
+            {% if selected_day %}
+            <input type="hidden" name="selected_day" value="{{ selected_day }}" />
+            {% endif %}
+            {% if active_detail_view %}
+            <input type="hidden" name="detail_view" value="{{ active_detail_view }}" />
+            {% endif %}
+            <input type="hidden" name="report_tab" value="online_offline" />
+            <noscript><button class="ghost small" type="submit">Load History</button></noscript>
+          </form>
           {% if selected_analysis_history_summary %}
           <div class="summary-strip pf-summary-strip">
             <span class="summary-chip">Snapshots {{ selected_analysis_history_summary.selected_count }}</span>
