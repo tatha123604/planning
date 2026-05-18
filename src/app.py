@@ -1725,8 +1725,6 @@ def build_ssts_report_context(
             seed_state = None
             if prior_snapshot is not None:
                 seed_state = "offline" if _ssts_is_offline(prior_snapshot, reference_time=day_start) else "online"
-            elif points[0]["time"] > day_start:
-                seed_state = str(points[0]["state"])
 
             if seed_state is not None and points[0]["time"] > day_start:
                 points.insert(0, {"time": day_start, "state": seed_state})
@@ -1852,6 +1850,15 @@ def build_ssts_report_context(
                     continue
                 normalized_segments.append(segment)
             segments = normalized_segments
+
+            previous_segment_end = day_start
+            for segment in segments:
+                gap_minutes = max(
+                    0,
+                    int((segment["start_time"] - previous_segment_end).total_seconds() // 60),
+                )
+                segment["gap_before_percent"] = round((gap_minutes / (24 * 60)) * 100, 2)
+                previous_segment_end = max(previous_segment_end, segment["end_time"])
 
             offline_periods = sum(
                 1 for segment in segments if segment["state"] == "offline" and segment.get("count_for_periods")

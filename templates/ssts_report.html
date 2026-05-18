@@ -299,7 +299,7 @@
                     </div>
                     <div class="timeline-bar">
                       {% for segment in row.segments %}
-                      <span class="timeline-segment timeline-segment-{{ segment.state }}" style="width: {{ segment.width_percent }}%;" title="{{ segment.summary_label }} ({{ segment.duration_label }})"></span>
+                      <span class="timeline-segment timeline-segment-{{ segment.state }}" style="width: {{ segment.width_percent }}%; margin-left: {{ segment.gap_before_percent or 0 }}%;" title="{{ segment.summary_label }} ({{ segment.duration_label }})"></span>
                       {% endfor %}
                     </div>
                     <div class="timeline-legend">
