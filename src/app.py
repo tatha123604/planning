@@ -641,17 +641,21 @@ def _build_table_pdf_bytes(
             text_y = top_y - padding_y - font_size
             current_text_color = text_color
             current_font_name = font_name
+            current_font_size = font_size
             class_text = (cell_class_row[cell_index] if cell_class_row and cell_index < len(cell_class_row) else "").lower()
             if "pf-speed-alert" in class_text or "station-alert" in class_text:
                 current_text_color = (0.769, 0.102, 0.102)
             if "crew-alert" in class_text:
-                current_text_color = (1.000, 0.624, 0.263)
+                current_text_color = (0.027, 0.259, 0.522)
+            if "pf-speed-alert" in class_text:
+                current_font_name = "F2"
+                current_font_size = font_size + 1.5
             if "station-alert" in class_text:
                 current_font_name = "F2"
             if "crew-alert" in class_text:
                 current_font_name = "F2"
             for line in cell_lines:
-                add_text(commands, current_font_name, font_size, text_x, text_y, line, current_text_color)
+                add_text(commands, current_font_name, current_font_size, text_x, text_y, line, current_text_color)
                 text_y -= line_height
             x += width
         return bottom_y
