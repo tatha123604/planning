@@ -679,7 +679,7 @@ def _build_table_pdf_bytes(
                 9.4,
                 margin_left,
                 548.0,
-                f"Updated on: {report_date_label}",
+                report_date_label,
                 (0.306, 0.427, 0.529),
             )
         add_text(
@@ -3306,7 +3306,7 @@ async def export_table_xlsx(request: Request):
     column_count = max(1, len(headers))
     if report_date_label:
         ws.append([title])
-        ws.append([f"Updated on: {report_date_label}"])
+        ws.append([report_date_label])
         header_row_index = 3
     else:
         ws.append([title])
