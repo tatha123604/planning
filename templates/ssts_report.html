@@ -846,8 +846,28 @@
           <div class="card-head-inline">
             <div>
               <h2>Daily Report</h2>
-              <p>Rows for {{ pf_report_day_label }} where PF Enter Speed is greater than {{ pf_speed_threshold_label|lower }}.</p>
+              <p>Rows for {{ pf_report_day_label }} where PF Enter Speed matches the selected daily speed filter.</p>
             </div>
+          </div>
+          <form class="detail-date-filter report-filter-row pf-report-filter" method="post" action="/ssts-report/pf-analysis/start" id="pf-daily-report-form">
+            <div class="filter-field">
+              <label for="pf-daily-day-select">Daily Report Date</label>
+              <input id="pf-daily-day-select" type="date" name="pf_day" value="{{ pf_report_day }}" />
+            </div>
+            <div class="filter-field">
+              <label for="pf-daily-speed-threshold">Daily Speed Filter</label>
+              <select id="pf-daily-speed-threshold" name="pf_speed_threshold">
+                {% for option in pf_speed_options %}
+                <option value="{{ option.value }}" {% if pf_speed_threshold == option.value %}selected{% endif %}>{{ option.label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <button type="submit" id="pf-daily-report-button">Load Daily Report</button>
+          </form>
+          <div class="summary-strip pf-summary-strip">
+            <span class="summary-chip">Date {{ pf_report_day_label }}</span>
+            <span class="summary-chip">Daily Filter {{ pf_speed_threshold_label }}</span>
+            <span class="summary-chip">Rows {{ pf_daily_report_rows|length }}</span>
           </div>
           <div class="table-wrap">
             <table class="employee-table paged" data-exportable="true" data-export-name="ssts_pf_daily_report_{{ pf_report_day }}_{{ pf_speed_threshold }}" data-export-title="SSTS PF Daily Report">
@@ -889,7 +909,7 @@
                   <td>{{ row.act_dep }}</td>
                   <td>{{ row.stop_time }}</td>
                   <td>{{ row.geofence_enter_speed }}</td>
-                  <td class="{% if row.pf_enter_speed not in ['', none] and (row.pf_enter_speed | float) > pf_speed_threshold %}pf-speed-alert{% endif %}">{{ row.pf_enter_speed }}</td>
+                  <td class="{% if row.pf_enter_speed not in ['', none] and ((pf_speed_threshold > 50 and (row.pf_enter_speed | float) > 50) or (pf_speed_threshold <= 50 and (row.pf_enter_speed | float) >= pf_speed_threshold)) %}pf-speed-alert{% endif %}">{{ row.pf_enter_speed }}</td>
                   <td>{{ row.pf_distance }}</td>
                   <td>{{ row.remarks }}</td>
                 </tr>
@@ -909,12 +929,14 @@
   </div>
   <script>
     (() => {
-      const form = document.getElementById('pf-analysis-form');
+      const forms = [
+        document.getElementById('pf-analysis-form'),
+        document.getElementById('pf-daily-report-form'),
+      ].filter(Boolean);
       const panel = document.getElementById('pf-progress-panel');
       const progressFill = document.getElementById('pf-progress-fill');
       const progressLabel = document.getElementById('pf-progress-label');
-      const button = document.getElementById('pf-analysis-button');
-      if (!form || !panel || !progressFill || !progressLabel || !button) return;
+      if (!forms.length || !panel || !progressFill || !progressLabel) return;
 
       let pollTimer = null;
 
@@ -934,7 +956,15 @@
         }
       };
 
-      const pollStatus = async (taskId, resultUrl) => {
+      const setButtonState = (button, disabled, label) => {
+        if (!button) return;
+        button.disabled = disabled;
+        if (label) {
+          button.textContent = label;
+        }
+      };
+
+      const pollStatus = async (taskId, resultUrl, activeButton) => {
         try {
           const response = await fetch(`/ssts-report/pf-analysis/status?task_id=${encodeURIComponent(taskId)}`);
           const payload = await response.json();
@@ -947,51 +977,50 @@
             return;
           }
           if (payload.status === 'error') {
-            button.disabled = false;
-            button.textContent = 'Analysis';
+            setButtonState(activeButton, false, activeButton?.id === 'pf-daily-report-button' ? 'Load Daily Report' : 'Analysis');
             progressLabel.textContent = payload.message || 'Analysis failed.';
             return;
           }
-          pollTimer = window.setTimeout(() => pollStatus(taskId, resultUrl || payload.result_url), 1200);
+          pollTimer = window.setTimeout(() => pollStatus(taskId, resultUrl || payload.result_url, activeButton), 1200);
         } catch (error) {
-          button.disabled = false;
-          button.textContent = 'Analysis';
+          setButtonState(activeButton, false, activeButton?.id === 'pf-daily-report-button' ? 'Load Daily Report' : 'Analysis');
           progressLabel.textContent = error && error.message ? error.message : 'Could not start PF analysis.';
         }
       };
 
-      form.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        stopPolling();
-        button.disabled = true;
-        button.textContent = 'Starting...';
-        panel.classList.remove('is-hidden');
-        setProgress(6, 'Starting PF analysis...');
-        try {
-          const response = await fetch(form.action, {
-            method: 'POST',
-            body: new FormData(form),
-          });
-          const payload = await response.json();
-          if (!response.ok) {
-            throw new Error(payload.detail || 'Could not start PF analysis.');
+      forms.forEach((form) => {
+        form.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          stopPolling();
+          const button = form.querySelector('button[type="submit"]');
+          setButtonState(button, true, 'Starting...');
+          panel.classList.remove('is-hidden');
+          setProgress(6, 'Starting PF analysis...');
+          try {
+            const response = await fetch(form.action, {
+              method: 'POST',
+              body: new FormData(form),
+            });
+            const payload = await response.json();
+            if (!response.ok) {
+              throw new Error(payload.detail || 'Could not start PF analysis.');
+            }
+            setButtonState(button, true, 'Running...');
+            pollStatus(payload.task_id, payload.result_url, button);
+          } catch (error) {
+            setButtonState(button, false, button?.id === 'pf-daily-report-button' ? 'Load Daily Report' : 'Analysis');
+            progressLabel.textContent = error && error.message ? error.message : 'Could not start PF analysis.';
           }
-          button.textContent = 'Running...';
-          pollStatus(payload.task_id, payload.result_url);
-        } catch (error) {
-          button.disabled = false;
-          button.textContent = 'Analysis';
-          progressLabel.textContent = error && error.message ? error.message : 'Could not start PF analysis.';
-        }
+        });
       });
 
       const initialTaskId = panel.dataset.taskId || '';
       const initialStatus = panel.dataset.status || '';
       if (initialTaskId && (initialStatus === 'pending' || initialStatus === 'running')) {
         panel.classList.remove('is-hidden');
-        button.disabled = true;
-        button.textContent = 'Running...';
-        pollStatus(initialTaskId, `/ssts-report?report_tab=pf_entering&pf_task_id=${encodeURIComponent(initialTaskId)}&pf_day=${encodeURIComponent(document.getElementById('pf-day-select')?.value || '')}&pf_speed_threshold=${encodeURIComponent(document.getElementById('pf-speed-threshold')?.value || '40')}`);
+        const initialButton = document.getElementById('pf-analysis-button');
+        setButtonState(initialButton, true, 'Running...');
+        pollStatus(initialTaskId, `/ssts-report?report_tab=pf_entering&pf_task_id=${encodeURIComponent(initialTaskId)}&pf_day=${encodeURIComponent(document.getElementById('pf-day-select')?.value || '')}&pf_speed_threshold=${encodeURIComponent(document.getElementById('pf-speed-threshold')?.value || '40')}`, initialButton);
       }
     })();
   </script>

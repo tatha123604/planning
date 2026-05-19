@@ -1331,7 +1331,15 @@ def _parse_pf_speed_threshold(value: object | None) -> int:
 
 
 def _pf_speed_threshold_label(threshold: int) -> str:
-    return "Above 50" if threshold > 50 else f"Above {threshold}"
+    return "Above 50" if threshold > 50 else f"{threshold} and above"
+
+
+def _pf_speed_matches_threshold(speed: float | None, threshold: int) -> bool:
+    if speed is None:
+        return False
+    if threshold > 50:
+        return speed > 50
+    return speed >= threshold
 
 
 def _cleanup_ssts_pf_analysis_tasks() -> None:
@@ -1448,7 +1456,7 @@ def _build_ssts_pf_speed_analysis_result(report_day: date, speed_threshold: int)
         if not isinstance(row, dict):
             continue
         pf_speed = _pf_speed_value(row.get("pf_enter_speed"))
-        if pf_speed is not None and pf_speed > speed_threshold:
+        if _pf_speed_matches_threshold(pf_speed, speed_threshold):
             daily_report_rows.append(dict(row))
 
     daily_report_rows.sort(
