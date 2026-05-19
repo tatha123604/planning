@@ -756,7 +756,7 @@
               <tr>
                 <td>{{ row.report_date }}</td>
                 <td>
-                  <a class="summary-link" href="/ssts-report?report_tab=pf_entering&pf_task_id={{ pf_analysis_task_id }}&pf_train={{ row.train_no }}#pf-train-detail">
+                  <a class="summary-link crew-alert" href="/ssts-report?report_tab=pf_entering&pf_task_id={{ pf_analysis_task_id }}&pf_train={{ row.train_no }}#pf-train-detail">
                     {{ row.train_no }}
                   </a>
                 </td>
@@ -816,7 +816,7 @@
                 {% for row in pf_analysis_selected_rows %}
                 <tr>
                   <td>{{ row.report_date }}</td>
-                  <td>{{ row.train_no }}</td>
+                  <td class="crew-alert">{{ row.train_no }}</td>
                   <td>{{ row.rake_no }}</td>
                   <td>{{ row.device_id }}</td>
                   <td>{{ row.crew_name }}</td>
@@ -827,7 +827,7 @@
                   <td>{{ row.act_arr }}</td>
                   <td>{{ row.sch_dep }}</td>
                   <td>{{ row.act_dep }}</td>
-                  <td>{{ row.stop_time }}</td>
+                  <td class="crew-alert">{{ row.stop_time }}</td>
                   <td>{{ row.geofence_enter_speed }}</td>
                   <td class="{% if row.pf_enter_speed not in ['', none] and (row.pf_enter_speed | float) > 40 %}pf-speed-alert{% endif %}">{{ row.pf_enter_speed }}</td>
                   <td>{{ row.pf_distance }}</td>
@@ -896,7 +896,7 @@
                 {% for row in pf_daily_report_rows %}
                 <tr>
                   <td>{{ row.report_date }}</td>
-                  <td>{{ row.train_no }}</td>
+                  <td class="crew-alert">{{ row.train_no }}</td>
                   <td>{{ row.rake_no }}</td>
                   <td class="crew-alert">{{ row.crew_id or '' }}</td>
                   <td class="crew-alert">{{ row.crew_name }}</td>
@@ -907,7 +907,7 @@
                   <td>{{ row.act_arr }}</td>
                   <td>{{ row.sch_dep }}</td>
                   <td>{{ row.act_dep }}</td>
-                  <td>{{ row.stop_time }}</td>
+                  <td class="crew-alert">{{ row.stop_time }}</td>
                   <td>{{ row.geofence_enter_speed }}</td>
                   <td class="{% if row.pf_enter_speed not in ['', none] and ((pf_speed_threshold > 50 and (row.pf_enter_speed | float) > 50) or (pf_speed_threshold <= 50 and (row.pf_enter_speed | float) >= pf_speed_threshold)) %}pf-speed-alert{% endif %}">{{ row.pf_enter_speed }}</td>
                   <td>{{ row.pf_distance }}</td>
