@@ -869,8 +869,9 @@
             <span class="summary-chip">Daily Filter {{ pf_speed_threshold_label }}</span>
             <span class="summary-chip">Rows {{ pf_daily_report_rows|length }}</span>
           </div>
+          <input id="source-report-date" type="hidden" name="report_date" value="{{ pf_report_day_label }}" />
           <div class="table-wrap">
-            <table class="employee-table paged" data-exportable="true" data-export-name="ssts_pf_daily_report_{{ pf_report_day }}_{{ pf_speed_threshold }}" data-export-title="SSTS PF Daily Report">
+            <table class="employee-table paged" data-exportable="true" data-export-name="ssts_pf_daily_report_{{ pf_report_day }}_{{ pf_speed_threshold }}" data-export-title="SSTS PF Entering Speed Daily Report">
               <thead>
                 <tr>
                   <th>Date</th>
