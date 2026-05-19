@@ -47,8 +47,8 @@
           {% endif %}
         </div>
         <div class="header-actions">
-          <a class="ghost small" href="/ssts-report?force=1{% if active_report_tab %}&report_tab={{ active_report_tab }}{% endif %}{% if selected_analysis_day %}&analysis_day={{ selected_analysis_day }}{% endif %}{% if selected_analysis_rake %}&selected_analysis_rake={{ selected_analysis_rake }}{% endif %}{% if selected_day %}&selected_day={{ selected_day }}{% endif %}{% if active_detail_view %}&detail_view={{ active_detail_view }}{% endif %}{% if pf_report_day %}&pf_day={{ pf_report_day }}{% endif %}">Force Refresh</a>
-          <a class="ghost small" href="/ssts-report?{% if active_report_tab %}report_tab={{ active_report_tab }}{% endif %}{% if selected_analysis_day %}&analysis_day={{ selected_analysis_day }}{% endif %}{% if selected_analysis_rake %}&selected_analysis_rake={{ selected_analysis_rake }}{% endif %}{% if selected_day %}&selected_day={{ selected_day }}{% endif %}{% if active_detail_view %}&detail_view={{ active_detail_view }}{% endif %}{% if pf_report_day %}&pf_day={{ pf_report_day }}{% endif %}">Reload Report</a>
+          <a class="ghost small" href="/ssts-report?force=1{% if active_report_tab %}&report_tab={{ active_report_tab }}{% endif %}{% if selected_analysis_day %}&analysis_day={{ selected_analysis_day }}{% endif %}{% if selected_analysis_rake %}&selected_analysis_rake={{ selected_analysis_rake }}{% endif %}{% if selected_day %}&selected_day={{ selected_day }}{% endif %}{% if active_detail_view %}&detail_view={{ active_detail_view }}{% endif %}{% if pf_report_day %}&pf_day={{ pf_report_day }}{% endif %}{% if pf_speed_threshold %}&pf_speed_threshold={{ pf_speed_threshold }}{% endif %}">Force Refresh</a>
+          <a class="ghost small" href="/ssts-report?{% if active_report_tab %}report_tab={{ active_report_tab }}{% endif %}{% if selected_analysis_day %}&analysis_day={{ selected_analysis_day }}{% endif %}{% if selected_analysis_rake %}&selected_analysis_rake={{ selected_analysis_rake }}{% endif %}{% if selected_day %}&selected_day={{ selected_day }}{% endif %}{% if active_detail_view %}&detail_view={{ active_detail_view }}{% endif %}{% if pf_report_day %}&pf_day={{ pf_report_day }}{% endif %}{% if pf_speed_threshold %}&pf_speed_threshold={{ pf_speed_threshold }}{% endif %}">Reload Report</a>
           <a class="ghost small" href="/logout">Logout</a>
         </div>
       </header>
@@ -56,13 +56,13 @@
       <nav class="report-tabs" aria-label="SSTS report tabs">
         <a
           class="report-tab {{ 'active' if active_report_tab == 'online_offline' else '' }}"
-          href="/ssts-report?report_tab=online_offline{% if selected_analysis_day %}&analysis_day={{ selected_analysis_day }}{% endif %}{% if selected_analysis_rake %}&selected_analysis_rake={{ selected_analysis_rake }}{% endif %}{% if selected_day %}&selected_day={{ selected_day }}{% endif %}{% if active_detail_view %}&detail_view={{ active_detail_view }}{% endif %}{% if pf_report_day %}&pf_day={{ pf_report_day }}{% endif %}"
+          href="/ssts-report?report_tab=online_offline{% if selected_analysis_day %}&analysis_day={{ selected_analysis_day }}{% endif %}{% if selected_analysis_rake %}&selected_analysis_rake={{ selected_analysis_rake }}{% endif %}{% if selected_day %}&selected_day={{ selected_day }}{% endif %}{% if active_detail_view %}&detail_view={{ active_detail_view }}{% endif %}{% if pf_report_day %}&pf_day={{ pf_report_day }}{% endif %}{% if pf_speed_threshold %}&pf_speed_threshold={{ pf_speed_threshold }}{% endif %}"
         >
           online/offline Analysis Report
         </a>
         <a
           class="report-tab {{ 'active' if active_report_tab == 'pf_entering' else '' }}"
-          href="/ssts-report?report_tab=pf_entering{% if selected_day %}&selected_day={{ selected_day }}{% endif %}{% if pf_report_day %}&pf_day={{ pf_report_day }}{% endif %}"
+          href="/ssts-report?report_tab=pf_entering{% if selected_day %}&selected_day={{ selected_day }}{% endif %}{% if pf_report_day %}&pf_day={{ pf_report_day }}{% endif %}{% if pf_speed_threshold %}&pf_speed_threshold={{ pf_speed_threshold }}{% endif %}"
         >
           SSTS PF entering Report
         </a>
@@ -687,8 +687,8 @@
       <section class="card">
         <div class="card-head-inline">
           <div>
-            <h2>SSTS PF entering Report</h2>
-            <p>Select a date, run analysis, then review only the rows where Geofence Enter Speed or PF Enter Speed is above 40.</p>
+            <h2>SSTS PF Daily Report</h2>
+            <p>Select a date and PF Enter Speed threshold, then generate the daily report rows where PF Enter Speed is greater than your selected value.</p>
           </div>
         </div>
         <form class="detail-date-filter report-filter-row pf-report-filter" method="post" action="/ssts-report/pf-analysis/start" id="pf-analysis-form">
@@ -696,6 +696,14 @@
           <div class="filter-field">
             <label for="pf-day-select">Report Date</label>
             <input id="pf-day-select" type="date" name="pf_day" value="{{ pf_report_day }}" />
+          </div>
+          <div class="filter-field">
+            <label for="pf-speed-threshold">PF Speed</label>
+            <select id="pf-speed-threshold" name="pf_speed_threshold">
+              {% for option in pf_speed_options %}
+              <option value="{{ option.value }}" {% if pf_speed_threshold == option.value %}selected{% endif %}>{{ option.label }}</option>
+              {% endfor %}
+            </select>
           </div>
           <button type="submit" id="pf-analysis-button">Analysis</button>
         </form>
@@ -716,18 +724,19 @@
         {% if pf_report_error %}
         <p class="status-error">{{ pf_report_error }}</p>
         {% elif pf_analysis_status == 'idle' %}
-        <p class="hint">Pick a date and press <strong>Analysis</strong> to generate the 40+ speed report.</p>
+        <p class="hint">Pick a date and speed threshold, then press <strong>Analysis</strong> to generate the daily report.</p>
         {% else %}
         <div class="summary-strip pf-summary-strip">
           <span class="summary-chip">Date {{ pf_report_day_label }}</span>
-          <span class="summary-chip">40+ Trains {{ pf_analysis_total_trains }}</span>
-          <span class="summary-chip">40+ Rows {{ pf_analysis_total_rows }}</span>
+          <span class="summary-chip">Threshold {{ pf_speed_threshold_label }}</span>
+          <span class="summary-chip">Matched Trains {{ pf_analysis_total_trains }}</span>
+          <span class="summary-chip">Matched Rows {{ pf_analysis_total_rows }}</span>
           <span class="summary-chip">Source Trains {{ pf_analysis_source_total_trains }}</span>
           <span class="summary-chip">Missing Data {{ pf_analysis_missing_count }}</span>
         </div>
         <section class="pf-analysis-grid">
           <div class="table-wrap">
-          <table class="employee-table paged" data-exportable="true" data-export-name="ssts_pf_summary_{{ pf_report_day }}">
+          <table class="employee-table paged" data-exportable="true" data-export-name="ssts_pf_daily_report_{{ pf_report_day }}_{{ pf_speed_threshold }}" data-export-title="SSTS PF Daily Report">
             <thead>
               <tr>
                 <th>Date</th>
@@ -737,100 +746,46 @@
                 <th>Crew Name</th>
                 <th>ORG</th>
                 <th>DEST</th>
-                <th>40+ Count</th>
-                <th>Max Geofence</th>
-                <th>Max PF</th>
+                <th>Station</th>
+                <th>Sch Arr</th>
+                <th>Act Arr</th>
+                <th>Sch Dep</th>
+                <th>Act Dep</th>
+                <th>Stop Time</th>
+                <th>Geofence Enter Speed</th>
+                <th>PF Enter Speed</th>
+                <th>PF Distance</th>
+                <th>Remarks</th>
               </tr>
             </thead>
             <tbody>
-              {% for row in pf_analysis_summary_rows %}
+              {% for row in pf_daily_report_rows %}
               <tr>
                 <td>{{ row.report_date }}</td>
-                <td>
-                  <a class="summary-link" href="/ssts-report?report_tab=pf_entering&pf_task_id={{ pf_analysis_task_id }}&pf_train={{ row.train_no }}#pf-train-detail">
-                    {{ row.train_no }}
-                  </a>
-                </td>
+                <td>{{ row.train_no }}</td>
                 <td>{{ row.rake_no }}</td>
                 <td>{{ row.device_id }}</td>
                 <td>{{ row.crew_name }}</td>
                 <td>{{ row.org }}</td>
                 <td>{{ row.dest }}</td>
-                <td>{{ row.occurrence_count }}</td>
-                <td>{{ row.max_geofence_enter_speed }}</td>
-                <td>{{ row.max_pf_enter_speed }}</td>
+                <td>{{ row.station }}</td>
+                <td>{{ row.sch_arr }}</td>
+                <td>{{ row.act_arr }}</td>
+                <td>{{ row.sch_dep }}</td>
+                <td>{{ row.act_dep }}</td>
+                <td>{{ row.stop_time }}</td>
+                <td>{{ row.geofence_enter_speed }}</td>
+                <td class="{% if row.pf_enter_speed not in ['', none] and (row.pf_enter_speed | float) > pf_speed_threshold %}pf-speed-alert{% endif %}">{{ row.pf_enter_speed }}</td>
+                <td>{{ row.pf_distance }}</td>
+                <td>{{ row.remarks }}</td>
               </tr>
               {% else %}
               <tr>
-                <td colspan="10">No 40+ speed train found for the selected date.</td>
+                <td colspan="17">No daily report rows found where PF Enter Speed is greater than {{ pf_speed_threshold_label|lower }}.</td>
               </tr>
               {% endfor %}
             </tbody>
           </table>
-          </div>
-        </section>
-        <section class="card pf-train-detail-card" id="pf-train-detail">
-          <div class="card-head-inline">
-            <div>
-              <h2>Train Detail</h2>
-              {% if pf_analysis_selected_train %}
-              <p>Showing all station records for train {{ pf_analysis_selected_train }}. PF Enter Speed above 40 is highlighted in red.</p>
-              {% else %}
-              <p>Click a train number from the summary table to view all station records for that train.</p>
-              {% endif %}
-            </div>
-          </div>
-          <div class="table-wrap">
-            <table class="employee-table paged" data-exportable="true" data-export-name="ssts_pf_detail_{{ pf_analysis_selected_train or 'none' }}_{{ pf_report_day }}" data-export-title="SSTS Platfrom Analysis Report">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Train No</th>
-                  <th>Rake No</th>
-                  <th>Device ID</th>
-                  <th>Crew Name</th>
-                  <th>ORG</th>
-                  <th>DEST</th>
-                  <th>Station</th>
-                  <th>Sch Arr</th>
-                  <th>Act Arr</th>
-                  <th>Sch Dep</th>
-                  <th>Act Dep</th>
-                  <th>Stop Time</th>
-                  <th>Geofence Enter Speed</th>
-                  <th>PF Enter Speed</th>
-                  <th>PF Distance</th>
-                  <th>Remarks</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for row in pf_analysis_selected_rows %}
-                <tr>
-                  <td>{{ row.report_date }}</td>
-                  <td>{{ row.train_no }}</td>
-                  <td>{{ row.rake_no }}</td>
-                  <td>{{ row.device_id }}</td>
-                  <td>{{ row.crew_name }}</td>
-                  <td>{{ row.org }}</td>
-                  <td>{{ row.dest }}</td>
-                  <td class="{% if row.pf_enter_speed not in ['', none] and (row.pf_enter_speed | float) > 40 %}station-alert{% endif %}"><span class="station-highlight">{{ row.station }}</span></td>
-                  <td>{{ row.sch_arr }}</td>
-                  <td>{{ row.act_arr }}</td>
-                  <td>{{ row.sch_dep }}</td>
-                  <td>{{ row.act_dep }}</td>
-                  <td>{{ row.stop_time }}</td>
-                  <td>{{ row.geofence_enter_speed }}</td>
-                  <td class="{% if row.pf_enter_speed not in ['', none] and (row.pf_enter_speed | float) > 40 %}pf-speed-alert{% endif %}">{{ row.pf_enter_speed }}</td>
-                  <td>{{ row.pf_distance }}</td>
-                  <td>{{ row.remarks }}</td>
-                </tr>
-                {% else %}
-                <tr>
-                  <td colspan="17">No train selected yet, or this train has no 40+ speed rows.</td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
           </div>
         </section>
         {% endif %}
@@ -922,7 +877,7 @@
         panel.classList.remove('is-hidden');
         button.disabled = true;
         button.textContent = 'Running...';
-        pollStatus(initialTaskId, `/ssts-report?report_tab=pf_entering&pf_task_id=${encodeURIComponent(initialTaskId)}`);
+        pollStatus(initialTaskId, `/ssts-report?report_tab=pf_entering&pf_task_id=${encodeURIComponent(initialTaskId)}&pf_day=${encodeURIComponent(document.getElementById('pf-day-select')?.value || '')}&pf_speed_threshold=${encodeURIComponent(document.getElementById('pf-speed-threshold')?.value || '40')}`);
       }
     })();
   </script>
