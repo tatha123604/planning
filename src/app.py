@@ -291,9 +291,11 @@ def _normalize_export_text(value: object | None) -> str:
 
 
 def _parse_export_report_date(value: object | None) -> str:
-    text = str(value or "").strip()
+    text = _normalize_export_text(value)
     if not text:
         return ""
+    if ":" in text:
+        return text
     for parser in (
         lambda raw: date.fromisoformat(raw),
         lambda raw: datetime.strptime(raw, "%d-%m-%Y").date(),
@@ -568,7 +570,10 @@ def _build_table_pdf_bytes(
     page_height = 595.0
     margin_left = 26.0
     margin_right = 26.0
-    margin_bottom = 24.0
+    footer_note = ""
+    if title == "SSTS PF Entering Speed Daily Report":
+        footer_note = "* all data is taken from SSTS site based on data captured by the GPS tracking Device"
+    margin_bottom = 38.0 if footer_note else 24.0
     table_top = 516.0
     table_width = page_width - margin_left - margin_right
     column_count = max(1, len(headers))
@@ -694,6 +699,16 @@ def _build_table_pdf_bytes(
             f"Rows: {len(rows)}   Page: {page_index}/{total_pages}",
             (0.306, 0.427, 0.529),
         )
+        if footer_note:
+            add_text(
+                commands,
+                "F1",
+                8.6,
+                margin_left,
+                14.0,
+                footer_note,
+                (0.306, 0.427, 0.529),
+            )
 
         current_y = table_top
         current_y = draw_row(
