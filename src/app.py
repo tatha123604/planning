@@ -1511,6 +1511,9 @@ def _build_ssts_pf_speed_analysis_result(report_day: date, speed_threshold: int)
     for row in raw_context.get("pf_report_rows", []):
         if not isinstance(row, dict):
             continue
+        stop_time = str(row.get("stop_time") or "").strip()
+        if stop_time == "00:00:00":
+            continue
         pf_speed = _pf_speed_value(row.get("pf_enter_speed"))
         if _pf_speed_matches_threshold(pf_speed, speed_threshold):
             daily_report_rows.append(dict(row))
