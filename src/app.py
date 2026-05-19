@@ -673,13 +673,16 @@ def _build_table_pdf_bytes(
         commands: list[str] = []
         add_text(commands, "F2", 15.5, margin_left, 560.0, title, (0.086, 0.192, 0.298))
         if report_date_label:
+            pdf_report_label = report_date_label
+            if ":" not in pdf_report_label:
+                pdf_report_label = f"Date: {pdf_report_label}"
             add_text(
                 commands,
                 "F1",
                 9.4,
                 margin_left,
                 548.0,
-                report_date_label,
+                pdf_report_label,
                 (0.306, 0.427, 0.529),
             )
         add_text(
