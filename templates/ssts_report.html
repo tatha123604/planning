@@ -876,7 +876,7 @@
                   <th>Date</th>
                   <th>Train No</th>
                   <th>Rake No</th>
-                  <th>Device ID</th>
+                  <th>Crew ID</th>
                   <th>Crew Name</th>
                   <th>ORG</th>
                   <th>DEST</th>
@@ -898,11 +898,11 @@
                   <td>{{ row.report_date }}</td>
                   <td>{{ row.train_no }}</td>
                   <td>{{ row.rake_no }}</td>
-                  <td>{{ row.device_id }}</td>
-                  <td>{{ row.crew_name }}</td>
+                  <td class="crew-alert">{{ row.crew_id or '' }}</td>
+                  <td class="crew-alert">{{ row.crew_name }}</td>
                   <td>{{ row.org }}</td>
                   <td>{{ row.dest }}</td>
-                  <td>{{ row.station }}</td>
+                  <td class="crew-alert"><span class="station-highlight">{{ row.station }}</span></td>
                   <td>{{ row.sch_arr }}</td>
                   <td>{{ row.act_arr }}</td>
                   <td>{{ row.sch_dep }}</td>

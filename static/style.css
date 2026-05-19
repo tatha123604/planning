@@ -1095,6 +1095,11 @@ ul { padding-left: 18px; margin: 6px 0; }
   color: #ff6b6b;
   font-weight: 800;
 }
+.crew-alert,
+.crew-alert .station-highlight {
+  color: #ff9f43;
+  font-weight: 800;
+}
 .timeline-card {
   min-width: 220px;
   display: grid;

@@ -644,7 +644,11 @@ def _build_table_pdf_bytes(
             class_text = (cell_class_row[cell_index] if cell_class_row and cell_index < len(cell_class_row) else "").lower()
             if "pf-speed-alert" in class_text or "station-alert" in class_text:
                 current_text_color = (0.769, 0.102, 0.102)
+            if "crew-alert" in class_text:
+                current_text_color = (1.000, 0.624, 0.263)
             if "station-alert" in class_text:
+                current_font_name = "F2"
+            if "crew-alert" in class_text:
                 current_font_name = "F2"
             for line in cell_lines:
                 add_text(commands, current_font_name, font_size, text_x, text_y, line, current_text_color)
@@ -754,6 +758,7 @@ SSTS_API_LOGIN_URL = f"{SSTS_API_BASE_URL}/auth/login/"
 SSTS_API_DEVICE_URL = f"{SSTS_API_BASE_URL}/device"
 SSTS_API_TRAINS_REPORT_URL = f"{SSTS_API_BASE_URL}/train/tr/reportforperiod"
 SSTS_API_PUNCT_URL = f"{SSTS_API_BASE_URL}/timetable/tc/punct"
+SSTS_API_CREW_URL = f"{SSTS_API_BASE_URL}/crew"
 SSTS_API_USER = os.getenv("SSTS_API_USER", "srdeeopsdah@gmail.com")
 SSTS_API_PASSWORD = os.getenv("SSTS_API_PASSWORD", "sdah1234")
 SSTS_OFFLINE_THRESHOLD_MINUTES = 120
@@ -769,6 +774,7 @@ IST = timezone(timedelta(hours=5, minutes=30))
 _SSTS_PF_REPORT_CACHE: dict[str, tuple[datetime, dict[str, object]]] = {}
 _SSTS_PF_ANALYSIS_TASKS: dict[str, dict[str, object]] = {}
 _SSTS_PF_ANALYSIS_LOCK = threading.Lock()
+_SSTS_CREW_CACHE: tuple[datetime, dict[str, str]] | None = None
 _SSTS_BACKGROUND_SYNC_STOP = threading.Event()
 _SSTS_BACKGROUND_SYNC_THREAD: threading.Thread | None = None
 
@@ -1272,6 +1278,11 @@ def build_ssts_pf_entering_context(report_day: date) -> dict[str, object]:
     trains = fetch_ssts_trains_report(report_day, token)
     rows: list[dict[str, object]] = []
     missing_count = 0
+    crew_lookup: dict[str, str] = {}
+    try:
+        crew_lookup = fetch_ssts_crew_lookup(token)
+    except (urlerror.URLError, RuntimeError, ValueError, json.JSONDecodeError):
+        crew_lookup = {}
     if trains:
         with ThreadPoolExecutor(max_workers=6) as executor:
             future_map = {
@@ -1283,6 +1294,11 @@ def build_ssts_pf_entering_context(report_day: date) -> dict[str, object]:
                 rows.extend(train_rows)
                 if any(row.get("status_message") for row in train_rows):
                     missing_count += 1
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        crew_name_key = _normalize_ssts_crew_name(row.get("crew_name"))
+        row["crew_id"] = crew_lookup.get(crew_name_key, "") if crew_name_key else ""
     rows.sort(
         key=lambda row: (
             str(row.get("train_no") or ""),
@@ -1340,6 +1356,39 @@ def _pf_speed_matches_threshold(speed: float | None, threshold: int) -> bool:
     if threshold > 50:
         return speed > 50
     return speed >= threshold
+
+
+def _normalize_ssts_crew_name(value: object | None) -> str:
+    text = str(value or "").strip().upper()
+    return re.sub(r"[^A-Z0-9]+", "", text)
+
+
+def fetch_ssts_crew_lookup(token: str) -> dict[str, str]:
+    global _SSTS_CREW_CACHE
+    now_utc = _utc_now()
+    if _SSTS_CREW_CACHE is not None:
+        cached_at, cached_lookup = _SSTS_CREW_CACHE
+        if (now_utc - cached_at) < timedelta(minutes=SSTS_PF_REPORT_CACHE_TTL_MINUTES):
+            return dict(cached_lookup)
+
+    response = _ssts_get_json(SSTS_API_CREW_URL, headers={"Authorization": token})
+    if not isinstance(response, dict):
+        raise RuntimeError("Unexpected SSTS crew response format.")
+    raw_rows = response.get("data")
+    if not isinstance(raw_rows, list):
+        raise RuntimeError("Unexpected SSTS crew data payload.")
+
+    lookup: dict[str, str] = {}
+    for item in raw_rows:
+        if not isinstance(item, dict):
+            continue
+        crew_name_key = _normalize_ssts_crew_name(item.get("crew_name"))
+        crew_id = str(item.get("crew_id") or "").strip()
+        if crew_name_key and crew_id and crew_name_key not in lookup:
+            lookup[crew_name_key] = crew_id
+
+    _SSTS_CREW_CACHE = (now_utc, lookup)
+    return dict(lookup)
 
 
 def _cleanup_ssts_pf_analysis_tasks() -> None:
@@ -3271,12 +3320,15 @@ async def export_table_xlsx(request: Request):
         cell.alignment = header_alignment
 
     alert_font = Font(bold=True, color="C41A1A")
+    crew_alert_font = Font(bold=True, color="FF9F43")
     for row_offset, class_row in enumerate(cell_classes, start=1):
         sheet_row = header_row_index + row_offset
         for column_index, class_text in enumerate(class_row, start=1):
             class_name = str(class_text or "").lower()
             if "station-alert" in class_name or "pf-speed-alert" in class_name:
                 ws.cell(row=sheet_row, column=column_index).font = alert_font
+            if "crew-alert" in class_name:
+                ws.cell(row=sheet_row, column=column_index).font = crew_alert_font
 
     ws.freeze_panes = f"A{header_row_index + 1}"
     last_row = header_row_index + max(len(rows), 1)
