@@ -1318,6 +1318,22 @@ def _pf_speed_value(value: object) -> float | None:
         return None
 
 
+def _parse_pf_speed_threshold(value: object | None) -> int:
+    try:
+        threshold = int(str(value or "40").strip())
+    except (TypeError, ValueError):
+        threshold = 40
+    if 40 <= threshold <= 50:
+        return threshold
+    if threshold > 50:
+        return 51
+    return 40
+
+
+def _pf_speed_threshold_label(threshold: int) -> str:
+    return "Above 50" if threshold > 50 else f"Above {threshold}"
+
+
 def _cleanup_ssts_pf_analysis_tasks() -> None:
     now_utc = _utc_now()
     stale_ids: list[str] = []
@@ -1351,7 +1367,7 @@ def _get_ssts_pf_analysis_task(task_id: str | None) -> dict[str, object] | None:
         return dict(payload)
 
 
-def _build_ssts_pf_speed_analysis_result(report_day: date) -> dict[str, object]:
+def _build_ssts_pf_speed_analysis_result(report_day: date, speed_threshold: int) -> dict[str, object]:
     raw_context = build_ssts_pf_entering_context(report_day)
     all_rows_by_train: dict[str, list[dict[str, object]]] = {}
     for row in raw_context.get("pf_report_rows", []):
@@ -1427,9 +1443,28 @@ def _build_ssts_pf_speed_analysis_result(report_day: date) -> dict[str, object]:
         key=lambda row: (-int(row.get("occurrence_count") or 0), str(row.get("train_no") or "")),
     )
 
+    daily_report_rows: list[dict[str, object]] = []
+    for row in raw_context.get("pf_report_rows", []):
+        if not isinstance(row, dict):
+            continue
+        pf_speed = _pf_speed_value(row.get("pf_enter_speed"))
+        if pf_speed is not None and pf_speed > speed_threshold:
+            daily_report_rows.append(dict(row))
+
+    daily_report_rows.sort(
+        key=lambda row: (
+            str(row.get("train_no") or ""),
+            999999 if row.get("srl_no") in ("", None) else int(row.get("srl_no") or 0),
+            str(row.get("station") or ""),
+        )
+    )
+
     return {
         "pf_report_day": report_day.isoformat(),
         "pf_report_day_label": report_day.strftime("%d-%m-%Y"),
+        "pf_speed_threshold": speed_threshold,
+        "pf_speed_threshold_label": _pf_speed_threshold_label(speed_threshold),
+        "pf_daily_report_rows": daily_report_rows,
         "pf_analysis_summary_rows": summary_rows,
         "pf_analysis_detail_rows_by_train": detail_rows_by_train,
         "pf_analysis_total_trains": len(summary_rows),
@@ -1440,7 +1475,7 @@ def _build_ssts_pf_speed_analysis_result(report_day: date) -> dict[str, object]:
     }
 
 
-def _run_ssts_pf_analysis_task(task_id: str, report_day: date) -> None:
+def _run_ssts_pf_analysis_task(task_id: str, report_day: date, speed_threshold: int) -> None:
     try:
         _set_ssts_pf_analysis_task(
             task_id,
@@ -1453,7 +1488,7 @@ def _run_ssts_pf_analysis_task(task_id: str, report_day: date) -> None:
             progress=24,
             message="Fetching train-wise PF data...",
         )
-        result = _build_ssts_pf_speed_analysis_result(report_day)
+        result = _build_ssts_pf_speed_analysis_result(report_day, speed_threshold)
         _set_ssts_pf_analysis_task(
             task_id,
             progress=88,
@@ -3006,6 +3041,7 @@ def ssts_report_page(
     selected_analysis_rake: str | None = None,
     detail_view: str | None = None,
     pf_day: str | None = None,
+    pf_speed_threshold: str | None = None,
     pf_task_id: str | None = None,
     pf_train: str | None = None,
     session: Session = Depends(get_session),
@@ -3021,6 +3057,10 @@ def ssts_report_page(
         except ValueError:
             selected_analysis_rake_value = None
     pf_day_value = selected_day_value or date.today()
+    pf_speed_threshold_value = _parse_pf_speed_threshold(pf_speed_threshold)
+    pf_speed_options = [{"value": value, "label": str(value)} for value in range(40, 51)] + [
+        {"value": 51, "label": "Above 50"}
+    ]
     parsed_pf_day = _parse_report_date(pf_day)
     if parsed_pf_day is not None:
         pf_day_value = parsed_pf_day
@@ -3034,6 +3074,10 @@ def ssts_report_page(
         "pf_report_day": pf_day_value.isoformat(),
         "pf_report_day_label": pf_day_value.strftime("%d-%m-%Y"),
         "pf_report_rows": [],
+        "pf_speed_threshold": pf_speed_threshold_value,
+        "pf_speed_threshold_label": _pf_speed_threshold_label(pf_speed_threshold_value),
+        "pf_speed_options": pf_speed_options,
+        "pf_daily_report_rows": [],
         "pf_analysis_summary_rows": [],
         "pf_analysis_selected_rows": [],
         "pf_analysis_selected_train": "",
@@ -3060,6 +3104,10 @@ def ssts_report_page(
                     pf_context["pf_report_day_label"] = pf_day_value.strftime("%d-%m-%Y")
                 except ValueError:
                     pass
+            if task_payload.get("speed_threshold") is not None:
+                resolved_threshold = _parse_pf_speed_threshold(task_payload.get("speed_threshold"))
+                pf_context["pf_speed_threshold"] = resolved_threshold
+                pf_context["pf_speed_threshold_label"] = _pf_speed_threshold_label(resolved_threshold)
             if task_payload.get("status") == "completed":
                 result = task_payload.get("result")
                 if isinstance(result, dict):
@@ -3106,10 +3154,14 @@ def ssts_report_page(
 
 
 @app.post("/ssts-report/pf-analysis/start")
-async def start_ssts_pf_analysis(pf_day: str = Form(...)):
+async def start_ssts_pf_analysis(
+    pf_day: str = Form(...),
+    pf_speed_threshold: str = Form("40"),
+):
     report_day = _parse_report_date(pf_day)
     if report_day is None:
         raise HTTPException(status_code=400, detail="Invalid PF analysis date.")
+    speed_threshold = _parse_pf_speed_threshold(pf_speed_threshold)
 
     task_id = uuid4().hex
     _set_ssts_pf_analysis_task(
@@ -3118,16 +3170,20 @@ async def start_ssts_pf_analysis(pf_day: str = Form(...)):
         progress=2,
         message="Queued for analysis...",
         report_day=report_day.isoformat(),
+        speed_threshold=speed_threshold,
         result=None,
     )
-    worker = threading.Thread(target=_run_ssts_pf_analysis_task, args=(task_id, report_day), daemon=True)
+    worker = threading.Thread(target=_run_ssts_pf_analysis_task, args=(task_id, report_day, speed_threshold), daemon=True)
     worker.start()
     return JSONResponse(
         {
             "task_id": task_id,
             "status": "pending",
             "status_url": f"/ssts-report/pf-analysis/status?task_id={task_id}",
-            "result_url": f"/ssts-report?report_tab=pf_entering&pf_task_id={task_id}",
+            "result_url": (
+                f"/ssts-report?report_tab=pf_entering&pf_task_id={task_id}"
+                f"&pf_day={report_day.isoformat()}&pf_speed_threshold={speed_threshold}"
+            ),
         }
     )
 
@@ -3143,7 +3199,11 @@ def ssts_pf_analysis_status(task_id: str):
             "status": str(task_payload.get("status") or "idle"),
             "progress": int(task_payload.get("progress") or 0),
             "message": str(task_payload.get("message") or ""),
-            "result_url": f"/ssts-report?report_tab=pf_entering&pf_task_id={task_id}",
+            "result_url": (
+                f"/ssts-report?report_tab=pf_entering&pf_task_id={task_id}"
+                f"&pf_day={task_payload.get('report_day') or ''}"
+                f"&pf_speed_threshold={_parse_pf_speed_threshold(task_payload.get('speed_threshold'))}"
+            ),
         }
     )
 
