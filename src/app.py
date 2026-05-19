@@ -1706,7 +1706,9 @@ def build_ssts_report_context(
     selected_analysis_summary = {
         "day_label": analysis_day_value.strftime("%d-%m-%Y") if analysis_day_value else "",
         "continuous_offline_count": 0,
+        "continuous_online_count": 0,
         "mixed_online_offline_count": 0,
+        "online_offline_total_count": 0,
         "total_rakes": 0,
     }
     if analysis_day_value is not None:
@@ -1928,10 +1930,20 @@ def build_ssts_report_context(
             if row.get("segments")
             and {str(segment.get("state")) for segment in row.get("segments", [])} == {"offline"}
         )
+        selected_analysis_summary["continuous_online_count"] = sum(
+            1
+            for row in selected_analysis_rows
+            if row.get("segments")
+            and {str(segment.get("state")) for segment in row.get("segments", [])} == {"online"}
+        )
         selected_analysis_summary["mixed_online_offline_count"] = sum(
             1
             for row in selected_analysis_rows
             if {"online", "offline"}.issubset({str(segment.get("state")) for segment in row.get("segments", [])})
+        )
+        selected_analysis_summary["online_offline_total_count"] = (
+            int(selected_analysis_summary["continuous_online_count"])
+            + int(selected_analysis_summary["mixed_online_offline_count"])
         )
 
         selected_analysis_rows.sort(

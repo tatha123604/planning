@@ -240,9 +240,9 @@
           <article class="card metric-card metric-card-online analysis-summary-card">
             <div class="metric-card-body">
               <span class="metric-label">Online/Offline Rakes</span>
-              <strong class="metric-value">{{ selected_analysis_summary.mixed_online_offline_count }}</strong>
+              <strong class="metric-value">{{ selected_analysis_summary.online_offline_total_count }}</strong>
               <div class="analysis-summary-meta">{{ selected_analysis_summary.day_label }}</div>
-              <p>Rakes that showed both online and offline status on the selected day.</p>
+              <p>Continuous online rakes plus rakes that switched between online and offline on the selected day.</p>
             </div>
           </article>
           {% endif %}
