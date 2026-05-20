@@ -799,6 +799,10 @@ _SSTS_PF_ANALYSIS_LOCK = threading.Lock()
 _SSTS_CREW_CACHE: tuple[datetime, dict[str, str]] | None = None
 _SSTS_BACKGROUND_SYNC_STOP = threading.Event()
 _SSTS_BACKGROUND_SYNC_THREAD: threading.Thread | None = None
+SSTS_PF_CREW_ID_OVERRIDES = {
+    "KUNDAN KUMAR": "SDAH1898",
+    "AMIT KUMAR": "SDAH2345",
+}
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -1194,6 +1198,20 @@ def _format_time_value(value: object) -> str:
     return str(value)
 
 
+def _normalize_pf_crew_name(value: object) -> str:
+    text = str(value or "").strip().upper()
+    if not text:
+        return ""
+    return re.sub(r"\s+", " ", text)
+
+
+def _resolve_pf_crew_id(crew_name: object) -> str:
+    normalized_name = _normalize_pf_crew_name(crew_name)
+    if not normalized_name:
+        return ""
+    return SSTS_PF_CREW_ID_OVERRIDES.get(normalized_name, "")
+
+
 def _build_pf_report_rows_for_train(
     train: dict[str, object],
     report_day: date,
@@ -1248,6 +1266,7 @@ def _build_pf_report_rows_for_train(
     for item in response:
         if not isinstance(item, dict):
             continue
+        crew_name = str(item.get("crew_name") or "").strip()
         detail_rows.append(
             {
                 **base_row,
@@ -1264,6 +1283,8 @@ def _build_pf_report_rows_for_train(
                 else "",
                 "pf_enter_speed": item.get("pf_enter_speed") if item.get("pf_enter_speed") is not None else "",
                 "pf_distance": item.get("pf_distance") if item.get("pf_distance") is not None else "",
+                "crew_name": crew_name,
+                "crew_id": _resolve_pf_crew_id(crew_name),
                 "remarks": str(item.get("remarks") or ""),
                 "status_message": "",
             }
@@ -1320,7 +1341,7 @@ def build_ssts_pf_entering_context(report_day: date) -> dict[str, object]:
         if not isinstance(row, dict):
             continue
         crew_name_key = _normalize_ssts_crew_name(row.get("crew_name"))
-        row["crew_id"] = crew_lookup.get(crew_name_key, "") if crew_name_key else ""
+        row["crew_id"] = _resolve_pf_crew_id(row.get("crew_name")) or (crew_lookup.get(crew_name_key, "") if crew_name_key else "")
     rows.sort(
         key=lambda row: (
             str(row.get("train_no") or ""),
@@ -1407,6 +1428,10 @@ def fetch_ssts_crew_lookup(token: str) -> dict[str, str]:
         crew_name_key = _normalize_ssts_crew_name(item.get("crew_name"))
         crew_id = str(item.get("crew_id") or "").strip()
         if crew_name_key and crew_id and crew_name_key not in lookup:
+            lookup[crew_name_key] = crew_id
+    for crew_name, crew_id in SSTS_PF_CREW_ID_OVERRIDES.items():
+        crew_name_key = _normalize_ssts_crew_name(crew_name)
+        if crew_name_key and crew_id:
             lookup[crew_name_key] = crew_id
 
     _SSTS_CREW_CACHE = (now_utc, lookup)
