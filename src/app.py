@@ -286,6 +286,33 @@ def _sanitize_export_filename(value: object | None, suffix: str) -> str:
     return f"{slug}.{suffix}"
 
 
+def _format_export_report_date_for_filename(value: object | None) -> str:
+    text = _normalize_export_text(value)
+    if not text:
+        return ""
+    if ":" in text:
+        text = _normalize_export_text(text.split(":", 1)[1])
+    for parser in (
+        lambda raw: date.fromisoformat(raw),
+        lambda raw: datetime.strptime(raw, "%d-%m-%Y").date(),
+        lambda raw: datetime.strptime(raw, "%d/%m/%Y").date(),
+    ):
+        try:
+            return parser(text).strftime("%d_%m_%Y")
+        except ValueError:
+            continue
+    return ""
+
+
+def _build_pdf_export_filename(title: object | None, report_date_label: object | None) -> str:
+    safe_title = _sanitize_export_title(title)
+    if safe_title == "SSTS PF Entering Speed Daily Report":
+        report_date_suffix = _format_export_report_date_for_filename(report_date_label)
+        if report_date_suffix:
+            return f"{safe_title}_{report_date_suffix}.pdf"
+    return _sanitize_export_filename(title, "pdf")
+
+
 def _normalize_export_text(value: object | None) -> str:
     return re.sub(r"\s+", " ", str(value or "").strip())
 
@@ -3423,7 +3450,7 @@ async def export_table_pdf(request: Request):
 
     title, headers, rows, report_date_label, cell_classes = _coerce_export_table_payload(payload)
     pdf_bytes = _build_table_pdf_bytes(title, headers, rows, report_date_label, cell_classes)
-    filename = _sanitize_export_filename(title, "pdf")
+    filename = _build_pdf_export_filename(title, report_date_label)
     return StreamingResponse(
         BytesIO(pdf_bytes),
         media_type="application/pdf",
