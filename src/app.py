@@ -816,6 +816,7 @@ SSTS_PREVIOUSLY_OFFLINE_THRESHOLD_MINUTES = 300
 SSTS_RECENT_OFFLINE_MAX_MINUTES = 24 * 60
 SSTS_REFRESH_INTERVAL_MINUTES = 5
 SSTS_BACKGROUND_SYNC_INTERVAL_MINUTES = 60
+SSTS_SNAPSHOT_RETENTION_DAYS = 7
 SSTS_PF_REPORT_CACHE_TTL_MINUTES = 20
 SSTS_PF_ANALYSIS_TASK_TTL_MINUTES = 180
 SSTS_EXCLUDED_RAKE_NAMES = {"TEST1", "TEST2"}
@@ -1645,7 +1646,40 @@ def _run_ssts_pf_analysis_task(task_id: str, report_day: date, speed_threshold: 
         )
 
 
+def _prune_old_ssts_snapshots(
+    session: Session,
+    retention_days: int = SSTS_SNAPSHOT_RETENTION_DAYS,
+) -> dict[str, int]:
+    cutoff_utc = _utc_now() - timedelta(days=retention_days)
+    old_runs = list(
+        session.exec(
+            select(SstsSnapshotRun).where(SstsSnapshotRun.observed_at <= cutoff_utc)
+        ).all()
+    )
+    if not old_runs:
+        return {"deleted_runs": 0, "deleted_snapshots": 0}
+
+    run_ids = [run.id for run in old_runs if run.id is not None]
+    deleted_snapshots = 0
+    if run_ids:
+        old_snapshots = list(
+            session.exec(
+                select(SstsDeviceSnapshot).where(SstsDeviceSnapshot.run_id.in_(run_ids))
+            ).all()
+        )
+        deleted_snapshots = len(old_snapshots)
+        for snapshot in old_snapshots:
+            session.delete(snapshot)
+
+    for run in old_runs:
+        session.delete(run)
+
+    session.commit()
+    return {"deleted_runs": len(old_runs), "deleted_snapshots": deleted_snapshots}
+
+
 def refresh_ssts_snapshot(session: Session, force: bool = False) -> dict[str, object]:
+    cleanup_summary = _prune_old_ssts_snapshots(session)
     now_utc = _utc_now()
     latest_run = session.exec(select(SstsSnapshotRun).order_by(SstsSnapshotRun.observed_at.desc())).first()
     if latest_run and not force:
@@ -1657,6 +1691,7 @@ def refresh_ssts_snapshot(session: Session, force: bool = False) -> dict[str, ob
                 "observed_at": latest_run.observed_at,
                 "source_count": latest_run.source_count,
                 "message": f"Using last sync from {_format_ist(latest_run_time)}.",
+                "cleanup_summary": cleanup_summary,
             }
     observed_at = now_utc.replace(second=0, microsecond=0)
     try:
@@ -1694,6 +1729,7 @@ def refresh_ssts_snapshot(session: Session, force: bool = False) -> dict[str, ob
             "observed_at": observed_at,
             "source_count": len(snapshots),
             "message": f"Fetched {len(snapshots)} rakes from SSTS.",
+            "cleanup_summary": cleanup_summary,
         }
     except (urlerror.URLError, HTTPException, RuntimeError, ValueError, json.JSONDecodeError) as exc:
         run = SstsSnapshotRun(
@@ -1709,6 +1745,7 @@ def refresh_ssts_snapshot(session: Session, force: bool = False) -> dict[str, ob
             "observed_at": observed_at,
             "source_count": 0,
             "message": f"SSTS sync failed: {exc}",
+            "cleanup_summary": cleanup_summary,
         }
 
 
@@ -3279,6 +3316,8 @@ def ssts_report_page(
             "ssts_sync_status": sync_result.get("status"),
             "ssts_sync_message": sync_result.get("message"),
             "ssts_sync_observed_at": sync_result.get("observed_at"),
+            "ssts_cleanup_summary": sync_result.get("cleanup_summary") or {"deleted_runs": 0, "deleted_snapshots": 0},
+            "ssts_retention_days": SSTS_SNAPSHOT_RETENTION_DAYS,
             "IST": IST,
             "active_detail_view": detail_view if detail_view in {"recent_offline", "recently_online"} else None,
             **context,
