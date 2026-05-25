@@ -1550,16 +1550,45 @@ def _pf_is_suspected_spike(
             peak_speed = _pf_chart_speed_kmph(chart_points[idx])
             next_speed = _pf_chart_speed_kmph(chart_points[idx + 1]) if idx + 1 < len(chart_points) else None
             next2_speed = _pf_chart_speed_kmph(chart_points[idx + 2]) if idx + 2 < len(chart_points) else None
+            next3_speed = _pf_chart_speed_kmph(chart_points[idx + 3]) if idx + 3 < len(chart_points) else None
             if None in (prev_speed, peak_speed, next_speed):
                 continue
             if (
                 peak_speed >= max(45.0, threshold)
                 and peak_speed - prev_speed >= 8
-                and peak_speed - next_speed >= 8
+                and (
+                    peak_speed - next_speed >= 8
+                    or (
+                        peak_speed - prev_speed >= 12
+                        and (
+                            (next2_speed is not None and next2_speed <= peak_speed - 15)
+                            or (next3_speed is not None and next3_speed <= peak_speed - 25)
+                        )
+                    )
+                )
                 and (
                     next_speed <= peak_speed - 10
                     or (next2_speed is not None and next2_speed <= peak_speed - 15)
+                    or (next3_speed is not None and next3_speed <= peak_speed - 25)
                 )
+            ):
+                return True
+
+        entry_window_start = max(0, window_end - 12)
+        entry_window_end = min(len(chart_points) - 1, spike_window_end + 3)
+        entry_window_speeds = [
+            _pf_chart_speed_kmph(point)
+            for point in chart_points[entry_window_start : entry_window_end + 1]
+        ]
+        entry_window_speeds = [speed for speed in entry_window_speeds if speed is not None]
+        if entry_window_speeds:
+            entry_window_peak = max(entry_window_speeds)
+            if (
+                geofence_speed is not None
+                and pf_speed >= max(45.0, threshold)
+                and (pf_speed - geofence_speed) >= 18
+                and entry_window_peak <= geofence_speed + 5
+                and entry_window_peak <= pf_speed - 15
             ):
                 return True
 

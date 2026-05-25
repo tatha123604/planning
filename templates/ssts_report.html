@@ -964,6 +964,20 @@
             </div>
             <button type="submit" id="pf-detailed-report-button">Detailed Analysis</button>
           </form>
+          <div
+            class="pf-progress-panel {% if pf_analysis_status not in ['pending', 'running'] %}is-hidden{% endif %}"
+            id="pf-detailed-progress-panel"
+            data-status="{{ pf_analysis_status }}"
+            data-task-id="{{ pf_analysis_task_id }}"
+          >
+            <div class="pf-progress-head">
+              <strong>PF Speed Analysis Running</strong>
+              <span id="pf-detailed-progress-label">{{ pf_analysis_message or 'Preparing detailed analysis...' }}</span>
+            </div>
+            <div class="pf-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+              <span id="pf-detailed-progress-fill" style="width: {% if pf_analysis_status == 'completed' %}100{% else %}12{% endif %}%;"></span>
+            </div>
+          </div>
           <div class="summary-strip pf-summary-strip">
             <span class="summary-chip">Date {{ pf_report_day_label }}</span>
             <span class="summary-chip">Detailed Filter {{ pf_speed_threshold_label }}</span>
@@ -1042,6 +1056,9 @@
       const panel = document.getElementById('pf-progress-panel');
       const progressFill = document.getElementById('pf-progress-fill');
       const progressLabel = document.getElementById('pf-progress-label');
+      const detailedPanel = document.getElementById('pf-detailed-progress-panel');
+      const detailedProgressFill = document.getElementById('pf-detailed-progress-fill');
+      const detailedProgressLabel = document.getElementById('pf-detailed-progress-label');
       if (!forms.length || !panel || !progressFill || !progressLabel) return;
 
       let pollTimer = null;
@@ -1052,6 +1069,13 @@
         panel.querySelector('.pf-progress-bar')?.setAttribute('aria-valuenow', String(safePercent));
         if (message) {
           progressLabel.textContent = message;
+        }
+        if (detailedPanel && detailedProgressFill && detailedProgressLabel) {
+          detailedProgressFill.style.width = `${safePercent}%`;
+          detailedPanel.querySelector('.pf-progress-bar')?.setAttribute('aria-valuenow', String(safePercent));
+          if (message) {
+            detailedProgressLabel.textContent = message;
+          }
         }
       };
 
@@ -1108,6 +1132,7 @@
           const button = form.querySelector('button[type="submit"]');
           setButtonState(button, true, 'Starting...');
           panel.classList.remove('is-hidden');
+          detailedPanel?.classList.remove('is-hidden');
           setProgress(6, 'Starting PF analysis...');
           try {
             const response = await fetch(form.action, {
