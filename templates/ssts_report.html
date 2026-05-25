@@ -975,7 +975,6 @@
               <thead>
                 <tr>
                   <th class="skip-pdf-col">Select</th>
-                  <th>Actions</th>
                   <th>Date</th>
                   <th>Train No</th>
                   <th>Rake No</th>
@@ -1001,14 +1000,6 @@
                   <td class="skip-pdf-col">
                     <input type="checkbox" class="skip-pdf-checkbox" data-skip-pdf-row aria-label="Skip this row in PDF export" />
                   </td>
-                  <td class="actions-col">
-                    <a
-                      class="ghost small"
-                      href="/ssts-report?report_tab=pf_entering&pf_task_id={{ pf_analysis_task_id }}&pf_day={{ pf_report_day }}&pf_speed_threshold={{ pf_speed_threshold }}&pf_train={{ row.train_no }}&pf_detail_mode=clean#pf-train-detail"
-                    >
-                      Detailed Analysis
-                    </a>
-                  </td>
                   <td>{{ row.report_date }}</td>
                   <td class="crew-alert">{{ row.train_no }}</td>
                   <td>{{ row.rake_no }}</td>
@@ -1029,7 +1020,7 @@
                 </tr>
                 {% else %}
                 <tr>
-                  <td colspan="19">No purified daily report rows found after spike filtering for the selected date and speed filter.</td>
+                  <td colspan="18">No purified daily report rows found after spike filtering for the selected date and speed filter.</td>
                 </tr>
                 {% endfor %}
               </tbody>
