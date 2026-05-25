@@ -851,8 +851,8 @@
         <section class="card pf-train-detail-card" id="pf-daily-report">
           <div class="card-head-inline">
             <div>
-              <h2>Detailed Daily Report</h2>
-              <p>Rows for {{ pf_report_day_label }} where PF Enter Speed matches the selected speed filter. Use <strong>Detailed Analysis</strong> to inspect the train-level records before deciding whether the 40+ case is genuine or a spike.</p>
+              <h2>Daily Report</h2>
+              <p>Rows for {{ pf_report_day_label }} where PF Enter Speed matches the selected daily speed filter.</p>
             </div>
           </div>
           <form class="detail-date-filter report-filter-row pf-report-filter" method="post" action="/ssts-report/pf-analysis/start" id="pf-daily-report-form">
@@ -886,7 +886,6 @@
               <thead>
                 <tr>
                   <th class="skip-pdf-col">Select</th>
-                  <th>Actions</th>
                   <th>Date</th>
                   <th>Train No</th>
                   <th>Rake No</th>
@@ -908,6 +907,92 @@
               </thead>
               <tbody>
                 {% for row in pf_daily_report_rows %}
+                <tr>
+                  <td class="skip-pdf-col">
+                    <input type="checkbox" class="skip-pdf-checkbox" data-skip-pdf-row aria-label="Skip this row in PDF export" />
+                  </td>
+                  <td>{{ row.report_date }}</td>
+                  <td class="crew-alert">{{ row.train_no }}</td>
+                  <td>{{ row.rake_no }}</td>
+                  <td class="crew-alert">{{ row.crew_id or '' }}</td>
+                  <td class="crew-alert">{{ row.crew_name }}</td>
+                  <td>{{ row.org }}</td>
+                  <td>{{ row.dest }}</td>
+                  <td class="crew-alert"><span class="station-highlight">{{ row.station }}</span></td>
+                  <td>{{ row.sch_arr }}</td>
+                  <td>{{ row.act_arr }}</td>
+                  <td>{{ row.sch_dep }}</td>
+                  <td>{{ row.act_dep }}</td>
+                  <td class="crew-alert">{{ row.stop_time }}</td>
+                  <td>{{ row.geofence_enter_speed }}</td>
+                  <td class="{% if row.pf_enter_speed not in ['', none] and ((pf_speed_threshold > 50 and (row.pf_enter_speed | float) > 50) or (pf_speed_threshold <= 50 and (row.pf_enter_speed | float) >= pf_speed_threshold)) %}pf-speed-alert{% endif %}">{{ row.pf_enter_speed }}</td>
+                  <td>{{ row.pf_distance }}</td>
+                  <td>{{ row.remarks }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                  <td colspan="18">No daily report rows found for the selected date and speed filter.</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </section>
+        <section class="card pf-train-detail-card" id="pf-detailed-daily-report">
+          <div class="card-head-inline">
+            <div>
+              <h2>Detailed Daily Report</h2>
+              <p>Purified rows for {{ pf_report_day_label }} after nullifying suspected spike cases using the detailed validation logic.</p>
+            </div>
+          </div>
+          <form class="detail-date-filter report-filter-row pf-report-filter" method="post" action="/ssts-report/pf-analysis/start" id="pf-detailed-report-form">
+            <div class="filter-field">
+              <label for="pf-detailed-day-select">Detailed Report Date</label>
+              <input id="pf-detailed-day-select" type="date" name="pf_day" value="{{ pf_report_day }}" />
+            </div>
+            <div class="filter-field">
+              <label for="pf-detailed-speed-threshold">Detailed Speed Filter</label>
+              <select id="pf-detailed-speed-threshold" name="pf_speed_threshold">
+                {% for option in pf_speed_options %}
+                <option value="{{ option.value }}" {% if pf_speed_threshold == option.value %}selected{% endif %}>{{ option.label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <button type="submit" id="pf-detailed-report-button">Detailed Analysis</button>
+          </form>
+          <div class="summary-strip pf-summary-strip">
+            <span class="summary-chip">Date {{ pf_report_day_label }}</span>
+            <span class="summary-chip">Detailed Filter {{ pf_speed_threshold_label }}</span>
+            <span class="summary-chip">Clean Rows {{ pf_detailed_daily_report_rows|length }}</span>
+            <span class="summary-chip">Suspected Spikes Removed {{ pf_detailed_daily_spike_count }}</span>
+          </div>
+          <div class="table-wrap">
+            <table class="employee-table paged" data-exportable="true" data-export-name="ssts_pf_detailed_daily_report_{{ pf_report_day }}_{{ pf_speed_threshold }}" data-export-title="SSTS PF Detailed Daily Report">
+              <thead>
+                <tr>
+                  <th class="skip-pdf-col">Select</th>
+                  <th>Actions</th>
+                  <th>Date</th>
+                  <th>Train No</th>
+                  <th>Rake No</th>
+                  <th>Crew ID</th>
+                  <th>Crew Name</th>
+                  <th>ORG</th>
+                  <th>DEST</th>
+                  <th>Station</th>
+                  <th>Sch Arr</th>
+                  <th>Act Arr</th>
+                  <th>Sch Dep</th>
+                  <th>Act Dep</th>
+                  <th>Stop Time</th>
+                  <th>Geofence Enter Speed</th>
+                  <th>PF Enter Speed (KMPH)</th>
+                  <th>PF Enter Distance</th>
+                  <th>Remarks</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in pf_detailed_daily_report_rows %}
                 <tr>
                   <td class="skip-pdf-col">
                     <input type="checkbox" class="skip-pdf-checkbox" data-skip-pdf-row aria-label="Skip this row in PDF export" />
@@ -940,7 +1025,7 @@
                 </tr>
                 {% else %}
                 <tr>
-                  <td colspan="19">No daily report rows found for the selected date and speed filter.</td>
+                  <td colspan="19">No purified daily report rows found after spike filtering for the selected date and speed filter.</td>
                 </tr>
                 {% endfor %}
               </tbody>
@@ -957,6 +1042,7 @@
       const forms = [
         document.getElementById('pf-analysis-form'),
         document.getElementById('pf-daily-report-form'),
+        document.getElementById('pf-detailed-report-form'),
       ].filter(Boolean);
       const panel = document.getElementById('pf-progress-panel');
       const progressFill = document.getElementById('pf-progress-fill');
@@ -989,6 +1075,13 @@
         }
       };
 
+      const getButtonLabel = (button) => {
+        if (!button) return 'Analysis';
+        if (button.id === 'pf-daily-report-button') return 'Load Daily Report';
+        if (button.id === 'pf-detailed-report-button') return 'Detailed Analysis';
+        return 'Analysis';
+      };
+
       const pollStatus = async (taskId, resultUrl, activeButton) => {
         try {
           const response = await fetch(`/ssts-report/pf-analysis/status?task_id=${encodeURIComponent(taskId)}`);
@@ -1002,13 +1095,13 @@
             return;
           }
           if (payload.status === 'error') {
-            setButtonState(activeButton, false, activeButton?.id === 'pf-daily-report-button' ? 'Load Daily Report' : 'Analysis');
+            setButtonState(activeButton, false, getButtonLabel(activeButton));
             progressLabel.textContent = payload.message || 'Analysis failed.';
             return;
           }
           pollTimer = window.setTimeout(() => pollStatus(taskId, resultUrl || payload.result_url, activeButton), 1200);
         } catch (error) {
-          setButtonState(activeButton, false, activeButton?.id === 'pf-daily-report-button' ? 'Load Daily Report' : 'Analysis');
+          setButtonState(activeButton, false, getButtonLabel(activeButton));
           progressLabel.textContent = error && error.message ? error.message : 'Could not start PF analysis.';
         }
       };
@@ -1033,7 +1126,7 @@
             setButtonState(button, true, 'Running...');
             pollStatus(payload.task_id, payload.result_url, button);
           } catch (error) {
-            setButtonState(button, false, button?.id === 'pf-daily-report-button' ? 'Load Daily Report' : 'Analysis');
+            setButtonState(button, false, getButtonLabel(button));
             progressLabel.textContent = error && error.message ? error.message : 'Could not start PF analysis.';
           }
         });

@@ -1429,6 +1429,45 @@ def _pf_speed_matches_threshold(speed: float | None, threshold: int) -> bool:
     return speed >= threshold
 
 
+def _pf_reference_speed(row: dict[str, object] | None) -> float | None:
+    if not isinstance(row, dict):
+        return None
+    pf_speed = _pf_speed_value(row.get("pf_enter_speed"))
+    if pf_speed is not None:
+        return pf_speed
+    return _pf_speed_value(row.get("geofence_enter_speed"))
+
+
+def _pf_is_suspected_spike(
+    row: dict[str, object],
+    previous_row: dict[str, object] | None,
+    next_row: dict[str, object] | None,
+    threshold: int,
+) -> bool:
+    pf_speed = _pf_speed_value(row.get("pf_enter_speed"))
+    if not _pf_speed_matches_threshold(pf_speed, threshold):
+        return False
+
+    assert pf_speed is not None
+    geofence_speed = _pf_speed_value(row.get("geofence_enter_speed"))
+    previous_speed = _pf_reference_speed(previous_row)
+    next_speed = _pf_reference_speed(next_row)
+
+    reference_speeds = [speed for speed in (geofence_speed, previous_speed, next_speed) if speed is not None]
+    if len(reference_speeds) < 2:
+        return False
+
+    large_gap_count = sum(1 for speed in reference_speeds if (pf_speed - speed) >= 15)
+    low_support_count = sum(1 for speed in reference_speeds if speed <= max(5.0, threshold - 5))
+    isolated_peak = (
+        previous_speed is not None
+        and next_speed is not None
+        and (pf_speed - max(previous_speed, next_speed)) >= 15
+    )
+    geofence_mismatch = geofence_speed is not None and (pf_speed - geofence_speed) >= 15
+    return large_gap_count >= 2 and low_support_count >= 2 and (isolated_peak or geofence_mismatch)
+
+
 def _normalize_ssts_crew_name(value: object | None) -> str:
     text = str(value or "").strip().upper()
     return re.sub(r"[^A-Z0-9]+", "", text)
@@ -1594,12 +1633,39 @@ def _build_ssts_pf_speed_analysis_result(report_day: date, speed_threshold: int)
         )
     )
 
+    detailed_daily_report_rows: list[dict[str, object]] = []
+    suspected_spike_rows: list[dict[str, object]] = []
+    for rows in all_rows_by_train.values():
+        for index, row in enumerate(rows):
+            stop_time = str(row.get("stop_time") or "").strip()
+            if stop_time == "00:00:00":
+                continue
+            pf_speed = _pf_speed_value(row.get("pf_enter_speed"))
+            if not _pf_speed_matches_threshold(pf_speed, speed_threshold):
+                continue
+            previous_row = rows[index - 1] if index > 0 else None
+            next_row = rows[index + 1] if index + 1 < len(rows) else None
+            if _pf_is_suspected_spike(row, previous_row, next_row, speed_threshold):
+                suspected_spike_rows.append(dict(row))
+                continue
+            detailed_daily_report_rows.append(dict(row))
+
+    detailed_daily_report_rows.sort(
+        key=lambda row: (
+            str(row.get("train_no") or ""),
+            999999 if row.get("srl_no") in ("", None) else int(row.get("srl_no") or 0),
+            str(row.get("station") or ""),
+        )
+    )
+
     return {
         "pf_report_day": report_day.isoformat(),
         "pf_report_day_label": report_day.strftime("%d-%m-%Y"),
         "pf_speed_threshold": speed_threshold,
         "pf_speed_threshold_label": _pf_speed_threshold_label(speed_threshold),
         "pf_daily_report_rows": daily_report_rows,
+        "pf_detailed_daily_report_rows": detailed_daily_report_rows,
+        "pf_detailed_daily_spike_count": len(suspected_spike_rows),
         "pf_analysis_summary_rows": summary_rows,
         "pf_analysis_detail_rows_by_train": detail_rows_by_train,
         "pf_analysis_total_trains": len(summary_rows),
@@ -3249,6 +3315,8 @@ def ssts_report_page(
         "pf_speed_threshold_label": _pf_speed_threshold_label(pf_speed_threshold_value),
         "pf_speed_options": pf_speed_options,
         "pf_daily_report_rows": [],
+        "pf_detailed_daily_report_rows": [],
+        "pf_detailed_daily_spike_count": 0,
         "pf_analysis_summary_rows": [],
         "pf_analysis_selected_rows": [],
         "pf_analysis_selected_train": "",
