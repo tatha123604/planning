@@ -1438,6 +1438,22 @@ def _pf_reference_speed(row: dict[str, object] | None) -> float | None:
     return _pf_speed_value(row.get("geofence_enter_speed"))
 
 
+def _parse_hms_seconds(value: object | None) -> int | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    parts = text.split(":")
+    if len(parts) != 3:
+        return None
+    try:
+        hours, minutes, seconds = (int(part) for part in parts)
+    except ValueError:
+        return None
+    if hours < 0 or minutes < 0 or seconds < 0:
+        return None
+    return (hours * 3600) + (minutes * 60) + seconds
+
+
 def _pf_is_suspected_spike(
     row: dict[str, object],
     previous_row: dict[str, object] | None,
@@ -1450,6 +1466,14 @@ def _pf_is_suspected_spike(
 
     assert pf_speed is not None
     geofence_speed = _pf_speed_value(row.get("geofence_enter_speed"))
+    stop_time_seconds = _parse_hms_seconds(row.get("stop_time"))
+    max_entry_speed = max(speed for speed in (pf_speed, geofence_speed) if speed is not None)
+
+    # Extremely high PF/geofence speeds at a station with a very short stop
+    # are almost always GPS/network spikes in this workflow.
+    if max_entry_speed >= 100 and stop_time_seconds is not None and stop_time_seconds <= 60:
+        return True
+
     previous_speed = _pf_reference_speed(previous_row)
     next_speed = _pf_reference_speed(next_row)
 
