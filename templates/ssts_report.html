@@ -787,7 +787,11 @@
             <div>
               <h2>Train Detail</h2>
               {% if pf_analysis_selected_train %}
+              {% if pf_analysis_selected_mode == 'clean' %}
+              <p>Showing spike-filtered station records for train {{ pf_analysis_selected_train }}. Suspected mismatch rows are omitted from this detailed view.</p>
+              {% else %}
               <p>Showing all station records for train {{ pf_analysis_selected_train }}. PF Enter Speed above 40 is highlighted in red.</p>
+              {% endif %}
               {% else %}
               <p>Click a train number from the summary table to view all station records for that train.</p>
               {% endif %}
@@ -1000,7 +1004,7 @@
                   <td class="actions-col">
                     <a
                       class="ghost small"
-                      href="/ssts-report?report_tab=pf_entering&pf_task_id={{ pf_analysis_task_id }}&pf_day={{ pf_report_day }}&pf_speed_threshold={{ pf_speed_threshold }}&pf_train={{ row.train_no }}#pf-train-detail"
+                      href="/ssts-report?report_tab=pf_entering&pf_task_id={{ pf_analysis_task_id }}&pf_day={{ pf_report_day }}&pf_speed_threshold={{ pf_speed_threshold }}&pf_train={{ row.train_no }}&pf_detail_mode=clean#pf-train-detail"
                     >
                       Detailed Analysis
                     </a>

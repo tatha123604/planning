@@ -1468,6 +1468,17 @@ def _pf_is_suspected_spike(
     return large_gap_count >= 2 and low_support_count >= 2 and (isolated_peak or geofence_mismatch)
 
 
+def _pf_row_signature(row: dict[str, object]) -> tuple[str, str, str, str, str, str]:
+    return (
+        str(row.get("train_no") or "").strip(),
+        str(row.get("station") or "").strip(),
+        str(row.get("srl_no") or "").strip(),
+        str(row.get("act_arr") or "").strip(),
+        str(row.get("act_dep") or "").strip(),
+        str(row.get("pf_enter_speed") or "").strip(),
+    )
+
+
 def _normalize_ssts_crew_name(value: object | None) -> str:
     text = str(value or "").strip().upper()
     return re.sub(r"[^A-Z0-9]+", "", text)
@@ -1635,6 +1646,7 @@ def _build_ssts_pf_speed_analysis_result(report_day: date, speed_threshold: int)
 
     detailed_daily_report_rows: list[dict[str, object]] = []
     suspected_spike_rows: list[dict[str, object]] = []
+    suspected_spike_signatures: set[tuple[str, str, str, str, str, str]] = set()
     for rows in all_rows_by_train.values():
         for index, row in enumerate(rows):
             stop_time = str(row.get("stop_time") or "").strip()
@@ -1646,7 +1658,9 @@ def _build_ssts_pf_speed_analysis_result(report_day: date, speed_threshold: int)
             previous_row = rows[index - 1] if index > 0 else None
             next_row = rows[index + 1] if index + 1 < len(rows) else None
             if _pf_is_suspected_spike(row, previous_row, next_row, speed_threshold):
-                suspected_spike_rows.append(dict(row))
+                spike_row = dict(row)
+                suspected_spike_rows.append(spike_row)
+                suspected_spike_signatures.add(_pf_row_signature(spike_row))
                 continue
             detailed_daily_report_rows.append(dict(row))
 
@@ -1657,6 +1671,13 @@ def _build_ssts_pf_speed_analysis_result(report_day: date, speed_threshold: int)
             str(row.get("station") or ""),
         )
     )
+    detailed_detail_rows_by_train: dict[str, list[dict[str, object]]] = {}
+    for train_no, rows in all_rows_by_train.items():
+        cleaned_rows = [
+            dict(row) for row in rows
+            if _pf_row_signature(row) not in suspected_spike_signatures
+        ]
+        detailed_detail_rows_by_train[train_no] = cleaned_rows
 
     return {
         "pf_report_day": report_day.isoformat(),
@@ -1668,6 +1689,7 @@ def _build_ssts_pf_speed_analysis_result(report_day: date, speed_threshold: int)
         "pf_detailed_daily_spike_count": len(suspected_spike_rows),
         "pf_analysis_summary_rows": summary_rows,
         "pf_analysis_detail_rows_by_train": detail_rows_by_train,
+        "pf_detailed_detail_rows_by_train": detailed_detail_rows_by_train,
         "pf_analysis_total_trains": len(summary_rows),
         "pf_analysis_total_rows": len(filtered_rows),
         "pf_analysis_source_total_trains": int(raw_context.get("pf_report_total_trains") or 0),
@@ -3281,6 +3303,7 @@ def ssts_report_page(
     pf_speed_threshold: str | None = None,
     pf_task_id: str | None = None,
     pf_train: str | None = None,
+    pf_detail_mode: str | None = None,
     session: Session = Depends(get_session),
 ):
     sync_result = refresh_ssts_snapshot(session, force=bool(force))
@@ -3320,6 +3343,7 @@ def ssts_report_page(
         "pf_analysis_summary_rows": [],
         "pf_analysis_selected_rows": [],
         "pf_analysis_selected_train": "",
+        "pf_analysis_selected_mode": "raw",
         "pf_analysis_total_trains": 0,
         "pf_analysis_total_rows": 0,
         "pf_analysis_source_total_trains": 0,
@@ -3350,16 +3374,28 @@ def ssts_report_page(
             if task_payload.get("status") == "completed":
                 result = task_payload.get("result")
                 if isinstance(result, dict):
-                    pf_context.update({key: value for key, value in result.items() if key != "pf_analysis_detail_rows_by_train"})
-                    detail_rows_by_train = result.get("pf_analysis_detail_rows_by_train")
-                    if isinstance(detail_rows_by_train, dict):
+                    pf_context.update(
+                        {
+                            key: value
+                            for key, value in result.items()
+                            if key not in {"pf_analysis_detail_rows_by_train", "pf_detailed_detail_rows_by_train"}
+                        }
+                    )
+                    raw_detail_rows_by_train = result.get("pf_analysis_detail_rows_by_train")
+                    clean_detail_rows_by_train = result.get("pf_detailed_detail_rows_by_train")
+                    selected_mode = "clean" if pf_detail_mode == "clean" else "raw"
+                    selected_detail_rows_by_train = (
+                        clean_detail_rows_by_train if selected_mode == "clean" else raw_detail_rows_by_train
+                    )
+                    if isinstance(selected_detail_rows_by_train, dict):
                         selected_train_value = pf_train or (
                             str(pf_context["pf_analysis_summary_rows"][0].get("train_no") or "")
                             if pf_context["pf_analysis_summary_rows"]
                             else ""
                         )
                         pf_context["pf_analysis_selected_train"] = selected_train_value
-                        selected_rows = detail_rows_by_train.get(selected_train_value, [])
+                        pf_context["pf_analysis_selected_mode"] = selected_mode
+                        selected_rows = selected_detail_rows_by_train.get(selected_train_value, [])
                         pf_context["pf_analysis_selected_rows"] = selected_rows if isinstance(selected_rows, list) else []
             elif task_payload.get("status") == "error":
                 pf_context["pf_report_error"] = str(task_payload.get("message") or "PF analysis failed.")
