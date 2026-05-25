@@ -1,6 +1,7 @@
 (() => {
   const ACTION_HEADER_RE = /^actions$/i;
   const EXPORT_IGNORED_HEADER_RE = /^graphical representation$/i;
+  const SKIP_PDF_HEADER_RE = /^skip pdf$/i;
 
   const normalizeText = (value) => String(value ?? "").replace(/\s+/g, " ").trim();
 
@@ -87,7 +88,8 @@
     return `${baseTitle} Table ${tableIndex + 1}`;
   };
 
-  const buildSnapshot = (table, tableIndex) => {
+  const buildSnapshot = (table, tableIndex, options = {}) => {
+    const { excludeMarkedPdfRows = false } = options;
     const reportDateInput = document.querySelector('input[name="report_date"]');
     const sourceReportDateInput = document.querySelector("#source-report-date");
     const reportDateValue = sourceReportDateInput?.value || reportDateInput?.value || "";
@@ -95,8 +97,12 @@
     const headerSource = headerRows.length ? headerRows[headerRows.length - 1] : null;
     const rawHeaders = headerSource ? extractExpandedTexts(headerSource.cells) : [];
     const bodyRows = Array.from(table.tBodies || []).flatMap((tbody) => Array.from(tbody.rows || []));
-    const rawRows = bodyRows
+    const includedRows = bodyRows
       .filter((row) => row?.dataset?.filterHidden !== "true")
+      .filter((row) => (
+        !excludeMarkedPdfRows || !row.querySelector('input[data-skip-pdf-row]:checked')
+      ));
+    const rawRows = includedRows
       .map((row) => extractExpandedTexts(row.cells));
 
     const columnCount = Math.max(
@@ -110,7 +116,11 @@
     const ignoredIndexes = new Set(
       headers
         .map((header, index) => (
-          ACTION_HEADER_RE.test(header) || EXPORT_IGNORED_HEADER_RE.test(header) ? index : -1
+          ACTION_HEADER_RE.test(header)
+          || EXPORT_IGNORED_HEADER_RE.test(header)
+          || SKIP_PDF_HEADER_RE.test(header)
+            ? index
+            : -1
         ))
         .filter((index) => index >= 0)
     );
@@ -123,8 +133,7 @@
       }
       return keepIndexes.map((index) => normalizeText(padded[index]));
     });
-    const cellClasses = bodyRows
-      .filter((row) => row?.dataset?.filterHidden !== "true")
+    const cellClasses = includedRows
       .map((row) => {
         const cells = Array.from(row.cells || []);
         const expanded = cells.flatMap((cell) => {
@@ -258,7 +267,7 @@
     };
 
     pdfButton.addEventListener("click", async () => {
-      const snapshot = buildSnapshot(table, tableIndex);
+      const snapshot = buildSnapshot(table, tableIndex, { excludeMarkedPdfRows: true });
       const confirmed = window.confirm(
         `Generate PDF for "${snapshot.title}"?\nRows: ${snapshot.rows.length}`
       );

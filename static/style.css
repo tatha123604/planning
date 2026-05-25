@@ -679,6 +679,18 @@ ul { padding-left: 18px; margin: 6px 0; }
 .employee-table tr.active td { background: rgba(102, 225, 182, 0.15); }
 .employee-table .working-at-col { min-width: 120px; max-width: 160px; }
 .employee-table .actions-col { width: 1%; padding-left: 6px; padding-right: 6px; }
+.employee-table .skip-pdf-col {
+  width: 1%;
+  min-width: 82px;
+  text-align: center;
+  white-space: nowrap;
+}
+.skip-pdf-checkbox {
+  width: 16px;
+  height: 16px;
+  accent-color: #ffb54a;
+  cursor: pointer;
+}
 .station-highlight {
   display: inline-flex;
   align-items: center;
