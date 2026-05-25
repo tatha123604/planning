@@ -807,6 +807,7 @@ SSTS_API_LOGIN_URL = f"{SSTS_API_BASE_URL}/auth/login/"
 SSTS_API_DEVICE_URL = f"{SSTS_API_BASE_URL}/device"
 SSTS_API_TRAINS_REPORT_URL = f"{SSTS_API_BASE_URL}/train/tr/reportforperiod"
 SSTS_API_PUNCT_URL = f"{SSTS_API_BASE_URL}/timetable/tc/punct"
+SSTS_API_POSITIONS_URL = f"{SSTS_API_BASE_URL}/timetable/tc/positions"
 SSTS_API_CREW_URL = f"{SSTS_API_BASE_URL}/crew"
 SSTS_API_USER = os.getenv("SSTS_API_USER", "srdeeopsdah@gmail.com")
 SSTS_API_PASSWORD = os.getenv("SSTS_API_PASSWORD", "sdah1234")
@@ -1226,6 +1227,49 @@ def _format_time_value(value: object) -> str:
     return str(value)
 
 
+def _coerce_int(value: object) -> int | None:
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _pf_chart_speed_kmph(point: dict[str, object]) -> float | None:
+    try:
+        raw_speed = float(point.get("speed") or 0)
+    except (TypeError, ValueError):
+        return None
+    device_id = _coerce_int(point.get("deviceid"))
+    if device_id not in {3, 10, 11, 13}:
+        raw_speed *= 1.852
+    return raw_speed
+
+
+def _build_pf_positions_params(source: dict[str, object]) -> dict[str, object]:
+    return {
+        "train_date": source.get("train_date_iso") or source.get("train_date"),
+        "train_no": source.get("train_no"),
+        "device_id": source.get("device_id"),
+        "org": source.get("org"),
+        "dep": source.get("train_dep_raw"),
+        "dest": source.get("dest"),
+        "arr": source.get("train_arr_raw"),
+    }
+
+
+def _fetch_ssts_positions(source: dict[str, object], token: str) -> list[dict[str, object]]:
+    response = _ssts_get_json_with_params(
+        SSTS_API_POSITIONS_URL,
+        _build_pf_positions_params(source),
+        headers={"Authorization": token},
+    )
+    if not isinstance(response, list):
+        return []
+    return [point for point in response if isinstance(point, dict)]
+
+
 def _normalize_pf_crew_name(value: object) -> str:
     text = str(value or "").strip().upper()
     if not text:
@@ -1247,12 +1291,15 @@ def _build_pf_report_rows_for_train(
 ) -> list[dict[str, object]]:
     base_row = {
         "report_date": report_day.strftime("%d-%m-%Y"),
+        "train_date_iso": report_day.isoformat(),
         "train_no": str(train.get("train_no") or ""),
         "rake_no": str(train.get("device_name") or ""),
         "device_id": train.get("device_id"),
         "org": str(train.get("org") or ""),
         "dest": str(train.get("dest") or ""),
         "crew_name": str(train.get("crew_name") or ""),
+        "train_dep_raw": train.get("dep"),
+        "train_arr_raw": train.get("arr"),
     }
     params = {
         "train_date": report_day.isoformat(),
@@ -1287,6 +1334,12 @@ def _build_pf_report_rows_for_train(
                 "pf_enter_speed": "",
                 "pf_distance": "",
                 "remarks": "",
+                "start_pos": "",
+                "end_pos": "",
+                "speed_at_600m": "",
+                "speed_at_400m": "",
+                "speed_at_265m": "",
+                "speed_at_100m": "",
                 "status_message": "Data not found or Device might be Offline",
             }
         ]
@@ -1311,6 +1364,12 @@ def _build_pf_report_rows_for_train(
                 else "",
                 "pf_enter_speed": item.get("pf_enter_speed") if item.get("pf_enter_speed") is not None else "",
                 "pf_distance": item.get("pf_distance") if item.get("pf_distance") is not None else "",
+                "start_pos": item.get("start_pos") if item.get("start_pos") is not None else "",
+                "end_pos": item.get("end_pos") if item.get("end_pos") is not None else "",
+                "speed_at_600m": item.get("speed_at_600m") if item.get("speed_at_600m") is not None else "",
+                "speed_at_400m": item.get("speed_at_400m") if item.get("speed_at_400m") is not None else "",
+                "speed_at_265m": item.get("speed_at_265m") if item.get("speed_at_265m") is not None else "",
+                "speed_at_100m": item.get("speed_at_100m") if item.get("speed_at_100m") is not None else "",
                 "crew_name": crew_name,
                 "crew_id": _resolve_pf_crew_id(crew_name),
                 "remarks": str(item.get("remarks") or ""),
@@ -1331,6 +1390,12 @@ def _build_pf_report_rows_for_train(
             "pf_enter_speed": "",
             "pf_distance": "",
             "remarks": "",
+            "start_pos": "",
+            "end_pos": "",
+            "speed_at_600m": "",
+            "speed_at_400m": "",
+            "speed_at_265m": "",
+            "speed_at_100m": "",
             "status_message": "Data not found or Device might be Offline",
         }
     ]
@@ -1459,6 +1524,7 @@ def _pf_is_suspected_spike(
     previous_row: dict[str, object] | None,
     next_row: dict[str, object] | None,
     threshold: int,
+    chart_points: list[dict[str, object]] | None = None,
 ) -> bool:
     pf_speed = _pf_speed_value(row.get("pf_enter_speed"))
     if not _pf_speed_matches_threshold(pf_speed, threshold):
@@ -1468,6 +1534,45 @@ def _pf_is_suspected_spike(
     geofence_speed = _pf_speed_value(row.get("geofence_enter_speed"))
     stop_time_seconds = _parse_hms_seconds(row.get("stop_time"))
     max_entry_speed = max(speed for speed in (pf_speed, geofence_speed) if speed is not None)
+
+    start_pos = _coerce_int(row.get("start_pos"))
+    if chart_points and start_pos is not None and start_pos >= 0:
+        window_end = min(start_pos, len(chart_points) - 1)
+        window_start = max(0, window_end - 40)
+        pre_entry_speeds = [
+            _pf_chart_speed_kmph(point)
+            for point in chart_points[window_start : window_end + 1]
+        ]
+        pre_entry_speeds = [speed for speed in pre_entry_speeds if speed is not None]
+        if len(pre_entry_speeds) >= 8:
+            peak_speed = max(pre_entry_speeds)
+            peak_index = pre_entry_speeds.index(peak_speed)
+            post_peak = pre_entry_speeds[peak_index:]
+            upward_bursts = sum(
+                1
+                for idx in range(1, len(post_peak))
+                if (post_peak[idx] - post_peak[idx - 1]) > 4
+            )
+            if (
+                peak_speed >= max(45.0, threshold)
+                and len(post_peak) >= 5
+                and post_peak[-1] <= peak_speed - 20
+                and upward_bursts <= max(1, len(post_peak) // 6)
+            ):
+                return False
+
+    speed_400m = _pf_speed_value(row.get("speed_at_400m"))
+    speed_265m = _pf_speed_value(row.get("speed_at_265m"))
+    speed_100m = _pf_speed_value(row.get("speed_at_100m"))
+    if (
+        speed_400m is not None
+        and speed_265m is not None
+        and speed_100m is not None
+        and speed_400m >= speed_265m >= speed_100m
+        and (speed_400m - speed_100m) >= 15
+        and pf_speed < 90
+    ):
+        return False
 
     # Extremely high PF/geofence speeds at a station with a very short stop
     # are almost always GPS/network spikes in this workflow.
@@ -1482,14 +1587,20 @@ def _pf_is_suspected_spike(
         return False
 
     large_gap_count = sum(1 for speed in reference_speeds if (pf_speed - speed) >= 15)
-    low_support_count = sum(1 for speed in reference_speeds if speed <= max(5.0, threshold - 5))
+    severe_gap_count = sum(1 for speed in reference_speeds if (pf_speed - speed) >= 25)
     isolated_peak = (
         previous_speed is not None
         and next_speed is not None
-        and (pf_speed - max(previous_speed, next_speed)) >= 15
+        and (pf_speed - max(previous_speed, next_speed)) >= 25
     )
-    geofence_mismatch = geofence_speed is not None and (pf_speed - geofence_speed) >= 15
-    return large_gap_count >= 2 and low_support_count >= 2 and (isolated_peak or geofence_mismatch)
+    geofence_mismatch = geofence_speed is not None and abs(pf_speed - geofence_speed) >= 25
+
+    # For moderate 40-60 type values, avoid auto-omitting based on neighboring
+    # station summaries alone. Those cases need the chart trend for confidence.
+    if pf_speed < 80:
+        return False
+
+    return severe_gap_count >= 2 and (isolated_peak or geofence_mismatch or large_gap_count >= 3)
 
 
 def _pf_row_signature(row: dict[str, object]) -> tuple[str, str, str, str, str, str]:
@@ -1575,6 +1686,7 @@ def _get_ssts_pf_analysis_task(task_id: str | None) -> dict[str, object] | None:
 
 def _build_ssts_pf_speed_analysis_result(report_day: date, speed_threshold: int) -> dict[str, object]:
     raw_context = build_ssts_pf_entering_context(report_day)
+    token = fetch_ssts_token()
     all_rows_by_train: dict[str, list[dict[str, object]]] = {}
     for row in raw_context.get("pf_report_rows", []):
         if not isinstance(row, dict):
@@ -1589,6 +1701,14 @@ def _build_ssts_pf_speed_analysis_result(report_day: date, speed_threshold: int)
                 str(row.get("station") or ""),
             )
         )
+    chart_points_by_train: dict[str, list[dict[str, object]]] = {}
+    for train_no, rows in all_rows_by_train.items():
+        if not rows:
+            continue
+        try:
+            chart_points_by_train[train_no] = _fetch_ssts_positions(rows[0], token)
+        except (urlerror.URLError, RuntimeError, ValueError, json.JSONDecodeError):
+            chart_points_by_train[train_no] = []
 
     filtered_rows: list[dict[str, object]] = []
     for row in raw_context.get("pf_report_rows", []):
@@ -1671,7 +1791,8 @@ def _build_ssts_pf_speed_analysis_result(report_day: date, speed_threshold: int)
     detailed_daily_report_rows: list[dict[str, object]] = []
     suspected_spike_rows: list[dict[str, object]] = []
     suspected_spike_signatures: set[tuple[str, str, str, str, str, str]] = set()
-    for rows in all_rows_by_train.values():
+    for train_no, rows in all_rows_by_train.items():
+        chart_points = chart_points_by_train.get(train_no, [])
         for index, row in enumerate(rows):
             stop_time = str(row.get("stop_time") or "").strip()
             if stop_time == "00:00:00":
@@ -1681,7 +1802,7 @@ def _build_ssts_pf_speed_analysis_result(report_day: date, speed_threshold: int)
                 continue
             previous_row = rows[index - 1] if index > 0 else None
             next_row = rows[index + 1] if index + 1 < len(rows) else None
-            if _pf_is_suspected_spike(row, previous_row, next_row, speed_threshold):
+            if _pf_is_suspected_spike(row, previous_row, next_row, speed_threshold, chart_points):
                 spike_row = dict(row)
                 suspected_spike_rows.append(spike_row)
                 suspected_spike_signatures.add(_pf_row_signature(spike_row))
