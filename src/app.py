@@ -1539,6 +1539,30 @@ def _pf_is_suspected_spike(
     if chart_points and start_pos is not None and start_pos >= 0:
         window_end = min(start_pos, len(chart_points) - 1)
         window_start = max(0, window_end - 40)
+        end_pos = _coerce_int(row.get("end_pos"))
+        spike_window_end = min(
+            len(chart_points) - 1,
+            max(window_end, end_pos if end_pos is not None and end_pos >= 0 else window_end),
+        )
+        spike_window_start = max(1, window_end - 6)
+        for idx in range(spike_window_start, spike_window_end):
+            prev_speed = _pf_chart_speed_kmph(chart_points[idx - 1])
+            peak_speed = _pf_chart_speed_kmph(chart_points[idx])
+            next_speed = _pf_chart_speed_kmph(chart_points[idx + 1]) if idx + 1 < len(chart_points) else None
+            next2_speed = _pf_chart_speed_kmph(chart_points[idx + 2]) if idx + 2 < len(chart_points) else None
+            if None in (prev_speed, peak_speed, next_speed):
+                continue
+            if (
+                peak_speed >= max(45.0, threshold)
+                and peak_speed - prev_speed >= 8
+                and peak_speed - next_speed >= 8
+                and (
+                    next_speed <= peak_speed - 10
+                    or (next2_speed is not None and next2_speed <= peak_speed - 15)
+                )
+            ):
+                return True
+
         pre_entry_speeds = [
             _pf_chart_speed_kmph(point)
             for point in chart_points[window_start : window_end + 1]
@@ -1687,6 +1711,7 @@ def _get_ssts_pf_analysis_task(task_id: str | None) -> dict[str, object] | None:
 def _build_ssts_pf_speed_analysis_result(report_day: date, speed_threshold: int) -> dict[str, object]:
     raw_context = build_ssts_pf_entering_context(report_day)
     token = fetch_ssts_token()
+    detailed_analysis_threshold = 40
     all_rows_by_train: dict[str, list[dict[str, object]]] = {}
     for row in raw_context.get("pf_report_rows", []):
         if not isinstance(row, dict):
@@ -1781,8 +1806,9 @@ def _build_ssts_pf_speed_analysis_result(report_day: date, speed_threshold: int)
 
     detailed_candidate_trains = {
         str(row.get("train_no") or "").strip()
-        for row in daily_report_rows
-        if isinstance(row, dict) and _pf_speed_matches_threshold(_pf_speed_value(row.get("pf_enter_speed")), speed_threshold)
+        for row in raw_context.get("pf_report_rows", [])
+        if isinstance(row, dict)
+        and _pf_speed_matches_threshold(_pf_speed_value(row.get("pf_enter_speed")), detailed_analysis_threshold)
     }
     chart_points_by_train: dict[str, list[dict[str, object]]] = {train_no: [] for train_no in detailed_candidate_trains if train_no}
     candidate_rows_by_train = {
@@ -1813,16 +1839,17 @@ def _build_ssts_pf_speed_analysis_result(report_day: date, speed_threshold: int)
             if stop_time == "00:00:00":
                 continue
             pf_speed = _pf_speed_value(row.get("pf_enter_speed"))
-            if not _pf_speed_matches_threshold(pf_speed, speed_threshold):
+            if not _pf_speed_matches_threshold(pf_speed, detailed_analysis_threshold):
                 continue
             previous_row = rows[index - 1] if index > 0 else None
             next_row = rows[index + 1] if index + 1 < len(rows) else None
-            if _pf_is_suspected_spike(row, previous_row, next_row, speed_threshold, chart_points):
+            if _pf_is_suspected_spike(row, previous_row, next_row, detailed_analysis_threshold, chart_points):
                 spike_row = dict(row)
                 suspected_spike_rows.append(spike_row)
                 suspected_spike_signatures.add(_pf_row_signature(spike_row))
                 continue
-            detailed_daily_report_rows.append(dict(row))
+            if _pf_speed_matches_threshold(pf_speed, speed_threshold):
+                detailed_daily_report_rows.append(dict(row))
 
     detailed_daily_report_rows.sort(
         key=lambda row: (
