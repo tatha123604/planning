@@ -9,7 +9,7 @@ import json
 import os
 from pathlib import Path
 import shutil
-from typing import Optional
+from typing import Callable, Optional
 import re
 import threading
 from urllib import error as urlerror
@@ -1737,9 +1737,18 @@ def _get_ssts_pf_analysis_task(task_id: str | None) -> dict[str, object] | None:
         return dict(payload)
 
 
-def _build_ssts_pf_speed_analysis_result(report_day: date, speed_threshold: int) -> dict[str, object]:
+def _build_ssts_pf_speed_analysis_result(
+    report_day: date,
+    speed_threshold: int,
+    progress_callback: Callable[[int, str], None] | None = None,
+) -> dict[str, object]:
+    def report_progress(percent: int, message: str) -> None:
+        if progress_callback is not None:
+            progress_callback(percent, message)
+
     raw_context = build_ssts_pf_entering_context(report_day)
     token = fetch_ssts_token()
+    report_progress(18, "Loaded PF source rows.")
     detailed_analysis_threshold = 40
     all_rows_by_train: dict[str, list[dict[str, object]]] = {}
     for row in raw_context.get("pf_report_rows", []):
@@ -1846,6 +1855,9 @@ def _build_ssts_pf_speed_analysis_result(report_day: date, speed_threshold: int)
         if train_no in detailed_candidate_trains and rows
     }
     if candidate_rows_by_train:
+        total_candidates = len(candidate_rows_by_train)
+        processed_candidates = 0
+        report_progress(28, f"Fetching speed charts for {total_candidates} trains...")
         with ThreadPoolExecutor(max_workers=6) as executor:
             future_map = {
                 executor.submit(_fetch_ssts_positions, rows[0], token): train_no
@@ -1857,11 +1869,19 @@ def _build_ssts_pf_speed_analysis_result(report_day: date, speed_threshold: int)
                     chart_points_by_train[train_no] = future.result()
                 except (urlerror.URLError, RuntimeError, ValueError, json.JSONDecodeError):
                     chart_points_by_train[train_no] = []
+                processed_candidates += 1
+                chart_progress = 28 + int((processed_candidates / total_candidates) * 42)
+                report_progress(
+                    chart_progress,
+                    f"Fetched speed charts for {processed_candidates}/{total_candidates} trains...",
+                )
 
     detailed_daily_report_rows: list[dict[str, object]] = []
     suspected_spike_rows: list[dict[str, object]] = []
     suspected_spike_signatures: set[tuple[str, str, str, str, str, str]] = set()
-    for train_no, rows in all_rows_by_train.items():
+    trains_to_review = list(all_rows_by_train.items())
+    total_trains_to_review = len(trains_to_review)
+    for train_index, (train_no, rows) in enumerate(trains_to_review, start=1):
         chart_points = chart_points_by_train.get(train_no, [])
         for index, row in enumerate(rows):
             stop_time = str(row.get("stop_time") or "").strip()
@@ -1879,6 +1899,12 @@ def _build_ssts_pf_speed_analysis_result(report_day: date, speed_threshold: int)
                 continue
             if _pf_speed_matches_threshold(pf_speed, speed_threshold):
                 detailed_daily_report_rows.append(dict(row))
+        if total_trains_to_review:
+            review_progress = 72 + int((train_index / total_trains_to_review) * 22)
+            report_progress(
+                review_progress,
+                f"Reviewing spike cases train-wise... {train_index}/{total_trains_to_review}",
+            )
 
     detailed_daily_report_rows.sort(
         key=lambda row: (
@@ -1894,6 +1920,7 @@ def _build_ssts_pf_speed_analysis_result(report_day: date, speed_threshold: int)
             if _pf_row_signature(row) not in suspected_spike_signatures
         ]
         detailed_detail_rows_by_train[train_no] = cleaned_rows
+    report_progress(96, "Finalizing detailed PF report...")
 
     return {
         "pf_report_day": report_day.isoformat(),
@@ -1916,6 +1943,14 @@ def _build_ssts_pf_speed_analysis_result(report_day: date, speed_threshold: int)
 
 def _run_ssts_pf_analysis_task(task_id: str, report_day: date, speed_threshold: int) -> None:
     try:
+        def push_progress(percent: int, message: str) -> None:
+            _set_ssts_pf_analysis_task(
+                task_id,
+                status="running",
+                progress=percent,
+                message=message,
+            )
+
         _set_ssts_pf_analysis_task(
             task_id,
             status="running",
@@ -1927,11 +1962,11 @@ def _run_ssts_pf_analysis_task(task_id: str, report_day: date, speed_threshold: 
             progress=24,
             message="Fetching train-wise PF data...",
         )
-        result = _build_ssts_pf_speed_analysis_result(report_day, speed_threshold)
+        result = _build_ssts_pf_speed_analysis_result(report_day, speed_threshold, push_progress)
         _set_ssts_pf_analysis_task(
             task_id,
-            progress=88,
-            message="Building 40+ speed summary...",
+            progress=99,
+            message="Wrapping up PF analysis...",
         )
         _set_ssts_pf_analysis_task(
             task_id,
