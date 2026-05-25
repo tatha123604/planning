@@ -1701,15 +1701,6 @@ def _build_ssts_pf_speed_analysis_result(report_day: date, speed_threshold: int)
                 str(row.get("station") or ""),
             )
         )
-    chart_points_by_train: dict[str, list[dict[str, object]]] = {}
-    for train_no, rows in all_rows_by_train.items():
-        if not rows:
-            continue
-        try:
-            chart_points_by_train[train_no] = _fetch_ssts_positions(rows[0], token)
-        except (urlerror.URLError, RuntimeError, ValueError, json.JSONDecodeError):
-            chart_points_by_train[train_no] = []
-
     filtered_rows: list[dict[str, object]] = []
     for row in raw_context.get("pf_report_rows", []):
         if not isinstance(row, dict):
@@ -1787,6 +1778,30 @@ def _build_ssts_pf_speed_analysis_result(report_day: date, speed_threshold: int)
             str(row.get("station") or ""),
         )
     )
+
+    detailed_candidate_trains = {
+        str(row.get("train_no") or "").strip()
+        for row in daily_report_rows
+        if isinstance(row, dict) and _pf_speed_matches_threshold(_pf_speed_value(row.get("pf_enter_speed")), speed_threshold)
+    }
+    chart_points_by_train: dict[str, list[dict[str, object]]] = {train_no: [] for train_no in detailed_candidate_trains if train_no}
+    candidate_rows_by_train = {
+        train_no: rows
+        for train_no, rows in all_rows_by_train.items()
+        if train_no in detailed_candidate_trains and rows
+    }
+    if candidate_rows_by_train:
+        with ThreadPoolExecutor(max_workers=6) as executor:
+            future_map = {
+                executor.submit(_fetch_ssts_positions, rows[0], token): train_no
+                for train_no, rows in candidate_rows_by_train.items()
+            }
+            for future in as_completed(future_map):
+                train_no = future_map[future]
+                try:
+                    chart_points_by_train[train_no] = future.result()
+                except (urlerror.URLError, RuntimeError, ValueError, json.JSONDecodeError):
+                    chart_points_by_train[train_no] = []
 
     detailed_daily_report_rows: list[dict[str, object]] = []
     suspected_spike_rows: list[dict[str, object]] = []
