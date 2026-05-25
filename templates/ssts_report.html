@@ -851,8 +851,8 @@
         <section class="card pf-train-detail-card" id="pf-daily-report">
           <div class="card-head-inline">
             <div>
-              <h2>Daily Report</h2>
-              <p>Rows for {{ pf_report_day_label }} where PF Enter Speed matches the selected daily speed filter.</p>
+              <h2>Detailed Daily Report</h2>
+              <p>Rows for {{ pf_report_day_label }} where PF Enter Speed matches the selected speed filter. Use <strong>Detailed Analysis</strong> to inspect the train-level records before deciding whether the 40+ case is genuine or a spike.</p>
             </div>
           </div>
           <form class="detail-date-filter report-filter-row pf-report-filter" method="post" action="/ssts-report/pf-analysis/start" id="pf-daily-report-form">
@@ -886,6 +886,7 @@
               <thead>
                 <tr>
                   <th class="skip-pdf-col">Select</th>
+                  <th>Actions</th>
                   <th>Date</th>
                   <th>Train No</th>
                   <th>Rake No</th>
@@ -911,6 +912,14 @@
                   <td class="skip-pdf-col">
                     <input type="checkbox" class="skip-pdf-checkbox" data-skip-pdf-row aria-label="Skip this row in PDF export" />
                   </td>
+                  <td class="actions-col">
+                    <a
+                      class="ghost small"
+                      href="/ssts-report?report_tab=pf_entering&pf_task_id={{ pf_analysis_task_id }}&pf_day={{ pf_report_day }}&pf_speed_threshold={{ pf_speed_threshold }}&pf_train={{ row.train_no }}#pf-train-detail"
+                    >
+                      Detailed Analysis
+                    </a>
+                  </td>
                   <td>{{ row.report_date }}</td>
                   <td class="crew-alert">{{ row.train_no }}</td>
                   <td>{{ row.rake_no }}</td>
@@ -931,7 +940,7 @@
                 </tr>
                 {% else %}
                 <tr>
-                  <td colspan="18">No daily report rows found for the selected date and speed filter.</td>
+                  <td colspan="19">No daily report rows found for the selected date and speed filter.</td>
                 </tr>
                 {% endfor %}
               </tbody>
