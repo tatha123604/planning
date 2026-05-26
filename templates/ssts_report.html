@@ -1080,20 +1080,31 @@
   </div>
   <script>
     (() => {
-      const forms = [
-        document.getElementById('pf-analysis-form'),
-        document.getElementById('pf-daily-report-form'),
-        document.getElementById('pf-detailed-report-form'),
-      ].filter(Boolean);
       const panel = document.getElementById('pf-progress-panel');
       const progressFill = document.getElementById('pf-progress-fill');
       const progressLabel = document.getElementById('pf-progress-label');
       const detailedPanel = document.getElementById('pf-detailed-progress-panel');
       const detailedProgressFill = document.getElementById('pf-detailed-progress-fill');
       const detailedProgressLabel = document.getElementById('pf-detailed-progress-label');
+      const forms = [
+        document.getElementById('pf-analysis-form'),
+        document.getElementById('pf-daily-report-form'),
+        document.getElementById('pf-detailed-report-form'),
+      ].filter(Boolean);
       if (!forms.length || !panel || !progressFill || !progressLabel) return;
 
       let pollTimer = null;
+
+      const panels = [panel];
+      if (detailedPanel && detailedProgressFill && detailedProgressLabel) {
+        panels.push(detailedPanel);
+      }
+
+      const buttonByFormId = {
+        'pf-analysis-form': document.getElementById('pf-analysis-button'),
+        'pf-daily-report-form': document.getElementById('pf-daily-report-button'),
+        'pf-detailed-report-form': document.getElementById('pf-detailed-report-button'),
+      };
 
       const setProgress = (percent, message) => {
         const safePercent = Math.max(0, Math.min(100, Number(percent || 0)));
@@ -1109,6 +1120,10 @@
             detailedProgressLabel.textContent = message;
           }
         }
+      };
+
+      const showPanels = () => {
+        panels.forEach((currentPanel) => currentPanel.classList.remove('is-hidden'));
       };
 
       const stopPolling = () => {
@@ -1133,7 +1148,31 @@
         return 'Analysis';
       };
 
-      const pollStatus = async (taskId, resultUrl, activeButton) => {
+      const getResultUrl = (form, taskId, fallbackUrl) => {
+        if (fallbackUrl) return fallbackUrl;
+        const encodedTaskId = encodeURIComponent(taskId);
+        const dayInput = form?.querySelector('input[name="pf_day"]');
+        const thresholdInput = form?.querySelector('select[name="pf_speed_threshold"]');
+        const dayValue = encodeURIComponent(dayInput?.value || document.getElementById('pf-day-select')?.value || '');
+        const thresholdValue = encodeURIComponent(thresholdInput?.value || document.getElementById('pf-speed-threshold')?.value || '40');
+        let anchor = '';
+        if (form?.id === 'pf-daily-report-form') {
+          anchor = '#pf-daily-report';
+        } else if (form?.id === 'pf-detailed-report-form') {
+          anchor = '#pf-detailed-daily-report';
+        }
+        return `/ssts-report?report_tab=pf_entering&pf_task_id=${encodedTaskId}&pf_day=${dayValue}&pf_speed_threshold=${thresholdValue}${anchor}`;
+      };
+
+      const setProgressMessage = (message) => {
+        if (!message) return;
+        progressLabel.textContent = message;
+        if (detailedProgressLabel) {
+          detailedProgressLabel.textContent = message;
+        }
+      };
+
+      const pollStatus = async (taskId, resultUrl, activeButton, sourceForm) => {
         try {
           const response = await fetch(`/ssts-report/pf-analysis/status?task_id=${encodeURIComponent(taskId)}`);
           const payload = await response.json();
@@ -1142,18 +1181,21 @@
           }
           setProgress(payload.progress, payload.message);
           if (payload.status === 'completed') {
-            window.location.href = resultUrl || payload.result_url || `/ssts-report?report_tab=pf_entering&pf_task_id=${encodeURIComponent(taskId)}`;
+            window.location.href = getResultUrl(sourceForm, taskId, resultUrl || payload.result_url);
             return;
           }
           if (payload.status === 'error') {
             setButtonState(activeButton, false, getButtonLabel(activeButton));
-            progressLabel.textContent = payload.message || 'Analysis failed.';
+            setProgressMessage(payload.message || 'Analysis failed.');
             return;
           }
-          pollTimer = window.setTimeout(() => pollStatus(taskId, resultUrl || payload.result_url, activeButton), 1200);
+          pollTimer = window.setTimeout(
+            () => pollStatus(taskId, resultUrl || payload.result_url, activeButton, sourceForm),
+            1200,
+          );
         } catch (error) {
           setButtonState(activeButton, false, getButtonLabel(activeButton));
-          progressLabel.textContent = error && error.message ? error.message : 'Could not start PF analysis.';
+          setProgressMessage(error && error.message ? error.message : 'Could not start PF analysis.');
         }
       };
 
@@ -1163,8 +1205,7 @@
           stopPolling();
           const button = form.querySelector('button[type="submit"]');
           setButtonState(button, true, 'Starting...');
-          panel.classList.remove('is-hidden');
-          detailedPanel?.classList.remove('is-hidden');
+          showPanels();
           setProgress(6, 'Starting PF analysis...');
           try {
             const response = await fetch(form.action, {
@@ -1176,10 +1217,10 @@
               throw new Error(payload.detail || 'Could not start PF analysis.');
             }
             setButtonState(button, true, 'Running...');
-            pollStatus(payload.task_id, payload.result_url, button);
+            pollStatus(payload.task_id, getResultUrl(form, payload.task_id, payload.result_url), button, form);
           } catch (error) {
             setButtonState(button, false, getButtonLabel(button));
-            progressLabel.textContent = error && error.message ? error.message : 'Could not start PF analysis.';
+            setProgressMessage(error && error.message ? error.message : 'Could not start PF analysis.');
           }
         });
       });
@@ -1187,10 +1228,13 @@
       const initialTaskId = panel.dataset.taskId || '';
       const initialStatus = panel.dataset.status || '';
       if (initialTaskId && (initialStatus === 'pending' || initialStatus === 'running')) {
-        panel.classList.remove('is-hidden');
-        const initialButton = document.getElementById('pf-analysis-button');
+        showPanels();
+        const detailedForm = document.getElementById('pf-detailed-report-form');
+        const dailyForm = document.getElementById('pf-daily-report-form');
+        const initialForm = detailedForm || dailyForm || document.getElementById('pf-analysis-form');
+        const initialButton = buttonByFormId[initialForm?.id] || document.getElementById('pf-analysis-button');
         setButtonState(initialButton, true, 'Running...');
-        pollStatus(initialTaskId, `/ssts-report?report_tab=pf_entering&pf_task_id=${encodeURIComponent(initialTaskId)}&pf_day=${encodeURIComponent(document.getElementById('pf-day-select')?.value || '')}&pf_speed_threshold=${encodeURIComponent(document.getElementById('pf-speed-threshold')?.value || '40')}`, initialButton);
+        pollStatus(initialTaskId, getResultUrl(initialForm, initialTaskId), initialButton, initialForm);
       }
     })();
   </script>
