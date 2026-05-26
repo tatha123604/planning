@@ -401,6 +401,10 @@
 
     pagerHost.insertBefore(topPager.wrapper, pagerAnchor);
     pagerAnchor.insertAdjacentElement("afterend", bottomPager.wrapper);
+    const exportBar = pagerHost.querySelector(".table-export-bar");
+    if (exportBar) {
+      topPager.wrapper.insertAdjacentElement("afterend", exportBar);
+    }
     window.addEventListener("resize", syncPagerWidths);
     table.addEventListener("table-pager:refresh", (event) => {
       if (event?.detail?.resetPage) {

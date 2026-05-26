@@ -226,12 +226,44 @@
       window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
       setStatus(`${readyMessage} (${snapshot.rows.length} rows).`);
       window.setTimeout(() => setStatus(""), 2400);
+      return true;
     } catch (error) {
       console.error(error);
       setStatus(failureMessage, true);
+      return false;
     } finally {
       button.disabled = false;
     }
+  };
+
+  const submitPdfFallbackForm = (snapshot, setStatus) => {
+    const frameName = `table-export-pdf-frame-${Date.now()}`;
+    const iframe = document.createElement("iframe");
+    iframe.name = frameName;
+    iframe.style.display = "none";
+    document.body.appendChild(iframe);
+
+    const form = document.createElement("form");
+    form.method = "POST";
+    form.action = "/exports/table.pdf/form";
+    form.target = frameName;
+    form.style.display = "none";
+
+    const payloadInput = document.createElement("input");
+    payloadInput.type = "hidden";
+    payloadInput.name = "payload";
+    payloadInput.value = JSON.stringify(snapshot);
+    form.appendChild(payloadInput);
+    document.body.appendChild(form);
+
+    setStatus(`Trying fallback PDF export (${snapshot.rows.length} rows)...`);
+    form.submit();
+    window.setTimeout(() => {
+      form.remove();
+      iframe.remove();
+      setStatus("Fallback PDF export started.");
+      window.setTimeout(() => setStatus(""), 2400);
+    }, 1500);
   };
 
   const injectToolbar = (table, tableIndex) => {
@@ -283,7 +315,7 @@
         window.setTimeout(() => setStatus(""), 1800);
         return;
       }
-      await downloadSnapshot(
+      const ok = await downloadSnapshot(
         snapshot,
         "/exports/table.pdf",
         "pdf",
@@ -293,6 +325,9 @@
         "PDF ready",
         "PDF export failed."
       );
+      if (!ok) {
+        submitPdfFallbackForm(snapshot, setStatus);
+      }
     });
 
     excelButton.addEventListener("click", async () => {
@@ -320,7 +355,12 @@
     actions.append(pdfButton, excelButton);
     toolbar.append(label, status, actions);
 
-    host.insertBefore(toolbar, primaryAnchor);
+    const pagerAbove = primaryAnchor.previousElementSibling;
+    if (pagerAbove && pagerAbove.classList.contains("table-pager")) {
+      pagerAbove.insertAdjacentElement("afterend", toolbar);
+    } else {
+      host.insertBefore(toolbar, primaryAnchor);
+    }
     table.dataset.exportReady = "true";
   };
 

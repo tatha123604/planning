@@ -4064,6 +4064,23 @@ async def export_table_pdf(request: Request):
     )
 
 
+@app.post("/exports/table.pdf/form")
+async def export_table_pdf_form(payload: str = Form(...)):
+    try:
+        parsed_payload = json.loads(payload)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail="Invalid export payload.") from exc
+
+    title, headers, rows, report_date_label, cell_classes = _coerce_export_table_payload(parsed_payload)
+    pdf_bytes = _build_table_pdf_bytes(title, headers, rows, report_date_label, cell_classes)
+    filename = _build_pdf_export_filename(title, report_date_label)
+    return StreamingResponse(
+        BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{urlparse.quote(filename)}"},
+    )
+
+
 @app.post("/requirements")
 def upsert_requirement(
     role: str = Form(...),
