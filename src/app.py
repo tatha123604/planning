@@ -3866,16 +3866,7 @@ def ssts_report_page(
     )
 
 
-@app.post("/ssts-report/pf-analysis/start")
-async def start_ssts_pf_analysis(
-    pf_day: str = Form(...),
-    pf_speed_threshold: str = Form("40"),
-):
-    report_day = _parse_report_date(pf_day)
-    if report_day is None:
-        raise HTTPException(status_code=400, detail="Invalid PF analysis date.")
-    speed_threshold = _parse_pf_speed_threshold(pf_speed_threshold)
-
+def _queue_ssts_pf_analysis(report_day: date, speed_threshold: int) -> str:
     task_id = uuid4().hex
     _set_ssts_pf_analysis_task(
         task_id,
@@ -3888,6 +3879,19 @@ async def start_ssts_pf_analysis(
     )
     worker = threading.Thread(target=_run_ssts_pf_analysis_task, args=(task_id, report_day, speed_threshold), daemon=True)
     worker.start()
+    return task_id
+
+
+@app.post("/ssts-report/pf-analysis/start")
+async def start_ssts_pf_analysis(
+    pf_day: str = Form(...),
+    pf_speed_threshold: str = Form("40"),
+):
+    report_day = _parse_report_date(pf_day)
+    if report_day is None:
+        raise HTTPException(status_code=400, detail="Invalid PF analysis date.")
+    speed_threshold = _parse_pf_speed_threshold(pf_speed_threshold)
+    task_id = _queue_ssts_pf_analysis(report_day, speed_threshold)
     return JSONResponse(
         {
             "task_id": task_id,
@@ -3898,6 +3902,29 @@ async def start_ssts_pf_analysis(
                 f"&pf_day={report_day.isoformat()}&pf_speed_threshold={speed_threshold}"
             ),
         }
+    )
+
+
+@app.get("/ssts-report/pf-analysis/start")
+def start_ssts_pf_analysis_fallback(
+    pf_day: str,
+    pf_speed_threshold: str = "40",
+    anchor: str | None = None,
+):
+    report_day = _parse_report_date(pf_day)
+    if report_day is None:
+        raise HTTPException(status_code=400, detail="Invalid PF analysis date.")
+    speed_threshold = _parse_pf_speed_threshold(pf_speed_threshold)
+    task_id = _queue_ssts_pf_analysis(report_day, speed_threshold)
+    safe_anchor = ""
+    if anchor in {"pf-daily-report", "pf-detailed-daily-report"}:
+        safe_anchor = f"#{anchor}"
+    return RedirectResponse(
+        url=(
+            f"/ssts-report?report_tab=pf_entering&pf_task_id={task_id}"
+            f"&pf_day={report_day.isoformat()}&pf_speed_threshold={speed_threshold}{safe_anchor}"
+        ),
+        status_code=303,
     )
 
 

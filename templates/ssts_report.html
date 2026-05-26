@@ -1180,6 +1180,20 @@
         return `/ssts-report?report_tab=pf_entering&pf_task_id=${encodedTaskId}&pf_day=${dayValue}&pf_speed_threshold=${thresholdValue}${anchor}`;
       };
 
+      const getStartFallbackUrl = (form) => {
+        const dayInput = form?.querySelector('input[name="pf_day"]');
+        const thresholdInput = form?.querySelector('select[name="pf_speed_threshold"]');
+        const dayValue = encodeURIComponent(dayInput?.value || document.getElementById('pf-day-select')?.value || '');
+        const thresholdValue = encodeURIComponent(thresholdInput?.value || document.getElementById('pf-speed-threshold')?.value || '40');
+        let anchor = '';
+        if (form?.id === 'pf-daily-report-form') {
+          anchor = 'pf-daily-report';
+        } else if (form?.id === 'pf-detailed-report-form') {
+          anchor = 'pf-detailed-daily-report';
+        }
+        return `/ssts-report/pf-analysis/start?pf_day=${dayValue}&pf_speed_threshold=${thresholdValue}${anchor ? `&anchor=${encodeURIComponent(anchor)}` : ''}`;
+      };
+
       const setProgressMessage = (message) => {
         if (!message) return;
         progressLabel.textContent = message;
@@ -1275,6 +1289,7 @@
           } catch (error) {
             setButtonState(button, false, getButtonLabel(button));
             setProgressMessage(error && error.message ? error.message : 'Could not start PF analysis.');
+            window.location.href = getStartFallbackUrl(form);
           }
         });
       });
