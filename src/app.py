@@ -1714,6 +1714,48 @@ def _pf_suspected_spike_reason(
                     and (sharp_rise or direction_flips >= 1)
                 ):
                     return "Sharp pre-stop chart swing near 250m-300m, likely network/GPS spike."
+        if stop_time_seconds is not None and stop_time_seconds <= 90:
+            pf_distance = _pf_speed_value(row.get("pf_distance"))
+            if pf_distance is not None and 240 <= pf_distance <= 320:
+                volatility_window_start = max(0, window_end - 10)
+                volatility_window_end = min(
+                    len(chart_points) - 1,
+                    max(window_end + 6, end_pos if end_pos is not None and end_pos >= 0 else window_end),
+                )
+                volatility_window = [
+                    _pf_chart_speed_kmph(point)
+                    for point in chart_points[volatility_window_start : volatility_window_end + 1]
+                ]
+                volatility_window = [speed for speed in volatility_window if speed is not None]
+                if len(volatility_window) >= 8:
+                    deltas = [
+                        volatility_window[idx] - volatility_window[idx - 1]
+                        for idx in range(1, len(volatility_window))
+                    ]
+                    direction_flips = sum(
+                        1
+                        for idx in range(1, len(deltas))
+                        if abs(deltas[idx - 1]) >= 4
+                        and abs(deltas[idx]) >= 4
+                        and ((deltas[idx - 1] > 0 > deltas[idx]) or (deltas[idx - 1] < 0 < deltas[idx]))
+                    )
+                    strong_rises = sum(1 for delta in deltas if delta >= 6)
+                    strong_drops = sum(1 for delta in deltas if delta <= -6)
+                    window_peak = max(volatility_window)
+                    terminal_window = volatility_window[-min(10, len(volatility_window)) :]
+                    window_floor = min(terminal_window)
+                    near_zero_count = sum(1 for speed in terminal_window if speed <= 5)
+                    if (
+                        pf_speed >= max(40.0, threshold)
+                        and window_peak >= pf_speed - 1
+                        and window_floor <= 10
+                        and (window_peak - window_floor) >= 20
+                        and direction_flips >= 2
+                        and strong_rises >= 2
+                        and strong_drops >= 2
+                        and near_zero_count >= 2
+                    ):
+                        return "Volatile pre-stop oscillation near station entry, likely network/GPS spike."
         if len(pre_entry_speeds) >= 8:
             peak_speed = max(pre_entry_speeds)
             peak_index = pre_entry_speeds.index(peak_speed)
