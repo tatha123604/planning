@@ -1188,10 +1188,49 @@
         }
       };
 
+      const readJsonResponse = async (response, fallbackMessage) => {
+        const contentType = response.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          return response.json();
+        }
+        const text = await response.text();
+        return { detail: text || fallbackMessage };
+      };
+
+      const fetchJsonWithRetry = async (url, options, fallbackMessage) => {
+        let lastError = null;
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          try {
+            const response = await fetch(url, {
+              credentials: 'same-origin',
+              cache: 'no-store',
+              ...options,
+              headers: {
+                Accept: 'application/json',
+                'X-Requested-With': 'fetch',
+                ...(options?.headers || {}),
+              },
+            });
+            const payload = await readJsonResponse(response, fallbackMessage);
+            return { response, payload };
+          } catch (error) {
+            lastError = error;
+            if (attempt >= 2) {
+              break;
+            }
+            await new Promise((resolve) => window.setTimeout(resolve, 900 * (attempt + 1)));
+          }
+        }
+        throw lastError || new Error(fallbackMessage);
+      };
+
       const pollStatus = async (taskId, resultUrl, activeButton, sourceForm) => {
         try {
-          const response = await fetch(`/ssts-report/pf-analysis/status?task_id=${encodeURIComponent(taskId)}`);
-          const payload = await response.json();
+          const { response, payload } = await fetchJsonWithRetry(
+            `/ssts-report/pf-analysis/status?task_id=${encodeURIComponent(taskId)}`,
+            { method: 'GET' },
+            'Could not read PF analysis status.',
+          );
           if (!response.ok) {
             throw new Error(payload.detail || 'Could not read PF analysis status.');
           }
@@ -1224,11 +1263,10 @@
           showPanels();
           setProgress(6, 'Starting PF analysis...');
           try {
-            const response = await fetch(form.action, {
+            const { response, payload } = await fetchJsonWithRetry(form.action, {
               method: 'POST',
               body: new FormData(form),
-            });
-            const payload = await response.json();
+            }, 'Could not start PF analysis.');
             if (!response.ok) {
               throw new Error(payload.detail || 'Could not start PF analysis.');
             }
