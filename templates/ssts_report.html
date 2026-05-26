@@ -984,6 +984,38 @@
             <span class="summary-chip">Clean Rows {{ pf_detailed_daily_report_rows|length }}</span>
             <span class="summary-chip">Suspected Spikes Removed {{ pf_detailed_daily_spike_count }}</span>
           </div>
+          {% if pf_detailed_daily_spike_rows %}
+          <div class="table-wrap">
+            <table class="employee-table paged" data-exportable="true" data-export-name="ssts_pf_removed_spikes_{{ pf_report_day }}_{{ pf_speed_threshold }}" data-export-title="SSTS PF Removed Spike Rows">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Train No</th>
+                  <th>Station</th>
+                  <th>Stop Time</th>
+                  <th>Geofence Enter Speed</th>
+                  <th>PF Enter Speed (KMPH)</th>
+                  <th>PF Enter Distance</th>
+                  <th>Omit Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in pf_detailed_daily_spike_rows %}
+                <tr>
+                  <td>{{ row.report_date }}</td>
+                  <td class="crew-alert">{{ row.train_no }}</td>
+                  <td class="crew-alert"><span class="station-highlight">{{ row.station }}</span></td>
+                  <td class="crew-alert">{{ row.stop_time }}</td>
+                  <td>{{ row.geofence_enter_speed }}</td>
+                  <td class="pf-speed-alert">{{ row.pf_enter_speed }}</td>
+                  <td>{{ row.pf_distance }}</td>
+                  <td>{{ row.spike_reason or row.remarks }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% endif %}
           <div class="table-wrap">
             <table class="employee-table paged" data-exportable="true" data-export-name="ssts_pf_detailed_daily_report_{{ pf_report_day }}_{{ pf_speed_threshold }}" data-export-title="SSTS PF Detailed Daily Report">
               <thead>

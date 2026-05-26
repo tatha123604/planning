@@ -1519,16 +1519,16 @@ def _parse_hms_seconds(value: object | None) -> int | None:
     return (hours * 3600) + (minutes * 60) + seconds
 
 
-def _pf_is_suspected_spike(
+def _pf_suspected_spike_reason(
     row: dict[str, object],
     previous_row: dict[str, object] | None,
     next_row: dict[str, object] | None,
     threshold: int,
     chart_points: list[dict[str, object]] | None = None,
-) -> bool:
+) -> str | None:
     pf_speed = _pf_speed_value(row.get("pf_enter_speed"))
     if not _pf_speed_matches_threshold(pf_speed, threshold):
-        return False
+        return None
 
     assert pf_speed is not None
     geofence_speed = _pf_speed_value(row.get("geofence_enter_speed"))
@@ -1572,7 +1572,7 @@ def _pf_is_suspected_spike(
                     or (next3_speed is not None and next3_speed <= peak_speed - 25)
                 )
             ):
-                return True
+                return "Sharp chart peak collapsed immediately before station entry."
 
         entry_window_start = max(0, window_end - 12)
         entry_window_end = min(len(chart_points) - 1, spike_window_end + 3)
@@ -1590,13 +1590,37 @@ def _pf_is_suspected_spike(
                 and entry_window_peak <= geofence_speed + 5
                 and entry_window_peak <= pf_speed - 15
             ):
-                return True
+                return "PF speed mismatched the chart trend near station entry."
 
         pre_entry_speeds = [
             _pf_chart_speed_kmph(point)
             for point in chart_points[window_start : window_end + 1]
         ]
         pre_entry_speeds = [speed for speed in pre_entry_speeds if speed is not None]
+        entry_speed = _pf_chart_speed_kmph(chart_points[window_end]) if window_end < len(chart_points) else None
+        pf_distance = _pf_speed_value(row.get("pf_distance"))
+        if entry_speed is not None and geofence_speed is not None:
+            local_window_start = max(0, window_end - 12)
+            local_window_speeds = [
+                _pf_chart_speed_kmph(point)
+                for point in chart_points[local_window_start : window_end + 1]
+            ]
+            local_window_speeds = [speed for speed in local_window_speeds if speed is not None]
+            if local_window_speeds:
+                local_peak = max(local_window_speeds)
+                if (
+                    pf_speed >= max(45.0, threshold)
+                    and stop_time_seconds is not None
+                    and stop_time_seconds <= 90
+                    and pf_distance is not None
+                    and 240 <= pf_distance <= 320
+                    and abs(entry_speed - geofence_speed) <= 8
+                    and entry_speed <= 15
+                    and local_peak >= pf_speed - 8
+                    and (local_peak - entry_speed) >= 20
+                    and (pf_speed - geofence_speed) >= 20
+                ):
+                    return "Stopped train had a 250m-300m pre-stop spike, likely network/GPS noise."
         if len(pre_entry_speeds) >= 8:
             peak_speed = max(pre_entry_speeds)
             peak_index = pre_entry_speeds.index(peak_speed)
@@ -1612,7 +1636,7 @@ def _pf_is_suspected_spike(
                 and post_peak[-1] <= peak_speed - 20
                 and upward_bursts <= max(1, len(post_peak) // 6)
             ):
-                return False
+                return None
 
     speed_400m = _pf_speed_value(row.get("speed_at_400m"))
     speed_265m = _pf_speed_value(row.get("speed_at_265m"))
@@ -1625,19 +1649,19 @@ def _pf_is_suspected_spike(
         and (speed_400m - speed_100m) >= 15
         and pf_speed < 90
     ):
-        return False
+        return None
 
     # Extremely high PF/geofence speeds at a station with a very short stop
     # are almost always GPS/network spikes in this workflow.
     if max_entry_speed >= 100 and stop_time_seconds is not None and stop_time_seconds <= 60:
-        return True
+        return "Very high entry speed with a very short stop, likely GPS/network spike."
 
     previous_speed = _pf_reference_speed(previous_row)
     next_speed = _pf_reference_speed(next_row)
 
     reference_speeds = [speed for speed in (geofence_speed, previous_speed, next_speed) if speed is not None]
     if len(reference_speeds) < 2:
-        return False
+        return None
 
     large_gap_count = sum(1 for speed in reference_speeds if (pf_speed - speed) >= 15)
     severe_gap_count = sum(1 for speed in reference_speeds if (pf_speed - speed) >= 25)
@@ -1651,9 +1675,21 @@ def _pf_is_suspected_spike(
     # For moderate 40-60 type values, avoid auto-omitting based on neighboring
     # station summaries alone. Those cases need the chart trend for confidence.
     if pf_speed < 80:
-        return False
+        return None
 
-    return severe_gap_count >= 2 and (isolated_peak or geofence_mismatch or large_gap_count >= 3)
+    if severe_gap_count >= 2 and (isolated_peak or geofence_mismatch or large_gap_count >= 3):
+        return "PF speed was isolated from neighboring station/reference speeds."
+    return None
+
+
+def _pf_is_suspected_spike(
+    row: dict[str, object],
+    previous_row: dict[str, object] | None,
+    next_row: dict[str, object] | None,
+    threshold: int,
+    chart_points: list[dict[str, object]] | None = None,
+) -> bool:
+    return _pf_suspected_spike_reason(row, previous_row, next_row, threshold, chart_points) is not None
 
 
 def _pf_row_signature(row: dict[str, object]) -> tuple[str, str, str, str, str, str]:
@@ -1892,8 +1928,20 @@ def _build_ssts_pf_speed_analysis_result(
                 continue
             previous_row = rows[index - 1] if index > 0 else None
             next_row = rows[index + 1] if index + 1 < len(rows) else None
-            if _pf_is_suspected_spike(row, previous_row, next_row, detailed_analysis_threshold, chart_points):
+            spike_reason = _pf_suspected_spike_reason(
+                row,
+                previous_row,
+                next_row,
+                detailed_analysis_threshold,
+                chart_points,
+            )
+            if spike_reason is not None:
                 spike_row = dict(row)
+                spike_row["spike_reason"] = spike_reason
+                current_remarks = str(spike_row.get("remarks") or "").strip()
+                spike_row["remarks"] = (
+                    f"{current_remarks} | Omitted: {spike_reason}" if current_remarks else f"Omitted: {spike_reason}"
+                )
                 suspected_spike_rows.append(spike_row)
                 suspected_spike_signatures.add(_pf_row_signature(spike_row))
                 continue
@@ -1930,6 +1978,7 @@ def _build_ssts_pf_speed_analysis_result(
         "pf_daily_report_rows": daily_report_rows,
         "pf_detailed_daily_report_rows": detailed_daily_report_rows,
         "pf_detailed_daily_spike_count": len(suspected_spike_rows),
+        "pf_detailed_daily_spike_rows": suspected_spike_rows,
         "pf_analysis_summary_rows": summary_rows,
         "pf_analysis_detail_rows_by_train": detail_rows_by_train,
         "pf_detailed_detail_rows_by_train": detailed_detail_rows_by_train,
@@ -3591,6 +3640,7 @@ def ssts_report_page(
         "pf_daily_report_rows": [],
         "pf_detailed_daily_report_rows": [],
         "pf_detailed_daily_spike_count": 0,
+        "pf_detailed_daily_spike_rows": [],
         "pf_analysis_summary_rows": [],
         "pf_analysis_selected_rows": [],
         "pf_analysis_selected_train": "",
