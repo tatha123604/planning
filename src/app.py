@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import time
 from typing import Callable, Optional
 import re
 import threading
@@ -1144,14 +1145,33 @@ def _ssts_sort_key(snapshot: SstsDeviceSnapshot, reference_time: datetime | None
     )
 
 
+def _ssts_request_with_retry(req: urlrequest.Request, *, expects_json: bool = True) -> object:
+    last_error: Exception | None = None
+    for attempt in range(3):
+        try:
+            with urlrequest.urlopen(req, timeout=30) as response:
+                body = response.read().decode("utf-8", "replace")
+            return json.loads(body) if expects_json else body
+        except (urlerror.URLError, TimeoutError, ConnectionResetError, OSError, json.JSONDecodeError) as exc:
+            last_error = exc
+            if attempt >= 2:
+                break
+            time.sleep(1.2 * (attempt + 1))
+    if last_error is not None:
+        raise RuntimeError(f"SSTS request failed after retries: {last_error}") from last_error
+    raise RuntimeError("SSTS request failed after retries.")
+
+
 def _ssts_post_json(url: str, payload: dict[str, object], headers: dict[str, str] | None = None) -> dict[str, object]:
     body = json.dumps(payload).encode("utf-8")
     request_headers = {"Content-Type": "application/json", "User-Agent": "Mozilla/5.0"}
     if headers:
         request_headers.update(headers)
     req = urlrequest.Request(url, data=body, headers=request_headers)
-    with urlrequest.urlopen(req, timeout=30) as response:
-        return json.loads(response.read().decode("utf-8", "replace"))
+    response = _ssts_request_with_retry(req)
+    if not isinstance(response, dict):
+        raise RuntimeError("Unexpected SSTS POST response format.")
+    return response
 
 
 def _ssts_get_json(url: str, headers: dict[str, str] | None = None) -> object:
@@ -1159,8 +1179,7 @@ def _ssts_get_json(url: str, headers: dict[str, str] | None = None) -> object:
     if headers:
         request_headers.update(headers)
     req = urlrequest.Request(url, headers=request_headers)
-    with urlrequest.urlopen(req, timeout=30) as response:
-        return json.loads(response.read().decode("utf-8", "replace"))
+    return _ssts_request_with_retry(req)
 
 
 def _ssts_get_json_with_params(
