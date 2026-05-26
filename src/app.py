@@ -1621,6 +1621,44 @@ def _pf_suspected_spike_reason(
                     and (pf_speed - geofence_speed) >= 20
                 ):
                     return "Stopped train had a 250m-300m pre-stop spike, likely network/GPS noise."
+        if stop_time_seconds is not None and stop_time_seconds <= 90:
+            pf_distance = _pf_speed_value(row.get("pf_distance"))
+            station_window_start = max(0, window_end - 15)
+            station_window_limit = min(
+                len(chart_points) - 1,
+                max(window_end, end_pos if end_pos is not None and end_pos >= 0 else window_end) + 6,
+            )
+            station_window_speeds = [
+                _pf_chart_speed_kmph(point)
+                for point in chart_points[station_window_start : station_window_limit + 1]
+            ]
+            station_window_speeds = [speed for speed in station_window_speeds if speed is not None]
+            if len(station_window_speeds) >= 6 and pf_distance is not None and 240 <= pf_distance <= 320:
+                deltas = [
+                    station_window_speeds[idx] - station_window_speeds[idx - 1]
+                    for idx in range(1, len(station_window_speeds))
+                ]
+                sharp_rise = any(delta >= 8 for delta in deltas)
+                sharp_drop = any(delta <= -10 for delta in deltas)
+                direction_flips = sum(
+                    1
+                    for idx in range(1, len(deltas))
+                    if abs(deltas[idx - 1]) >= 4
+                    and abs(deltas[idx]) >= 4
+                    and ((deltas[idx - 1] > 0 > deltas[idx]) or (deltas[idx - 1] < 0 < deltas[idx]))
+                )
+                local_peak = max(station_window_speeds)
+                post_entry_window = station_window_speeds[-min(8, len(station_window_speeds)) :]
+                post_entry_floor = min(post_entry_window) if post_entry_window else min(station_window_speeds)
+                if (
+                    pf_speed >= max(40.0, threshold)
+                    and local_peak >= pf_speed - 2
+                    and post_entry_floor <= 15
+                    and (local_peak - post_entry_floor) >= 20
+                    and sharp_drop
+                    and (sharp_rise or direction_flips >= 1)
+                ):
+                    return "Sharp pre-stop chart swing near 250m-300m, likely network/GPS spike."
         if len(pre_entry_speeds) >= 8:
             peak_speed = max(pre_entry_speeds)
             peak_index = pre_entry_speeds.index(peak_speed)
