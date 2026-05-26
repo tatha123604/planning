@@ -1556,9 +1556,45 @@ def _pf_suspected_spike_reason(
 
     start_pos = _coerce_int(row.get("start_pos"))
     if chart_points and start_pos is not None and start_pos >= 0:
+        end_pos = _coerce_int(row.get("end_pos"))
+        if (
+            stop_time_seconds is not None
+            and stop_time_seconds <= 90
+            and len(chart_points) >= 8
+            and (
+                start_pos >= len(chart_points)
+                or (end_pos is not None and end_pos >= len(chart_points))
+            )
+        ):
+            pf_distance = _pf_speed_value(row.get("pf_distance"))
+            trailing_window = [
+                _pf_chart_speed_kmph(point)
+                for point in chart_points[max(0, len(chart_points) - 18) :]
+            ]
+            trailing_window = [speed for speed in trailing_window if speed is not None]
+            if trailing_window and pf_distance is not None and 240 <= pf_distance <= 320:
+                trailing_peak = max(trailing_window)
+                trailing_end = trailing_window[-1]
+                sharp_rise_count = sum(
+                    1
+                    for idx in range(1, len(trailing_window))
+                    if (trailing_window[idx] - trailing_window[idx - 1]) >= 8
+                )
+                sharp_drop_count = sum(
+                    1
+                    for idx in range(1, len(trailing_window))
+                    if (trailing_window[idx] - trailing_window[idx - 1]) <= -6
+                )
+                if (
+                    pf_speed >= max(40.0, threshold)
+                    and trailing_peak >= pf_speed + 8
+                    and (trailing_peak - trailing_end) >= 10
+                    and sharp_rise_count >= 1
+                    and sharp_drop_count >= 1
+                ):
+                    return "Station chart ended before the stop window and the tail showed a sharp spike/drop."
         window_end = min(start_pos, len(chart_points) - 1)
         window_start = max(0, window_end - 40)
-        end_pos = _coerce_int(row.get("end_pos"))
         spike_window_end = min(
             len(chart_points) - 1,
             max(window_end, end_pos if end_pos is not None and end_pos >= 0 else window_end),
