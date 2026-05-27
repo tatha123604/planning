@@ -1646,6 +1646,50 @@ def _pf_suspected_spike_reason(
                 and entry_window_peak <= pf_speed - 15
             ):
                 return "PF speed mismatched the chart trend near station entry."
+            entry_speed = _pf_chart_speed_kmph(chart_points[window_end]) if window_end < len(chart_points) else None
+            if entry_speed is not None:
+                zero_collapse_window = [
+                    _pf_chart_speed_kmph(point)
+                    for point in chart_points[window_end : min(len(chart_points), window_end + 36)]
+                ]
+                zero_collapse_window = [speed for speed in zero_collapse_window if speed is not None]
+                if len(zero_collapse_window) >= 8:
+                    zero_run = 0
+                    longest_zero_run = 0
+                    first_zero_index: int | None = None
+                    pf_distance = _pf_speed_value(row.get("pf_distance"))
+                    for idx, speed in enumerate(zero_collapse_window):
+                        if speed <= 5:
+                            zero_run += 1
+                            longest_zero_run = max(longest_zero_run, zero_run)
+                            if first_zero_index is None:
+                                first_zero_index = idx
+                        else:
+                            zero_run = 0
+                    if (
+                        pf_speed >= max(40.0, threshold)
+                        and geofence_speed is not None
+                        and entry_window_peak >= pf_speed - 1
+                        and (pf_speed - geofence_speed) >= 8
+                        and entry_speed <= pf_speed - 3.5
+                        and first_zero_index is not None
+                        and first_zero_index <= 8
+                        and longest_zero_run >= 5
+                    ):
+                        return "Entry speed collapsed to zero too quickly after a local spike."
+                    if (
+                        pf_distance is not None
+                        and 240 <= pf_distance <= 320
+                        and pf_speed >= max(40.0, threshold)
+                        and geofence_speed is not None
+                        and entry_window_peak >= pf_speed - 1
+                        and (pf_speed - geofence_speed) >= 8
+                        and entry_speed <= pf_speed - 3.5
+                        and first_zero_index is not None
+                        and first_zero_index <= 20
+                        and longest_zero_run >= 5
+                    ):
+                        return "Entry speed fell to zero shortly after a 250m-300m local spike."
 
         pre_entry_speeds = [
             _pf_chart_speed_kmph(point)
@@ -1735,6 +1779,17 @@ def _pf_suspected_spike_reason(
                 if pre_stop_window and stop_zone_window and entry_speed is not None:
                     pre_stop_peak = max(pre_stop_window)
                     stop_zone_floor = min(stop_zone_window)
+                    stop_zone_zero_run = 0
+                    stop_zone_longest_zero_run = 0
+                    stop_zone_first_zero_index: int | None = None
+                    for idx, speed in enumerate(stop_zone_window):
+                        if speed <= 5:
+                            stop_zone_zero_run += 1
+                            stop_zone_longest_zero_run = max(stop_zone_longest_zero_run, stop_zone_zero_run)
+                            if stop_zone_first_zero_index is None:
+                                stop_zone_first_zero_index = idx
+                        else:
+                            stop_zone_zero_run = 0
                     if (
                         pf_speed >= max(40.0, threshold)
                         and stop_zone_floor <= 5
@@ -1750,6 +1805,17 @@ def _pf_suspected_spike_reason(
                         and pre_stop_peak >= max(entry_speed, geofence_speed, pf_speed) + 12
                     ):
                         return "Chart showed a sharp local spike just before the stop window."
+                    if (
+                        geofence_speed is not None
+                        and pf_speed >= max(40.0, threshold)
+                        and stop_zone_first_zero_index is not None
+                        and stop_zone_first_zero_index <= 20
+                        and stop_zone_longest_zero_run >= 5
+                        and entry_speed <= pf_speed - 4
+                        and (pf_speed - geofence_speed) >= 8
+                        and pre_stop_peak >= pf_speed - 1
+                    ):
+                        return "Entry speed collapsed to zero across the stop window after a short local spike."
                     initial_stop_zone = stop_zone_window[: min(6, len(stop_zone_window))]
                     if initial_stop_zone:
                         initial_zone_peak = max(initial_stop_zone)
