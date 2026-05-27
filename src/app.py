@@ -1708,6 +1708,19 @@ def _pf_suspected_spike_reason(
                         and longest_zero_run >= 10
                     ):
                         return "Entry speed stayed high only briefly before a sustained zero collapse near 250m-300m."
+                    if (
+                        pf_distance is not None
+                        and 240 <= pf_distance <= 320
+                        and stop_time_seconds is not None
+                        and stop_time_seconds <= 45
+                        and geofence_speed is not None
+                        and entry_window_peak >= max(pf_speed, geofence_speed) + 8
+                        and entry_speed >= min(pf_speed, geofence_speed) - 2
+                        and first_zero_index is not None
+                        and first_zero_index <= 18
+                        and longest_zero_run >= 5
+                    ):
+                        return "Short-stop entry showed a sharp local peak before collapsing to zero near 250m-300m."
 
         pre_entry_speeds = [
             _pf_chart_speed_kmph(point)
