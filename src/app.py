@@ -1601,7 +1601,14 @@ def _pf_suspected_spike_reason(
             max(window_end, end_pos if end_pos is not None and end_pos >= 0 else window_end),
         )
         spike_window_start = max(1, window_end - 6)
-        for idx in range(spike_window_start, spike_window_end):
+        spike_window_limit = min(
+            len(chart_points) - 1,
+            max(
+                spike_window_end,
+                min(len(chart_points) - 1, window_end + 24),
+            ),
+        )
+        for idx in range(spike_window_start, spike_window_limit):
             prev_speed = _pf_chart_speed_kmph(chart_points[idx - 1])
             peak_speed = _pf_chart_speed_kmph(chart_points[idx])
             next_speed = _pf_chart_speed_kmph(chart_points[idx + 1]) if idx + 1 < len(chart_points) else None
@@ -1629,6 +1636,19 @@ def _pf_suspected_spike_reason(
                 )
             ):
                 return "Sharp chart peak collapsed immediately before station entry."
+            if (
+                pf_speed <= 50
+                and geofence_speed is not None
+                and abs(pf_speed - geofence_speed) <= 6
+                and peak_speed >= max(pf_speed, geofence_speed) + 10
+                and peak_speed - prev_speed >= 8
+                and next_speed <= peak_speed - 4
+                and (
+                    (next2_speed is not None and next2_speed <= peak_speed - 10)
+                    or (next3_speed is not None and next3_speed <= peak_speed - 12)
+                )
+            ):
+                return "Moderate-speed chart showed a short-lived local spike before settling back."
 
         entry_window_start = max(0, window_end - 12)
         entry_window_end = min(len(chart_points) - 1, spike_window_end + 3)
