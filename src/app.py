@@ -599,7 +599,8 @@ def _build_table_pdf_bytes(
     margin_left = 26.0
     margin_right = 26.0
     footer_note = ""
-    if title == "SSTS PF Entering Speed Daily Report":
+    normalized_title = " ".join(str(title or "").split()).lower()
+    if normalized_title.startswith("ssts pf "):
         footer_note = "* all data is taken from SSTS site based on data captured by the GPS tracking Device"
     margin_bottom = 38.0 if footer_note else 24.0
     table_top = 516.0
