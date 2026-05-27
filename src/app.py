@@ -2867,7 +2867,7 @@ def login_form(request: Request, error: str | None = None):
 async def login_submit(request: Request, username: str = Form(...), password: str = Form(...)):
     if username == ADMIN_USER and password == ADMIN_PASS:
         response = RedirectResponse(url="/", status_code=302)
-        response.set_cookie(_AUTH_COOKIE, "ok", httponly=True, max_age=86400)
+        response.set_cookie(_AUTH_COOKIE, "ok", httponly=True, max_age=86400, path="/", samesite="lax")
         return response
     return templates.TemplateResponse(
         "login.html",
@@ -2879,7 +2879,7 @@ async def login_submit(request: Request, username: str = Form(...), password: st
 @app.get("/logout")
 def logout():
     response = RedirectResponse(url="/login", status_code=302)
-    response.delete_cookie(_AUTH_COOKIE)
+    response.delete_cookie(_AUTH_COOKIE, path="/", samesite="lax")
     return response
 
 
