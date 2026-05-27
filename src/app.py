@@ -1750,6 +1750,20 @@ def _pf_suspected_spike_reason(
                         and pre_stop_peak >= max(entry_speed, geofence_speed, pf_speed) + 12
                     ):
                         return "Chart showed a sharp local spike just before the stop window."
+                    initial_stop_zone = stop_zone_window[: min(6, len(stop_zone_window))]
+                    if initial_stop_zone:
+                        initial_zone_peak = max(initial_stop_zone)
+                        if (
+                            max(pf_speed, geofence_speed or 0) >= max(45.0, threshold)
+                            and initial_zone_peak >= 60
+                            and stop_zone_floor <= 5
+                            and (initial_zone_peak - stop_zone_floor) >= 25
+                            and (
+                                (geofence_speed is not None and geofence_speed >= pf_speed + 15)
+                                or initial_zone_peak >= pf_speed + 15
+                            )
+                        ):
+                            return "Station entry started with an unusually high speed and collapsed too quickly."
                 volatility_window_start = max(0, window_end - 10)
                 volatility_window_end = min(
                     len(chart_points) - 1,
