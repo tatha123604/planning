@@ -1263,8 +1263,19 @@
             1200,
           );
         } catch (error) {
+          const message = error && error.message ? error.message : 'Could not start PF analysis.';
+          if (
+            typeof message === 'string'
+            && (
+              message.includes('PF analysis task not found')
+              || message.includes('Could not read PF analysis status.')
+            )
+          ) {
+            window.location.href = getResultUrl(sourceForm, taskId, resultUrl);
+            return;
+          }
           setButtonState(activeButton, false, getButtonLabel(activeButton));
-          setProgressMessage(error && error.message ? error.message : 'Could not start PF analysis.');
+          setProgressMessage(message);
         }
       };
 

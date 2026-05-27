@@ -3966,6 +3966,31 @@ def ssts_report_page(
                         pf_context["pf_analysis_selected_rows"] = selected_rows if isinstance(selected_rows, list) else []
             elif task_payload.get("status") == "error":
                 pf_context["pf_report_error"] = str(task_payload.get("message") or "PF analysis failed.")
+        elif pf_task_id and parsed_pf_day is not None:
+            try:
+                rebuilt_result = _build_ssts_pf_speed_analysis_result(pf_day_value, pf_speed_threshold_value)
+                pf_context.update(rebuilt_result)
+                pf_context["pf_analysis_status"] = "completed"
+                pf_context["pf_analysis_message"] = "Analysis restored after status refresh."
+                pf_context["pf_analysis_task_id"] = pf_task_id or ""
+                selected_mode = "clean" if pf_detail_mode == "clean" else "raw"
+                selected_detail_rows_by_train = (
+                    rebuilt_result.get("pf_detailed_detail_rows_by_train")
+                    if selected_mode == "clean"
+                    else rebuilt_result.get("pf_analysis_detail_rows_by_train")
+                )
+                if isinstance(selected_detail_rows_by_train, dict):
+                    selected_train_value = pf_train or (
+                        str(pf_context["pf_analysis_summary_rows"][0].get("train_no") or "")
+                        if pf_context["pf_analysis_summary_rows"]
+                        else ""
+                    )
+                    pf_context["pf_analysis_selected_train"] = selected_train_value
+                    pf_context["pf_analysis_selected_mode"] = selected_mode
+                    selected_rows = selected_detail_rows_by_train.get(selected_train_value, [])
+                    pf_context["pf_analysis_selected_rows"] = selected_rows if isinstance(selected_rows, list) else []
+            except Exception as exc:
+                pf_context["pf_report_error"] = f"PF analysis restore failed: {exc}"
     latest_run = context.get("latest_run")
     latest_summary = {
         "total_rakes": len(context.get("latest_rows", [])),
