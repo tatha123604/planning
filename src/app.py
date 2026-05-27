@@ -1658,6 +1658,8 @@ def _pf_suspected_spike_reason(
                     longest_zero_run = 0
                     first_zero_index: int | None = None
                     pf_distance = _pf_speed_value(row.get("pf_distance"))
+                    near_entry_window = zero_collapse_window[: min(10, len(zero_collapse_window))]
+                    near_entry_peak = max(near_entry_window) if near_entry_window else None
                     for idx, speed in enumerate(zero_collapse_window):
                         if speed <= 5:
                             zero_run += 1
@@ -1690,6 +1692,21 @@ def _pf_suspected_spike_reason(
                         and longest_zero_run >= 5
                     ):
                         return "Entry speed fell to zero shortly after a 250m-300m local spike."
+                    if (
+                        pf_distance is not None
+                        and 240 <= pf_distance <= 320
+                        and pf_speed >= max(40.0, threshold)
+                        and geofence_speed is not None
+                        and abs(pf_speed - geofence_speed) <= 5
+                        and near_entry_peak is not None
+                        and near_entry_peak >= pf_speed - 1
+                        and entry_speed >= geofence_speed - 3
+                        and entry_speed <= pf_speed + 2
+                        and first_zero_index is not None
+                        and first_zero_index <= 24
+                        and longest_zero_run >= 10
+                    ):
+                        return "Entry speed stayed high only briefly before a sustained zero collapse near 250m-300m."
 
         pre_entry_speeds = [
             _pf_chart_speed_kmph(point)
