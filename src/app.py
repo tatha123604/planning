@@ -1717,6 +1717,39 @@ def _pf_suspected_spike_reason(
         if stop_time_seconds is not None and stop_time_seconds <= 90:
             pf_distance = _pf_speed_value(row.get("pf_distance"))
             if pf_distance is not None and 240 <= pf_distance <= 320:
+                near_stop_end = min(
+                    len(chart_points) - 1,
+                    max(window_end, end_pos if end_pos is not None and end_pos >= 0 else window_end) + 2,
+                )
+                pre_stop_window = [
+                    _pf_chart_speed_kmph(point)
+                    for point in chart_points[max(0, window_end - 14) : window_end + 1]
+                ]
+                pre_stop_window = [speed for speed in pre_stop_window if speed is not None]
+                stop_zone_window = [
+                    _pf_chart_speed_kmph(point)
+                    for point in chart_points[window_end : near_stop_end + 1]
+                ]
+                stop_zone_window = [speed for speed in stop_zone_window if speed is not None]
+                entry_speed = _pf_chart_speed_kmph(chart_points[window_end]) if window_end < len(chart_points) else None
+                if pre_stop_window and stop_zone_window and entry_speed is not None:
+                    pre_stop_peak = max(pre_stop_window)
+                    stop_zone_floor = min(stop_zone_window)
+                    if (
+                        pf_speed >= max(40.0, threshold)
+                        and stop_zone_floor <= 5
+                        and entry_speed <= pf_speed - 18
+                        and pre_stop_peak >= pf_speed - 2
+                    ):
+                        return "PF speed stayed high in the report, but charted entry collapsed before the stop."
+                    if (
+                        geofence_speed is not None
+                        and pf_speed >= max(40.0, threshold)
+                        and stop_zone_floor <= 5
+                        and abs(entry_speed - geofence_speed) <= 6
+                        and pre_stop_peak >= max(entry_speed, geofence_speed, pf_speed) + 12
+                    ):
+                        return "Chart showed a sharp local spike just before the stop window."
                 volatility_window_start = max(0, window_end - 10)
                 volatility_window_end = min(
                     len(chart_points) - 1,
