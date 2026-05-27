@@ -1698,7 +1698,7 @@ def _pf_suspected_spike_reason(
                         and 240 <= pf_distance <= 320
                         and pf_speed >= max(40.0, threshold)
                         and geofence_speed is not None
-                        and abs(pf_speed - geofence_speed) <= 5
+                        and abs(pf_speed - geofence_speed) <= 6
                         and near_entry_peak is not None
                         and near_entry_peak >= pf_speed - 1
                         and entry_speed >= geofence_speed - 3
