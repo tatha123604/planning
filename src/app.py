@@ -2068,6 +2068,63 @@ def _pf_row_signature(row: dict[str, object]) -> tuple[str, str, str, str, str, 
     )
 
 
+def _pf_run_level_spike_reason(
+    rows: list[dict[str, object]],
+    chart_points: list[dict[str, object]] | None,
+) -> str | None:
+    if not chart_points or len(chart_points) < 80:
+        return None
+
+    speed_values = [
+        0.0 if speed is None else float(speed)
+        for speed in (_pf_chart_speed_kmph(point) for point in chart_points)
+    ]
+    fast_rebound_count = 0
+    fast_collapse_count = 0
+    for idx in range(len(speed_values) - 8):
+        current_speed = speed_values[idx]
+        upcoming_window = speed_values[idx + 1 : idx + 9]
+        if current_speed <= 5 and max(upcoming_window, default=0.0) >= 45:
+            fast_rebound_count += 1
+        if current_speed >= 45 and min(upcoming_window, default=999.0) <= 5:
+            fast_collapse_count += 1
+
+    candidate_rows = 0
+    short_mismatch_rows = 0
+    for row in rows:
+        stop_time_seconds = _parse_hms_seconds(row.get("stop_time"))
+        pf_speed = _pf_speed_value(row.get("pf_enter_speed"))
+        geofence_speed = _pf_speed_value(row.get("geofence_enter_speed"))
+        max_speed = max((speed for speed in (pf_speed, geofence_speed) if speed is not None), default=None)
+        if stop_time_seconds is None or stop_time_seconds == 0 or max_speed is None or max_speed <= 40:
+            continue
+        candidate_rows += 1
+        pf_distance = _pf_speed_value(row.get("pf_distance"))
+        if (
+            pf_distance is not None
+            and 240 <= pf_distance <= 320
+            and stop_time_seconds <= 45
+            and pf_speed is not None
+            and geofence_speed is not None
+            and abs(pf_speed - geofence_speed) >= 20
+        ):
+            short_mismatch_rows += 1
+
+    if (
+        fast_rebound_count >= 8
+        and candidate_rows >= 4
+        and (fast_collapse_count >= 3 or short_mismatch_rows >= 2)
+    ):
+        return "Train chart showed repeated zero-to-high rebounds across multiple stations."
+    if (
+        fast_rebound_count >= 6
+        and candidate_rows <= 2
+        and short_mismatch_rows >= 1
+    ):
+        return "Train chart showed repeated rebound noise despite only a few PF events."
+    return None
+
+
 def _normalize_ssts_crew_name(value: object | None) -> str:
     text = str(value or "").strip().upper()
     return re.sub(r"[^A-Z0-9]+", "", text)
@@ -2284,6 +2341,8 @@ def _build_ssts_pf_speed_analysis_result(
     total_trains_to_review = len(trains_to_review)
     for train_index, (train_no, rows) in enumerate(trains_to_review, start=1):
         chart_points = chart_points_by_train.get(train_no, [])
+        train_kept_rows: list[dict[str, object]] = []
+        train_spike_rows: list[dict[str, object]] = []
         for index, row in enumerate(rows):
             stop_time = str(row.get("stop_time") or "").strip()
             if stop_time == "00:00:00":
@@ -2307,11 +2366,27 @@ def _build_ssts_pf_speed_analysis_result(
                 spike_row["remarks"] = (
                     f"{current_remarks} | Omitted: {spike_reason}" if current_remarks else f"Omitted: {spike_reason}"
                 )
-                suspected_spike_rows.append(spike_row)
-                suspected_spike_signatures.add(_pf_row_signature(spike_row))
+                train_spike_rows.append(spike_row)
                 continue
             if _pf_speed_matches_threshold(pf_speed, speed_threshold):
-                detailed_daily_report_rows.append(dict(row))
+                train_kept_rows.append(dict(row))
+        run_level_reason = _pf_run_level_spike_reason(rows, chart_points)
+        if run_level_reason is None and len(train_spike_rows) >= 5 and train_kept_rows:
+            run_level_reason = "Train showed repeated spike patterns across multiple PF stops."
+        if run_level_reason and train_kept_rows:
+            for kept_row in train_kept_rows:
+                spike_row = dict(kept_row)
+                spike_row["spike_reason"] = run_level_reason
+                current_remarks = str(spike_row.get("remarks") or "").strip()
+                spike_row["remarks"] = (
+                    f"{current_remarks} | Omitted: {run_level_reason}" if current_remarks else f"Omitted: {run_level_reason}"
+                )
+                train_spike_rows.append(spike_row)
+            train_kept_rows = []
+        for spike_row in train_spike_rows:
+            suspected_spike_rows.append(spike_row)
+            suspected_spike_signatures.add(_pf_row_signature(spike_row))
+        detailed_daily_report_rows.extend(train_kept_rows)
         if total_trains_to_review:
             review_progress = 72 + int((train_index / total_trains_to_review) * 22)
             report_progress(
