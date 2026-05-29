@@ -1602,14 +1602,6 @@ def _pf_suspected_spike_reason(
                     and sharp_drop_count >= 1
                 ):
                     return "Station chart ended before the stop window and the tail showed a sharp spike/drop."
-                if (
-                    stop_time_seconds <= 15
-                    and max_entry_speed >= max(60.0, threshold + 15)
-                    and trailing_peak <= max_entry_speed - 40
-                    and trailing_longest_zero_run >= 5
-                    and sharp_drop_count >= 1
-                ):
-                    return "Station chart ended before the stop window and only the collapsed tail remained."
         window_end = min(start_pos, len(chart_points) - 1)
         window_start = max(0, window_end - 40)
         spike_window_end = min(
