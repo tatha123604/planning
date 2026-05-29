@@ -1754,6 +1754,19 @@ def _pf_suspected_spike_reason(
                         and longest_zero_run >= 8
                     ):
                         return "Platform entry held a local peak before a sustained zero collapse near 250m-300m."
+                    if (
+                        pf_distance is not None
+                        and 240 <= pf_distance <= 320
+                        and stop_time_seconds is not None
+                        and stop_time_seconds <= 420
+                        and geofence_speed is not None
+                        and entry_window_peak >= max(pf_speed, geofence_speed) + 15
+                        and entry_speed >= min(pf_speed, geofence_speed) - 4
+                        and first_zero_index is not None
+                        and first_zero_index <= 20
+                        and longest_zero_run >= 8
+                    ):
+                        return "Platform approach showed a strong local peak before a longer zero collapse near 250m-300m."
 
         pre_entry_speeds = [
             _pf_chart_speed_kmph(point)
