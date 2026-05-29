@@ -1576,6 +1576,8 @@ def _pf_suspected_spike_reason(
             if trailing_window and pf_distance is not None and 240 <= pf_distance <= 320:
                 trailing_peak = max(trailing_window)
                 trailing_end = trailing_window[-1]
+                trailing_zero_run = 0
+                trailing_longest_zero_run = 0
                 sharp_rise_count = sum(
                     1
                     for idx in range(1, len(trailing_window))
@@ -1586,6 +1588,12 @@ def _pf_suspected_spike_reason(
                     for idx in range(1, len(trailing_window))
                     if (trailing_window[idx] - trailing_window[idx - 1]) <= -6
                 )
+                for speed in trailing_window:
+                    if speed <= 5:
+                        trailing_zero_run += 1
+                        trailing_longest_zero_run = max(trailing_longest_zero_run, trailing_zero_run)
+                    else:
+                        trailing_zero_run = 0
                 if (
                     pf_speed >= max(40.0, threshold)
                     and trailing_peak >= pf_speed + 8
@@ -1594,6 +1602,14 @@ def _pf_suspected_spike_reason(
                     and sharp_drop_count >= 1
                 ):
                     return "Station chart ended before the stop window and the tail showed a sharp spike/drop."
+                if (
+                    stop_time_seconds <= 15
+                    and max_entry_speed >= max(60.0, threshold + 15)
+                    and trailing_peak <= max_entry_speed - 40
+                    and trailing_longest_zero_run >= 5
+                    and sharp_drop_count >= 1
+                ):
+                    return "Station chart ended before the stop window and only the collapsed tail remained."
         window_end = min(start_pos, len(chart_points) - 1)
         window_start = max(0, window_end - 40)
         spike_window_end = min(
