@@ -823,6 +823,23 @@ SSTS_SNAPSHOT_RETENTION_DAYS = 7
 SSTS_PF_REPORT_CACHE_TTL_MINUTES = 20
 SSTS_PF_ANALYSIS_TASK_TTL_MINUTES = 180
 SSTS_EXCLUDED_RAKE_NAMES = {"TEST1", "TEST2"}
+SSTS_PF_SPIKE_FILTER_TRAIN_OVERRIDES: dict[str, set[str]] = {
+    "2026-05-29": {
+        "31233",
+        "31527",
+        "31528",
+        "32216",
+        "32248",
+        "32412",
+        "33231",
+        "33320",
+        "34540",
+    },
+    "2026-05-31": {
+        "34856",
+        "34919",
+    }
+}
 IST = timezone(timedelta(hours=5, minutes=30))
 _SSTS_PF_REPORT_CACHE: dict[str, tuple[datetime, dict[str, object]]] = {}
 _SSTS_PF_ANALYSIS_TASKS: dict[str, dict[str, object]] = {}
@@ -2125,6 +2142,13 @@ def _pf_run_level_spike_reason(
     return None
 
 
+def _pf_manual_train_spike_reason(report_day: date, train_no: str) -> str | None:
+    override_trains = SSTS_PF_SPIKE_FILTER_TRAIN_OVERRIDES.get(report_day.isoformat(), set())
+    if train_no.strip() in override_trains:
+        return "Train manually marked for spike omission after chart review."
+    return None
+
+
 def _normalize_ssts_crew_name(value: object | None) -> str:
     text = str(value or "").strip().upper()
     return re.sub(r"[^A-Z0-9]+", "", text)
@@ -2370,7 +2394,9 @@ def _build_ssts_pf_speed_analysis_result(
                 continue
             if _pf_speed_matches_threshold(pf_speed, speed_threshold):
                 train_kept_rows.append(dict(row))
-        run_level_reason = _pf_run_level_spike_reason(rows, chart_points)
+        run_level_reason = _pf_manual_train_spike_reason(report_day, train_no)
+        if run_level_reason is None:
+            run_level_reason = _pf_run_level_spike_reason(rows, chart_points)
         if run_level_reason is None and len(train_spike_rows) >= 5 and train_kept_rows:
             run_level_reason = "Train showed repeated spike patterns across multiple PF stops."
         if run_level_reason and train_kept_rows:
