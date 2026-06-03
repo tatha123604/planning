@@ -143,7 +143,7 @@
             <span class="sparkle s21"></span><span class="sparkle s22"></span><span class="sparkle s23"></span><span class="sparkle s24"></span>
           </div>
           <div class="top-performer-poster-head">
-            <h3><img class="top-performer-title-star-image" src="/static/title-star.svg" alt="" /> {{ result.poster_title or 'BEST PERFORMERS' }} <img class="top-performer-title-star-image" src="/static/title-star.svg" alt="" /></h3>
+            <h3>{{ result.poster_title or 'BEST PERFORMERS' }}</h3>
             <p>Top Ten Ranked Crew</p>
           </div>
           <div class="top-performer-poster-grid">
@@ -303,7 +303,7 @@
             <span class="sparkle s21"></span><span class="sparkle s22"></span><span class="sparkle s23"></span><span class="sparkle s24"></span>
           </div>
           <div class="top-performer-poster-head">
-            <h3><img class="top-performer-title-star-image" src="/static/title-star.svg" alt="" /> {{ comparison.get('poster_title') or 'MONTHLY COMPARISON' }} <img class="top-performer-title-star-image" src="/static/title-star.svg" alt="" /></h3>
+            <h3>{{ comparison.get('poster_title') or 'MONTHLY COMPARISON' }}</h3>
           </div>
           <div class="top-performer-poster-grid">
             {% for row in comparison.get('rows', []) %}
@@ -493,11 +493,6 @@
                 .top-performer-poster.export-capture .top-performer-poster-foot,
                 .comparison-performer-poster.export-capture .top-performer-poster-foot {
                   color: #ecf2ff !important;
-                }
-                .top-performer-poster.export-capture .top-performer-title-star-image,
-                .comparison-performer-poster.export-capture .top-performer-title-star-image {
-                  opacity: 1 !important;
-                  filter: none !important;
                 }
               `;
               clonedDoc.head.appendChild(style);
