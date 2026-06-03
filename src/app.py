@@ -2491,6 +2491,8 @@ def _pf_run_level_spike_reason(
     ]
     fast_rebound_count = 0
     fast_collapse_count = 0
+    hard_reset_count = 0
+    noisy_window_count = 0
     for idx in range(len(speed_values) - 8):
         current_speed = speed_values[idx]
         upcoming_window = speed_values[idx + 1 : idx + 9]
@@ -2498,9 +2500,18 @@ def _pf_run_level_spike_reason(
             fast_rebound_count += 1
         if current_speed >= 45 and min(upcoming_window, default=999.0) <= 5:
             fast_collapse_count += 1
+        if (
+            (current_speed <= 5 and max(upcoming_window[:5], default=0.0) >= 35)
+            or (current_speed >= 35 and min(upcoming_window[:5], default=999.0) <= 5)
+        ):
+            hard_reset_count += 1
+        local_span = max(upcoming_window, default=current_speed) - min(upcoming_window, default=current_speed)
+        if current_speed <= 12 and max(upcoming_window[:6], default=0.0) >= 40 and local_span >= 28:
+            noisy_window_count += 1
 
     candidate_rows = 0
     short_mismatch_rows = 0
+    short_stop_rows = 0
     for row in rows:
         stop_time_seconds = _parse_hms_seconds(row.get("stop_time"))
         pf_speed = _pf_speed_value(row.get("pf_enter_speed"))
@@ -2509,6 +2520,8 @@ def _pf_run_level_spike_reason(
         if stop_time_seconds is None or stop_time_seconds == 0 or max_speed is None or max_speed <= 40:
             continue
         candidate_rows += 1
+        if stop_time_seconds <= 60:
+            short_stop_rows += 1
         pf_distance = _pf_speed_value(row.get("pf_distance"))
         if (
             pf_distance is not None
@@ -2526,6 +2539,22 @@ def _pf_run_level_spike_reason(
         and (fast_collapse_count >= 3 or short_mismatch_rows >= 2)
     ):
         return "Train chart showed repeated zero-to-high rebounds across multiple stations."
+    if (
+        candidate_rows >= 3
+        and short_stop_rows >= 2
+        and fast_rebound_count >= 5
+        and fast_collapse_count >= 5
+        and (hard_reset_count >= 10 or noisy_window_count >= 4)
+    ):
+        return "Train chart showed repeated hard speed resets across multiple PF stops."
+    if (
+        candidate_rows >= 2
+        and fast_rebound_count >= 4
+        and fast_collapse_count >= 4
+        and short_mismatch_rows >= 1
+        and hard_reset_count >= 8
+    ):
+        return "Train chart showed repeated rebound/collapse noise near PF stops."
     if (
         fast_rebound_count >= 6
         and candidate_rows <= 2
