@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import csv
 from datetime import date, datetime, timedelta, timezone
 import math
 from io import BytesIO
@@ -62,6 +63,8 @@ def format_dmy(value):
 templates.env.filters["dmy"] = format_dmy
 ASSET_VER = "v20260514c"
 templates.env.globals["asset_ver"] = ASSET_VER
+TOP_PERFORMER_STORE_PATH = BASE_PATH / "data" / "top_performer_store.json"
+TOP_PERFORMER_PHOTO_DIR = BASE_PATH / "static" / "top_performer_photos"
 
 
 CLI_NAME_MANUAL_ALIASES = {
@@ -911,6 +914,336 @@ def _parse_date_cookie(request: Request, key: str, param: Optional[str]) -> date
         except ValueError:
             pass
     return date.today()
+
+
+def _top_performer_blank_state() -> dict[str, object]:
+    return {
+        "saved_at_label": "",
+        "warnings": [],
+        "minimum_runs": 3,
+        "summary": None,
+        "results": [],
+        "comparison": None,
+    }
+
+
+def _top_performer_context(request: Request, **overrides: object) -> dict[str, object]:
+    context = {
+        "request": request,
+        "active_page": "top_performer",
+        **_top_performer_blank_state(),
+    }
+    context.update(overrides)
+    return context
+
+
+def _ensure_top_performer_dirs() -> None:
+    TOP_PERFORMER_STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    TOP_PERFORMER_PHOTO_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _load_top_performer_store() -> dict[str, object]:
+    if not TOP_PERFORMER_STORE_PATH.exists():
+        return _top_performer_blank_state()
+    try:
+        payload = json.loads(TOP_PERFORMER_STORE_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return _top_performer_blank_state()
+    if not isinstance(payload, dict):
+        return _top_performer_blank_state()
+    store = _top_performer_blank_state()
+    for key in store:
+        if key in payload:
+            store[key] = payload[key]
+    return store
+
+
+def _save_top_performer_store(payload: dict[str, object]) -> None:
+    _ensure_top_performer_dirs()
+    TOP_PERFORMER_STORE_PATH.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")
+
+
+def _top_performer_slug(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", str(value or "").strip().lower()).strip("-") or "crew"
+
+
+def _top_performer_display_number(value: object) -> object:
+    if value in (None, ""):
+        return ""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return str(value).strip()
+    if math.isfinite(number) and number.is_integer():
+        return int(number)
+    return round(number, 2)
+
+
+def _top_performer_numeric(value: object) -> float:
+    if value in (None, ""):
+        return 0.0
+    if isinstance(value, (int, float)):
+        return float(value)
+    cleaned = str(value).strip().replace(",", "")
+    if not cleaned:
+        return 0.0
+    match = re.search(r"-?\d+(?:\.\d+)?", cleaned)
+    if not match:
+        return 0.0
+    try:
+        return float(match.group(0))
+    except ValueError:
+        return 0.0
+
+
+def _top_performer_normalize_header(value: object) -> str:
+    return re.sub(r"[^a-z0-9]+", "", str(value or "").strip().lower())
+
+
+def _top_performer_read_tabular_file(upload: UploadFile) -> tuple[list[list[object]], str]:
+    filename = upload.filename or "uploaded_file"
+    content = upload.file.read()
+    upload.file.seek(0)
+    if filename.lower().endswith(".csv"):
+        text = ""
+        for encoding in ("utf-8-sig", "utf-8", "latin-1"):
+            try:
+                text = content.decode(encoding)
+                break
+            except UnicodeDecodeError:
+                continue
+        rows = [list(row) for row in csv.reader(text.splitlines())]
+        return rows, filename
+    wb = load_workbook(filename=BytesIO(content), data_only=True)
+    ws = wb.active
+    return [list(row) for row in ws.iter_rows(values_only=True)], filename
+
+
+def _top_performer_header_aliases() -> dict[str, tuple[str, ...]]:
+    return {
+        "crew_name": ("crewname", "crew", "name", "lpname", "loco", "motorman", "employee", "employeename"),
+        "runs": ("runs", "run", "totalruns", "noofruns", "numberofruns", "trip", "trips", "totaltrip"),
+        "total_score": ("totalscore", "score", "marks", "totalmarks", "grandtotal", "overallscore"),
+        "bft": ("bft", "bftscore"),
+        "bpt": ("bpt", "bptscore"),
+        "speed": ("speed", "speedscore"),
+        "platform": ("platform", "platformscore", "pf", "pfscore"),
+        "emergency": ("emergency", "emergencyscore"),
+        "cautious": ("cautious", "cautiousscore", "caution", "cautionscore"),
+        "punctuality": ("punctuality", "punctualityscore", "punctual"),
+        "report_date": ("reportdate", "date", "day"),
+    }
+
+
+def _top_performer_find_header(rows: list[list[object]]) -> tuple[int, dict[str, int]]:
+    aliases = _top_performer_header_aliases()
+    best_index = 0
+    best_map: dict[str, int] = {}
+    for row_index, row in enumerate(rows[:10]):
+        header_map: dict[str, int] = {}
+        for col_index, cell in enumerate(row):
+            normalized = _top_performer_normalize_header(cell)
+            if not normalized:
+                continue
+            for key, options in aliases.items():
+                if normalized in options and key not in header_map:
+                    header_map[key] = col_index
+                    break
+        if len(header_map) > len(best_map):
+            best_index = row_index
+            best_map = header_map
+    return best_index, best_map
+
+
+def _top_performer_guess_report_date(rows: list[list[object]], filename: str) -> str:
+    text_candidates = [filename]
+    for row in rows[:5]:
+        for cell in row[:5]:
+            if isinstance(cell, datetime):
+                return cell.strftime("%d-%m-%Y")
+            if isinstance(cell, date):
+                return cell.strftime("%d-%m-%Y")
+            if cell not in (None, ""):
+                text_candidates.append(str(cell))
+    for text in text_candidates:
+        match = re.search(r"(\d{4}-\d{2}-\d{2}|\d{2}[/-]\d{2}[/-]\d{2,4})", text)
+        if not match:
+            continue
+        try:
+            return _excel_to_date(match.group(1)).strftime("%d-%m-%Y")  # type: ignore[union-attr]
+        except Exception:
+            continue
+    return ""
+
+
+def _top_performer_photo_lookup() -> dict[str, str]:
+    if not TOP_PERFORMER_PHOTO_DIR.exists():
+        return {}
+    lookup: dict[str, str] = {}
+    for path in TOP_PERFORMER_PHOTO_DIR.iterdir():
+        if path.is_file():
+            lookup[path.stem] = f"/static/top_performer_photos/{path.name}"
+    return lookup
+
+
+def _build_top_performer_result(rows: list[list[object]], filename: str, minimum_runs: int) -> tuple[dict[str, object], list[str]]:
+    header_index, header_map = _top_performer_find_header(rows)
+    warnings: list[str] = []
+    if "crew_name" not in header_map:
+        raise ValueError(f"Could not find a crew name column in {filename}.")
+    if "total_score" not in header_map:
+        raise ValueError(f"Could not find a total score column in {filename}.")
+    photo_lookup = _top_performer_photo_lookup()
+    parsed_rows: list[dict[str, object]] = []
+    for row in rows[header_index + 1 :]:
+        if not any(cell not in (None, "") for cell in row):
+            continue
+
+        def get_value(column: str) -> object:
+            index = header_map.get(column)
+            if index is None or index >= len(row):
+                return ""
+            return row[index]
+
+        crew_name = str(get_value("crew_name") or "").strip()
+        if not crew_name:
+            continue
+        runs_value = _top_performer_numeric(get_value("runs"))
+        parsed_rows.append(
+            {
+                "crew_name": crew_name,
+                "runs": int(runs_value) if runs_value.is_integer() else round(runs_value, 2),
+                "total_score": _top_performer_display_number(get_value("total_score")),
+                "total_score_value": _top_performer_numeric(get_value("total_score")),
+                "bft": _top_performer_display_number(get_value("bft")),
+                "bpt": _top_performer_display_number(get_value("bpt")),
+                "speed": _top_performer_display_number(get_value("speed")),
+                "platform": _top_performer_display_number(get_value("platform")),
+                "emergency": _top_performer_display_number(get_value("emergency")),
+                "cautious": _top_performer_display_number(get_value("cautious")),
+                "punctuality": _top_performer_display_number(get_value("punctuality")),
+                "photo_url": photo_lookup.get(_top_performer_slug(crew_name), ""),
+            }
+        )
+    eligible_rows = [row for row in parsed_rows if _top_performer_numeric(row.get("runs")) >= minimum_runs]
+    eligible_rows.sort(
+        key=lambda item: (
+            -_top_performer_numeric(item.get("total_score_value")),
+            -_top_performer_numeric(item.get("runs")),
+            str(item.get("crew_name") or "").lower(),
+        )
+    )
+    top_rows: list[dict[str, object]] = []
+    for index, row in enumerate(eligible_rows[:10], start=1):
+        item = dict(row)
+        item["rank"] = index
+        item.pop("total_score_value", None)
+        top_rows.append(item)
+    if "runs" not in header_map:
+        warnings.append(f'"{filename}" does not include a runs column, so all rows were treated as zero runs.')
+    title = Path(filename).stem.replace("_", " ").strip() or filename
+    return (
+        {
+            "filename": filename,
+            "title": title,
+            "poster_title": title.upper(),
+            "report_date": _top_performer_guess_report_date(rows, filename),
+            "row_count": len(parsed_rows),
+            "eligible_count": len(eligible_rows),
+            "top_rows": top_rows,
+        },
+        warnings,
+    )
+
+
+def _build_top_performer_comparison(
+    previous_rows: list[list[object]],
+    previous_filename: str,
+    current_rows: list[list[object]],
+    current_filename: str,
+    minimum_runs: int,
+) -> tuple[dict[str, object], list[str]]:
+    previous_result, previous_warnings = _build_top_performer_result(previous_rows, previous_filename, minimum_runs)
+    current_result, current_warnings = _build_top_performer_result(current_rows, current_filename, minimum_runs)
+    header_index_prev, header_map_prev = _top_performer_find_header(previous_rows)
+    header_index_curr, header_map_curr = _top_performer_find_header(current_rows)
+
+    def parse_all(rows_data: list[list[object]], header_index: int, header_map: dict[str, int]) -> dict[str, dict[str, object]]:
+        photo_lookup = _top_performer_photo_lookup()
+        records: dict[str, dict[str, object]] = {}
+        for row in rows_data[header_index + 1 :]:
+            if not any(cell not in (None, "") for cell in row):
+                continue
+            name_index = header_map.get("crew_name")
+            if name_index is None or name_index >= len(row):
+                continue
+            crew_name = str(row[name_index] or "").strip()
+            if not crew_name:
+                continue
+            runs_value = _top_performer_numeric(row[header_map["runs"]]) if "runs" in header_map and header_map["runs"] < len(row) else 0.0
+            score_value = _top_performer_numeric(row[header_map["total_score"]]) if header_map["total_score"] < len(row) else 0.0
+            if runs_value < minimum_runs:
+                continue
+            records[_top_performer_slug(crew_name)] = {
+                "crew_name": crew_name,
+                "runs": int(runs_value) if runs_value.is_integer() else round(runs_value, 2),
+                "score": round(score_value, 2) if not score_value.is_integer() else int(score_value),
+                "score_value": score_value,
+                "photo_url": photo_lookup.get(_top_performer_slug(crew_name), ""),
+            }
+        return records
+
+    previous_all = parse_all(previous_rows, header_index_prev, header_map_prev)
+    current_all = parse_all(current_rows, header_index_curr, header_map_curr)
+    comparison_rows: list[dict[str, object]] = []
+    for slug, current_row in current_all.items():
+        previous_row = previous_all.get(slug)
+        if not previous_row:
+            continue
+        change_value = _top_performer_numeric(current_row.get("score_value")) - _top_performer_numeric(previous_row.get("score_value"))
+        if change_value > 0:
+            status = "Improved"
+        elif change_value < 0:
+            status = "Declined"
+        else:
+            status = "No Change"
+        comparison_rows.append(
+            {
+                "crew_name": current_row.get("crew_name"),
+                "photo_url": current_row.get("photo_url"),
+                "previous_runs": previous_row.get("runs"),
+                "current_runs": current_row.get("runs"),
+                "previous_score": previous_row.get("score"),
+                "current_score": current_row.get("score"),
+                "score_change": _top_performer_display_number(change_value),
+                "score_change_value": change_value,
+                "status": status,
+            }
+        )
+    comparison_rows.sort(
+        key=lambda item: (
+            -_top_performer_numeric(item.get("current_score")),
+            -_top_performer_numeric(item.get("score_change_value")),
+            str(item.get("crew_name") or "").lower(),
+        )
+    )
+    for index, row in enumerate(comparison_rows[:10], start=1):
+        row["rank"] = index
+        row.pop("score_change_value", None)
+    return (
+        {
+            "poster_title": "MONTHLY COMPARISON",
+            "previous_filename": previous_filename,
+            "current_filename": current_filename,
+            "previous_report_date": previous_result.get("report_date", ""),
+            "current_report_date": current_result.get("report_date", ""),
+            "previous_eligible_count": len(previous_all),
+            "current_eligible_count": len(current_all),
+            "matched_count": len(comparison_rows),
+            "rows": comparison_rows[:10],
+        },
+        previous_warnings + current_warnings,
+    )
 
 app = FastAPI(title="HR Planner")
 app.mount("/static", StaticFiles(directory=str(BASE_PATH / "static")), name="static")
@@ -3961,19 +4294,149 @@ def cli_distribution_planner_page(request: Request, session: Session = Depends(g
 
 @app.get("/top-performer")
 def top_performer_page(request: Request):
-    return templates.TemplateResponse(
-        "top_performer.html",
+    return templates.TemplateResponse("top_performer.html", _top_performer_context(request, **_load_top_performer_store()))
+
+
+@app.post("/top-performer")
+async def generate_top_performer(
+    request: Request,
+    files: list[UploadFile] = File(...),
+    minimum_runs: int = Form(3),
+):
+    valid_files = [upload for upload in files if (upload.filename or "").strip()]
+    if not valid_files:
+        return templates.TemplateResponse(
+            "top_performer.html",
+            _top_performer_context(request, warnings=["Please upload at least one ranking file."]),
+        )
+    results: list[dict[str, object]] = []
+    warnings: list[str] = []
+    try:
+        for upload in valid_files:
+            rows, filename = _top_performer_read_tabular_file(upload)
+            result, file_warnings = _build_top_performer_result(rows, filename, max(0, minimum_runs))
+            results.append(result)
+            warnings.extend(file_warnings)
+    except Exception as exc:
+        return templates.TemplateResponse(
+            "top_performer.html",
+            _top_performer_context(request, minimum_runs=max(0, minimum_runs), warnings=[f"Top performer generation failed: {exc}"]),
+        )
+    payload = _top_performer_blank_state()
+    payload.update(
         {
-            "request": request,
-            "active_page": "top_performer",
-            "saved_at_label": "",
-            "warnings": [],
-            "minimum_runs": 3,
-            "summary": None,
-            "results": [],
+            "saved_at_label": datetime.now(IST).strftime("%d-%m-%Y %I:%M %p"),
+            "warnings": warnings,
+            "minimum_runs": max(0, minimum_runs),
+            "summary": {
+                "file_count": len(results),
+                "overall_rows": sum(int(result.get("row_count") or 0) for result in results),
+                "overall_eligible": sum(int(result.get("eligible_count") or 0) for result in results),
+            },
+            "results": results,
             "comparison": None,
-        },
+        }
     )
+    _save_top_performer_store(payload)
+    return templates.TemplateResponse("top_performer.html", _top_performer_context(request, **payload))
+
+
+@app.post("/top-performer/reset")
+def reset_top_performer(request: Request):
+    store = _load_top_performer_store()
+    store["summary"] = None
+    store["results"] = []
+    store["warnings"] = []
+    _save_top_performer_store(store)
+    return RedirectResponse(url="/top-performer", status_code=303)
+
+
+@app.post("/top-performer/clear-stored")
+def clear_top_performer_stored(
+    action_password: str = Form(...),
+):
+    _validate_sensitive_action_password(action_password)
+    store = _top_performer_blank_state()
+    _save_top_performer_store(store)
+    if TOP_PERFORMER_PHOTO_DIR.exists():
+        for path in TOP_PERFORMER_PHOTO_DIR.iterdir():
+            if path.is_file():
+                path.unlink(missing_ok=True)
+    return RedirectResponse(url="/top-performer", status_code=303)
+
+
+@app.post("/top-performer/photo")
+async def save_top_performer_photo(
+    crew_name: str = Form(...),
+    photo_file: UploadFile = File(...),
+):
+    crew_name = crew_name.strip()
+    if not crew_name:
+        raise HTTPException(status_code=400, detail="Crew name is required.")
+    extension = Path(photo_file.filename or "").suffix.lower()
+    if extension not in {".png", ".jpg", ".jpeg", ".webp"}:
+        raise HTTPException(status_code=400, detail="Upload a PNG, JPG, JPEG, or WEBP photo.")
+    _ensure_top_performer_dirs()
+    target_name = f"{_top_performer_slug(crew_name)}{extension}"
+    target_path = TOP_PERFORMER_PHOTO_DIR / target_name
+    target_path.write_bytes(await photo_file.read())
+    photo_url = f"/static/top_performer_photos/{target_name}"
+    store = _load_top_performer_store()
+    for result in store.get("results", []):
+        if not isinstance(result, dict):
+            continue
+        for row in result.get("top_rows", []):
+            if isinstance(row, dict) and str(row.get("crew_name") or "").strip().casefold() == crew_name.casefold():
+                row["photo_url"] = photo_url
+    comparison = store.get("comparison")
+    if isinstance(comparison, dict):
+        for row in comparison.get("rows", []):
+            if isinstance(row, dict) and str(row.get("crew_name") or "").strip().casefold() == crew_name.casefold():
+                row["photo_url"] = photo_url
+    _save_top_performer_store(store)
+    return RedirectResponse(url="/top-performer", status_code=303)
+
+
+@app.post("/top-performer/compare")
+async def compare_top_performer_months(
+    request: Request,
+    previous_file: UploadFile = File(...),
+    current_file: UploadFile = File(...),
+    minimum_runs: int = Form(3),
+):
+    try:
+        previous_rows, previous_filename = _top_performer_read_tabular_file(previous_file)
+        current_rows, current_filename = _top_performer_read_tabular_file(current_file)
+        comparison, warnings = _build_top_performer_comparison(
+            previous_rows,
+            previous_filename,
+            current_rows,
+            current_filename,
+            max(0, minimum_runs),
+        )
+    except Exception as exc:
+        store = _load_top_performer_store()
+        store["minimum_runs"] = max(0, minimum_runs)
+        store["warnings"] = [f"Monthly comparison failed: {exc}"]
+        _save_top_performer_store(store)
+        return templates.TemplateResponse("top_performer.html", _top_performer_context(request, **store))
+    store = _load_top_performer_store()
+    store["minimum_runs"] = max(0, minimum_runs)
+    store["warnings"] = warnings
+    store["comparison"] = comparison
+    if not store.get("saved_at_label"):
+        store["saved_at_label"] = datetime.now(IST).strftime("%d-%m-%Y %I:%M %p")
+    _save_top_performer_store(store)
+    return templates.TemplateResponse("top_performer.html", _top_performer_context(request, **store))
+
+
+@app.post("/top-performer/comparison/reset")
+def reset_top_performer_comparison():
+    store = _load_top_performer_store()
+    store["comparison"] = None
+    store["warnings"] = []
+    _save_top_performer_store(store)
+    return RedirectResponse(url="/top-performer", status_code=303)
 
 
 @app.get("/cli-matrix")
