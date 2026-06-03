@@ -1076,6 +1076,48 @@ def _top_performer_guess_report_date(rows: list[list[object]], filename: str) ->
     return ""
 
 
+def _top_performer_month_year_label(report_date: object | None, filename: str) -> str:
+    parsed_date: date | None = None
+    if report_date:
+        try:
+            parsed_date = datetime.strptime(str(report_date), "%d-%m-%Y").date()
+        except ValueError:
+            try:
+                parsed_date = date.fromisoformat(str(report_date))
+            except ValueError:
+                parsed_date = None
+    if parsed_date is None:
+        date_texts: list[str] = []
+        for match in re.finditer(r"\d{4}-\d{2}-\d{2}", filename):
+            date_texts.append(match.group(0))
+        for match in re.finditer(r"\d{2}[/-]\d{2}[/-]\d{2,4}", filename):
+            date_texts.append(match.group(0))
+        for text in date_texts:
+            try:
+                parsed = _excel_to_date(text)
+            except Exception:
+                continue
+            if parsed:
+                parsed_date = parsed
+                break
+    if parsed_date is None:
+        return ""
+    return parsed_date.strftime("%B %Y")
+
+
+def _top_performer_card_heading(month_year_label: str) -> str:
+    if not month_year_label:
+        return "Crew Ranking Report"
+    month_name, year = month_year_label.rsplit(" ", 1)
+    return f"CREW RANKING REPORT MONTH OF {month_name}, {year}"
+
+
+def _top_performer_poster_heading(prefix: str, month_year_label: str) -> str:
+    if not month_year_label:
+        return prefix
+    return f"{prefix} - {month_year_label.upper()}"
+
+
 def _top_performer_photo_lookup() -> dict[str, str]:
     if not TOP_PERFORMER_PHOTO_DIR.exists():
         return {}
@@ -1141,13 +1183,15 @@ def _build_top_performer_result(rows: list[list[object]], filename: str, minimum
         top_rows.append(item)
     if "runs" not in header_map:
         warnings.append(f'"{filename}" does not include a runs column, so all rows were treated as zero runs.')
-    title = Path(filename).stem.replace("_", " ").strip() or filename
+    report_date_label = _top_performer_guess_report_date(rows, filename)
+    month_year_label = _top_performer_month_year_label(report_date_label, filename)
+    title = _top_performer_card_heading(month_year_label)
     return (
         {
             "filename": filename,
             "title": title,
-            "poster_title": title.upper(),
-            "report_date": _top_performer_guess_report_date(rows, filename),
+            "poster_title": _top_performer_poster_heading("BEST PERFORMERS", month_year_label),
+            "report_date": report_date_label,
             "row_count": len(parsed_rows),
             "eligible_count": len(eligible_rows),
             "top_rows": top_rows,
@@ -1196,6 +1240,7 @@ def _build_top_performer_comparison(
     previous_all = parse_all(previous_rows, header_index_prev, header_map_prev)
     current_all = parse_all(current_rows, header_index_curr, header_map_curr)
     comparison_rows: list[dict[str, object]] = []
+    improved_rows: list[dict[str, object]] = []
     for slug, current_row in current_all.items():
         previous_row = previous_all.get(slug)
         if not previous_row:
@@ -1207,32 +1252,46 @@ def _build_top_performer_comparison(
             status = "Declined"
         else:
             status = "No Change"
-        comparison_rows.append(
-            {
-                "crew_name": current_row.get("crew_name"),
-                "photo_url": current_row.get("photo_url"),
-                "previous_runs": previous_row.get("runs"),
-                "current_runs": current_row.get("runs"),
-                "previous_score": previous_row.get("score"),
-                "current_score": current_row.get("score"),
-                "score_change": _top_performer_display_number(change_value),
-                "score_change_value": change_value,
-                "status": status,
-            }
-        )
+        row_payload = {
+            "crew_name": current_row.get("crew_name"),
+            "photo_url": current_row.get("photo_url"),
+            "previous_runs": previous_row.get("runs"),
+            "current_runs": current_row.get("runs"),
+            "previous_score": previous_row.get("score"),
+            "current_score": current_row.get("score"),
+            "score_change": _top_performer_display_number(change_value),
+            "score_change_value": change_value,
+            "status": status,
+        }
+        comparison_rows.append(row_payload)
+        if change_value > 0:
+            improved_rows.append(dict(row_payload))
     comparison_rows.sort(
         key=lambda item: (
-            -_top_performer_numeric(item.get("current_score")),
             -_top_performer_numeric(item.get("score_change_value")),
+            -_top_performer_numeric(item.get("current_score")),
             str(item.get("crew_name") or "").lower(),
         )
     )
-    for index, row in enumerate(comparison_rows[:10], start=1):
+    improved_rows.sort(
+        key=lambda item: (
+            -_top_performer_numeric(item.get("score_change_value")),
+            -_top_performer_numeric(item.get("current_score")),
+            str(item.get("crew_name") or "").lower(),
+        )
+    )
+    display_rows = improved_rows if improved_rows else comparison_rows
+    top_display_rows = display_rows[:10]
+    for index, row in enumerate(top_display_rows, start=1):
         row["rank"] = index
         row.pop("score_change_value", None)
+    comparison_month_year = _top_performer_month_year_label(
+        current_result.get("report_date"),
+        current_filename,
+    )
     return (
         {
-            "poster_title": "MONTHLY COMPARISON",
+            "poster_title": _top_performer_poster_heading("TOP TEN IMPROVED CREW", comparison_month_year),
             "previous_filename": previous_filename,
             "current_filename": current_filename,
             "previous_report_date": previous_result.get("report_date", ""),
@@ -1240,7 +1299,8 @@ def _build_top_performer_comparison(
             "previous_eligible_count": len(previous_all),
             "current_eligible_count": len(current_all),
             "matched_count": len(comparison_rows),
-            "rows": comparison_rows[:10],
+            "improved_count": len(improved_rows),
+            "rows": top_display_rows,
         },
         previous_warnings + current_warnings,
     )
