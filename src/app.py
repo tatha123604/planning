@@ -1682,6 +1682,58 @@ def _pf_chart_speed_kmph(point: dict[str, object]) -> float | None:
     return raw_speed
 
 
+def _pf_chart_distance_km(point: dict[str, object]) -> float | None:
+    for key in ("distance", "dist", "km", "distance_km"):
+        try:
+            value = point.get(key)
+        except AttributeError:
+            value = None
+        if value in (None, ""):
+            continue
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _pf_chart_time_label(point: dict[str, object]) -> str:
+    for key in ("gpstime", "gps_time", "time", "device_time", "servertime", "updatedon", "updated_at"):
+        value = point.get(key)
+        text = str(value or "").strip()
+        if not text:
+            continue
+        try:
+            parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+            if parsed.tzinfo is not None:
+                parsed = parsed.astimezone(IST)
+            return parsed.strftime("%H:%M:%S")
+        except ValueError:
+            parts = text.split()
+            if len(parts) >= 2:
+                return parts[-1][:8]
+            return text[:8]
+    return ""
+
+
+def _pf_build_chart_link(row: dict[str, object]) -> str:
+    query = urlparse.urlencode(
+        {
+            "train_date": str(row.get("train_date_iso") or row.get("train_date") or ""),
+            "train_no": str(row.get("train_no") or ""),
+            "device_id": str(row.get("device_id") or ""),
+            "org": str(row.get("org") or ""),
+            "dep": str(row.get("train_dep_raw") or row.get("dep") or ""),
+            "dest": str(row.get("dest") or ""),
+            "arr": str(row.get("train_arr_raw") or row.get("arr") or ""),
+            "station": str(row.get("station") or ""),
+            "start_pos": str(row.get("start_pos") or ""),
+            "end_pos": str(row.get("end_pos") or ""),
+        }
+    )
+    return f"/ssts-report/pf-chart?{query}"
+
+
 def _build_pf_positions_params(source: dict[str, object]) -> dict[str, object]:
     return {
         "train_date": source.get("train_date_iso") or source.get("train_date"),
@@ -1736,6 +1788,7 @@ def _build_pf_report_rows_for_train(
         "train_dep_raw": train.get("dep"),
         "train_arr_raw": train.get("arr"),
     }
+    base_row["chart_link"] = _pf_build_chart_link(base_row)
     params = {
         "train_date": report_day.isoformat(),
         "train_no": train.get("train_no"),
@@ -1811,6 +1864,7 @@ def _build_pf_report_rows_for_train(
                 "status_message": "",
             }
         )
+        detail_rows[-1]["chart_link"] = _pf_build_chart_link(detail_rows[-1])
     return detail_rows or [
         {
             **base_row,
@@ -4878,6 +4932,73 @@ def ssts_report_page(
             "active_detail_view": detail_view if detail_view in {"recent_offline", "recently_online"} else None,
             **context,
             **pf_context,
+        },
+    )
+
+
+@app.get("/ssts-report/pf-chart")
+def ssts_pf_chart_page(
+    request: Request,
+    train_date: str,
+    train_no: str,
+    device_id: str = "",
+    org: str = "",
+    dep: str = "",
+    dest: str = "",
+    arr: str = "",
+    station: str = "",
+    start_pos: str = "",
+    end_pos: str = "",
+):
+    try:
+        report_day = date.fromisoformat(train_date)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid train_date.")
+
+    source = {
+        "train_date_iso": report_day.isoformat(),
+        "train_no": train_no,
+        "device_id": _coerce_int(device_id) or device_id,
+        "org": org,
+        "train_dep_raw": dep,
+        "dest": dest,
+        "train_arr_raw": arr,
+    }
+    chart_points: list[dict[str, object]] = []
+    error_message = ""
+    try:
+        token = fetch_ssts_token()
+        chart_points = _fetch_ssts_positions(source, token)
+    except (urlerror.URLError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
+        error_message = str(exc)
+
+    categories = [_pf_chart_time_label(point) for point in chart_points]
+    speed_series = [_pf_chart_speed_kmph(point) for point in chart_points]
+    distance_series = [_pf_chart_distance_km(point) for point in chart_points]
+    highlight_from = _coerce_int(start_pos)
+    highlight_to = _coerce_int(end_pos)
+    if highlight_from is not None and highlight_to is not None and highlight_to < highlight_from:
+        highlight_from, highlight_to = highlight_to, highlight_from
+
+    return templates.TemplateResponse(
+        "ssts_pf_chart.html",
+        {
+            "request": request,
+            "active_page": "ssts_report",
+            "report_day": report_day.isoformat(),
+            "report_day_label": report_day.strftime("%d-%m-%Y"),
+            "train_no": train_no,
+            "device_id": str(device_id or ""),
+            "org": org,
+            "dest": dest,
+            "station": station,
+            "chart_error": error_message,
+            "chart_categories_json": json.dumps(categories),
+            "chart_speed_json": json.dumps(speed_series),
+            "chart_distance_json": json.dumps(distance_series),
+            "highlight_from": highlight_from,
+            "highlight_to": highlight_to,
+            "ssts_web_url": SSTS_WEB_URL,
         },
     )
 

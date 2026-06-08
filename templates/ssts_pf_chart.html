@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PF Speed Chart | {{ train_no }}</title>
+  <link rel="icon" type="image/svg+xml" href="/static/indian-railways-mark.svg?v={{ asset_ver }}" />
+  <link rel="shortcut icon" href="/static/indian-railways-mark.svg?v={{ asset_ver }}" />
+  <link rel="stylesheet" href="/static/style.css?v={{ asset_ver }}" />
+  <script src="https://code.highcharts.com/highcharts.js"></script>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <img class="brand-mark" src="/static/indian-railways-mark.svg" alt="Indian Railways" />
+        <span>SDAH Crew Analysis</span>
+      </div>
+      <nav class="side-links">
+        <a href="/ssts-report?report_tab=pf_entering&pf_day={{ report_day }}">Back To SSTS Report</a>
+        <a href="{{ ssts_web_url }}" target="_blank" rel="noreferrer">Open SSTS Rakes</a>
+      </nav>
+    </aside>
+
+    <main class="content">
+      <header>
+        <div>
+          <h1>PF Speed Chart</h1>
+          <p>Date {{ report_day_label }} | Train {{ train_no }}{% if station %} | Station {{ station }}{% endif %}</p>
+          <p>{% if org or dest %}{{ org }}{% if org and dest %} to {% endif %}{{ dest }}{% endif %}</p>
+        </div>
+      </header>
+
+      <section class="grid">
+        <section class="card">
+          <div class="card-head-inline">
+            <div>
+              <h2>Chart</h2>
+              <p>Speed trend for the selected train and date. The highlighted band marks the row's station window when available.</p>
+            </div>
+          </div>
+          {% if chart_error %}
+          <p class="error-banner">Unable to fetch chart data: {{ chart_error }}</p>
+          {% endif %}
+          <div id="pf-chart-container" style="min-height: 560px;"></div>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const categories = {{ chart_categories_json|safe }};
+    const speedData = {{ chart_speed_json|safe }};
+    const distanceData = {{ chart_distance_json|safe }};
+    const highlightFrom = {{ highlight_from if highlight_from is not none else 'null' }};
+    const highlightTo = {{ highlight_to if highlight_to is not none else 'null' }};
+
+    Highcharts.chart('pf-chart-container', {
+      chart: {
+        zoomType: 'x'
+      },
+      title: {
+        text: 'Speed Chart'
+      },
+      subtitle: {
+        text: 'Date: {{ report_day_label }}, Train: {{ train_no }}{% if station %}, Station: {{ station }}{% endif %}'
+      },
+      xAxis: {
+        categories,
+        plotBands: highlightFrom !== null && highlightTo !== null ? [{
+          from: Math.max(0, highlightFrom),
+          to: Math.max(highlightFrom, highlightTo),
+          color: 'rgba(114, 191, 120, 0.22)',
+          label: {
+            text: '{{ station }}',
+            style: { color: '#203447' }
+          }
+        }] : []
+      },
+      yAxis: [{
+        title: {
+          text: 'Speed (KMPH)'
+        },
+        min: 0
+      }, {
+        title: {
+          text: 'Distance (KM)'
+        },
+        min: 0,
+        opposite: true
+      }],
+      tooltip: {
+        shared: true
+      },
+      legend: {
+        enabled: true
+      },
+      series: [{
+        name: 'Speed',
+        type: 'line',
+        data: speedData,
+        color: '#0f9d58',
+        yAxis: 0
+      }, {
+        name: 'Distance',
+        type: 'line',
+        data: distanceData,
+        color: '#d93025',
+        dashStyle: 'ShortDot',
+        yAxis: 1
+      }],
+      credits: {
+        enabled: false
+      }
+    });
+  </script>
+</body>
+</html>
