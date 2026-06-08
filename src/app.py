@@ -841,6 +841,11 @@ SSTS_PF_SPIKE_FILTER_TRAIN_OVERRIDES: dict[str, set[str]] = {
     "2026-05-31": {
         "34856",
         "34919",
+    },
+    "2026-06-08": {
+        "31527",
+        "32214",
+        "34526",
     }
 }
 IST = timezone(timedelta(hours=5, minutes=30))
@@ -2564,6 +2569,57 @@ def _pf_run_level_spike_reason(
     return None
 
 
+def _pf_should_omit_train_after_row_filter(
+    rows: list[dict[str, object]],
+    train_kept_rows: list[dict[str, object]],
+    train_spike_rows: list[dict[str, object]],
+    chart_points: list[dict[str, object]] | None,
+) -> str | None:
+    if not chart_points or len(chart_points) < 80 or not train_kept_rows or not train_spike_rows:
+        return None
+
+    speed_values = [
+        0.0 if speed is None else float(speed)
+        for speed in (_pf_chart_speed_kmph(point) for point in chart_points)
+    ]
+    fast_rebound_count = 0
+    fast_collapse_count = 0
+    hard_reset_count = 0
+    noisy_window_count = 0
+    for idx in range(len(speed_values) - 8):
+        current_speed = speed_values[idx]
+        upcoming_window = speed_values[idx + 1 : idx + 9]
+        if current_speed <= 5 and max(upcoming_window, default=0.0) >= 45:
+            fast_rebound_count += 1
+        if current_speed >= 45 and min(upcoming_window, default=999.0) <= 5:
+            fast_collapse_count += 1
+        if (
+            (current_speed <= 5 and max(upcoming_window[:5], default=0.0) >= 35)
+            or (current_speed >= 35 and min(upcoming_window[:5], default=999.0) <= 5)
+        ):
+            hard_reset_count += 1
+        local_span = max(upcoming_window, default=current_speed) - min(upcoming_window, default=current_speed)
+        if current_speed <= 12 and max(upcoming_window[:6], default=0.0) >= 40 and local_span >= 28:
+            noisy_window_count += 1
+
+    if (
+        len(train_spike_rows) >= 3
+        and len(train_kept_rows) <= len(train_spike_rows)
+        and fast_rebound_count >= 4
+        and fast_collapse_count >= 4
+        and (hard_reset_count >= 7 or noisy_window_count >= 3)
+    ):
+        return "Train still showed repeated chart resets after row filtering, so all remaining PF rows were omitted."
+    if (
+        len(train_spike_rows) >= 2
+        and len(train_kept_rows) <= 2
+        and hard_reset_count >= 9
+        and noisy_window_count >= 3
+    ):
+        return "Remaining PF rows belonged to a chart with repeated spike/reset behavior, so the full train was omitted."
+    return None
+
+
 def _pf_manual_train_spike_reason(report_day: date, train_no: str) -> str | None:
     override_trains = SSTS_PF_SPIKE_FILTER_TRAIN_OVERRIDES.get(report_day.isoformat(), set())
     if train_no.strip() in override_trains:
@@ -2819,6 +2875,13 @@ def _build_ssts_pf_speed_analysis_result(
         run_level_reason = _pf_manual_train_spike_reason(report_day, train_no)
         if run_level_reason is None:
             run_level_reason = _pf_run_level_spike_reason(rows, chart_points)
+        if run_level_reason is None:
+            run_level_reason = _pf_should_omit_train_after_row_filter(
+                rows,
+                train_kept_rows,
+                train_spike_rows,
+                chart_points,
+            )
         if run_level_reason is None and len(train_spike_rows) >= 5 and train_kept_rows:
             run_level_reason = "Train showed repeated spike patterns across multiple PF stops."
         if run_level_reason and train_kept_rows:
