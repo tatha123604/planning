@@ -2401,6 +2401,51 @@ def _pf_suspected_spike_reason(
                         and near_zero_count >= 2
                     ):
                         return "Volatile pre-stop oscillation near station entry, likely network/GPS spike."
+        if stop_time_seconds is not None and stop_time_seconds <= 180:
+            pre_station_window = [
+                _pf_chart_speed_kmph(point)
+                for point in chart_points[max(0, window_end - 8) : window_end + 1]
+            ]
+            pre_station_window = [speed for speed in pre_station_window if speed is not None]
+            station_zone_end = min(
+                len(chart_points) - 1,
+                max(spike_window_end, end_pos if end_pos is not None and end_pos >= 0 else spike_window_end) + 4,
+            )
+            station_zone_window = [
+                _pf_chart_speed_kmph(point)
+                for point in chart_points[window_end : station_zone_end + 1]
+            ]
+            station_zone_window = [speed for speed in station_zone_window if speed is not None]
+            post_station_window = [
+                _pf_chart_speed_kmph(point)
+                for point in chart_points[
+                    min(len(chart_points) - 1, max(window_end, end_pos if end_pos is not None and end_pos >= 0 else window_end)) :
+                    min(len(chart_points), station_zone_end + 13)
+                ]
+            ]
+            post_station_window = [speed for speed in post_station_window if speed is not None]
+            if pre_station_window and station_zone_window and post_station_window:
+                pre_station_peak = max(pre_station_window)
+                station_zone_floor = min(station_zone_window)
+                post_station_peak = max(post_station_window)
+                station_zero_run = 0
+                station_longest_zero_run = 0
+                for speed in station_zone_window:
+                    if speed <= 5:
+                        station_zero_run += 1
+                        station_longest_zero_run = max(station_longest_zero_run, station_zero_run)
+                    else:
+                        station_zero_run = 0
+                if (
+                    pf_speed >= max(40.0, threshold)
+                    and pre_station_peak >= max(45.0, threshold)
+                    and post_station_peak >= max(40.0, threshold)
+                    and station_zone_floor <= 5
+                    and station_longest_zero_run >= 3
+                    and (pre_station_peak - station_zone_floor) >= 22
+                    and (post_station_peak - station_zone_floor) >= 22
+                ):
+                    return "Station window dropped into a zero pocket and rebounded quickly, likely GPS/network spike."
         if len(pre_entry_speeds) >= 8:
             peak_speed = max(pre_entry_speeds)
             peak_index = pre_entry_speeds.index(peak_speed)
