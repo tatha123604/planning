@@ -1734,6 +1734,46 @@ def _pf_build_chart_link(row: dict[str, object]) -> str:
     return f"/ssts-report/pf-chart?{query}"
 
 
+def _pf_attach_chart_links(rows: object) -> object:
+    if not isinstance(rows, list):
+        return rows
+    attached_rows: list[dict[str, object] | object] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            attached_rows.append(row)
+            continue
+        row_copy = dict(row)
+        row_copy["chart_link"] = _pf_build_chart_link(row_copy)
+        attached_rows.append(row_copy)
+    return attached_rows
+
+
+def _pf_attach_chart_links_by_train(rows_by_train: object) -> object:
+    if not isinstance(rows_by_train, dict):
+        return rows_by_train
+    attached: dict[object, object] = {}
+    for train_no, rows in rows_by_train.items():
+        attached[train_no] = _pf_attach_chart_links(rows)
+    return attached
+
+
+def _pf_hydrate_chart_links_in_result(result: dict[str, object]) -> dict[str, object]:
+    hydrated = dict(result)
+    for key in (
+        "pf_report_rows",
+        "pf_daily_report_rows",
+        "pf_detailed_daily_report_rows",
+        "pf_detailed_daily_spike_rows",
+        "pf_analysis_summary_rows",
+    ):
+        if key in hydrated:
+            hydrated[key] = _pf_attach_chart_links(hydrated.get(key))
+    for key in ("pf_analysis_detail_rows_by_train", "pf_detailed_detail_rows_by_train"):
+        if key in hydrated:
+            hydrated[key] = _pf_attach_chart_links_by_train(hydrated.get(key))
+    return hydrated
+
+
 def _build_pf_positions_params(source: dict[str, object]) -> dict[str, object]:
     return {
         "train_date": source.get("train_date_iso") or source.get("train_date"),
@@ -4855,6 +4895,7 @@ def ssts_report_page(
             if task_payload.get("status") == "completed":
                 result = task_payload.get("result")
                 if isinstance(result, dict):
+                    result = _pf_hydrate_chart_links_in_result(result)
                     pf_context.update(
                         {
                             key: value
@@ -4883,6 +4924,7 @@ def ssts_report_page(
         elif pf_task_id and parsed_pf_day is not None:
             try:
                 rebuilt_result = _build_ssts_pf_speed_analysis_result(pf_day_value, pf_speed_threshold_value)
+                rebuilt_result = _pf_hydrate_chart_links_in_result(rebuilt_result)
                 pf_context.update(rebuilt_result)
                 pf_context["pf_analysis_status"] = "completed"
                 pf_context["pf_analysis_message"] = "Analysis restored after status refresh."
