@@ -1774,6 +1774,59 @@ def _pf_hydrate_chart_links_in_result(result: dict[str, object]) -> dict[str, ob
     return hydrated
 
 
+def _pf_build_station_plot_bands(
+    rows: list[dict[str, object]],
+    selected_station: str,
+    selected_start: int | None,
+    selected_end: int | None,
+) -> list[dict[str, object]]:
+    plot_bands: list[dict[str, object]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        band_start = _coerce_int(row.get("start_pos"))
+        band_end = _coerce_int(row.get("end_pos"))
+        if band_start is None or band_end is None:
+            continue
+        if band_end < band_start:
+            band_start, band_end = band_end, band_start
+        station_name = str(row.get("station") or "").strip() or "STN"
+        is_selected = (
+            station_name == selected_station
+            and selected_start is not None
+            and selected_end is not None
+            and band_start == min(selected_start, selected_end)
+            and band_end == max(selected_start, selected_end)
+        )
+        arr_text = str(row.get("act_arr") or row.get("sch_arr") or "").strip()
+        dep_text = str(row.get("act_dep") or row.get("sch_dep") or "").strip()
+        label_lines = [station_name]
+        if arr_text:
+            label_lines.append(arr_text)
+        if dep_text and dep_text != arr_text:
+            label_lines.append(dep_text)
+        plot_bands.append(
+            {
+                "from": band_start,
+                "to": band_end,
+                "color": "rgba(134, 239, 172, 0.28)" if not is_selected else "rgba(253, 224, 71, 0.32)",
+                "borderColor": "rgba(34, 197, 94, 0.38)" if not is_selected else "rgba(217, 119, 6, 0.60)",
+                "borderWidth": 1,
+                "label": {
+                    "text": "<br/>".join(label_lines),
+                    "useHTML": True,
+                    "style": {
+                        "color": "#14532d" if not is_selected else "#92400e",
+                        "fontWeight": "700",
+                        "fontSize": "11px",
+                        "textAlign": "center",
+                    },
+                },
+            }
+        )
+    return plot_bands
+
+
 def _build_pf_positions_params(source: dict[str, object]) -> dict[str, object]:
     return {
         "train_date": source.get("train_date_iso") or source.get("train_date"),
@@ -5007,10 +5060,25 @@ def ssts_pf_chart_page(
         "train_arr_raw": arr,
     }
     chart_points: list[dict[str, object]] = []
+    train_rows: list[dict[str, object]] = []
     error_message = ""
     try:
         token = fetch_ssts_token()
         chart_points = _fetch_ssts_positions(source, token)
+        train_rows = _build_pf_report_rows_for_train(
+            {
+                "train_no": train_no,
+                "device_id": _coerce_int(device_id) or device_id,
+                "org": org,
+                "dest": dest,
+                "dep": dep,
+                "arr": arr,
+                "device_name": "",
+                "crew_name": "",
+            },
+            report_day,
+            token,
+        )
     except (urlerror.URLError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
         error_message = str(exc)
 
@@ -5021,6 +5089,7 @@ def ssts_pf_chart_page(
     highlight_to = _coerce_int(end_pos)
     if highlight_from is not None and highlight_to is not None and highlight_to < highlight_from:
         highlight_from, highlight_to = highlight_to, highlight_from
+    station_plot_bands = _pf_build_station_plot_bands(train_rows, station, highlight_from, highlight_to)
 
     return templates.TemplateResponse(
         "ssts_pf_chart.html",
@@ -5038,6 +5107,7 @@ def ssts_pf_chart_page(
             "chart_categories_json": json.dumps(categories),
             "chart_speed_json": json.dumps(speed_series),
             "chart_distance_json": json.dumps(distance_series),
+            "station_plot_bands_json": json.dumps(station_plot_bands),
             "highlight_from": highlight_from,
             "highlight_to": highlight_to,
             "ssts_web_url": SSTS_WEB_URL,

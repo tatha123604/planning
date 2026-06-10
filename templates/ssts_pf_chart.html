@@ -36,11 +36,18 @@
           <div class="card-head-inline">
             <div>
               <h2>Chart</h2>
-              <p>Speed trend for the selected train and date. The highlighted band marks the row's station window when available.</p>
+              <p>Speed trend for the selected train and date. The station geofence window is highlighted with a shaded band and entry/exit markers.</p>
             </div>
           </div>
           {% if chart_error %}
           <p class="error-banner">Unable to fetch chart data: {{ chart_error }}</p>
+          {% endif %}
+          {% if highlight_from is not none and highlight_to is not none %}
+          <div class="summary-strip pf-summary-strip">
+            <span class="summary-chip">Station {{ station or 'Selected Stop' }}</span>
+            <span class="summary-chip">Geofence Start Index {{ highlight_from }}</span>
+            <span class="summary-chip">Geofence End Index {{ highlight_to }}</span>
+          </div>
           {% endif %}
           <div id="pf-chart-container" style="min-height: 560px;"></div>
         </section>
@@ -52,6 +59,7 @@
     const categories = {{ chart_categories_json|safe }};
     const speedData = {{ chart_speed_json|safe }};
     const distanceData = {{ chart_distance_json|safe }};
+    const stationPlotBands = {{ station_plot_bands_json|safe }};
     const highlightFrom = {{ highlight_from if highlight_from is not none else 'null' }};
     const highlightTo = {{ highlight_to if highlight_to is not none else 'null' }};
 
@@ -67,13 +75,36 @@
       },
       xAxis: {
         categories,
-        plotBands: highlightFrom !== null && highlightTo !== null ? [{
-          from: Math.max(0, highlightFrom),
-          to: Math.max(highlightFrom, highlightTo),
-          color: 'rgba(114, 191, 120, 0.22)',
+        plotBands: stationPlotBands,
+        plotLines: highlightFrom !== null && highlightTo !== null ? [{
+          value: highlightFrom,
+          color: '#d97706',
+          width: 2,
+          dashStyle: 'ShortDash',
+          zIndex: 5,
           label: {
-            text: '{{ station }}',
-            style: { color: '#203447' }
+            text: 'Geofence Start',
+            rotation: 0,
+            y: 18,
+            style: {
+              color: '#92400e',
+              fontWeight: '700'
+            }
+          }
+        }, {
+          value: highlightTo,
+          color: '#b91c1c',
+          width: 2,
+          dashStyle: 'ShortDash',
+          zIndex: 5,
+          label: {
+            text: 'Geofence End',
+            rotation: 0,
+            y: 18,
+            style: {
+              color: '#991b1b',
+              fontWeight: '700'
+            }
           }
         }] : []
       },
@@ -100,14 +131,22 @@
         type: 'line',
         data: speedData,
         color: '#0f9d58',
-        yAxis: 0
+        yAxis: 0,
+        lineWidth: 3,
+        marker: {
+          enabled: false
+        }
       }, {
         name: 'Distance',
         type: 'line',
         data: distanceData,
         color: '#d93025',
         dashStyle: 'ShortDot',
-        yAxis: 1
+        yAxis: 1,
+        lineWidth: 2,
+        marker: {
+          enabled: false
+        }
       }],
       credits: {
         enabled: false
