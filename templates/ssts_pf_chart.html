@@ -49,6 +49,13 @@
             <span class="summary-chip">Geofence End Index {{ highlight_to }}</span>
           </div>
           {% endif %}
+          <div class="summary-strip pf-summary-strip">
+            <span class="summary-chip"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#dc2626;margin-right:6px;"></span>0-5 KMPH</span>
+            <span class="summary-chip"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#f59e0b;margin-right:6px;"></span>6-20 KMPH</span>
+            <span class="summary-chip"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#a3e635;margin-right:6px;"></span>21-40 KMPH</span>
+            <span class="summary-chip"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#22c55e;margin-right:6px;"></span>41-70 KMPH</span>
+            <span class="summary-chip"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#0891b2;margin-right:6px;"></span>71+ KMPH</span>
+          </div>
           <div id="pf-chart-container" style="min-height: 560px;"></div>
         </section>
       </section>
@@ -121,7 +128,23 @@
         opposite: true
       }],
       tooltip: {
-        shared: true
+        shared: false,
+        useHTML: true,
+        formatter: function () {
+          const pointIndex = this.point ? this.point.index : -1;
+          const speedValue = pointIndex >= 0 ? speedData[pointIndex] : null;
+          const distanceValue = pointIndex >= 0 ? distanceData[pointIndex] : null;
+          const timeLabel = pointIndex >= 0 ? categories[pointIndex] : '';
+          const speedText = speedValue === null || speedValue === undefined ? '-' : Highcharts.numberFormat(speedValue, 2);
+          const distanceText = distanceValue === null || distanceValue === undefined ? '-' : Highcharts.numberFormat(distanceValue, 3);
+          return `
+            <div style="padding:4px 6px;">
+              <div style="font-weight:700;margin-bottom:4px;">${timeLabel}</div>
+              <div><span style="color:#0f9d58;">●</span> Speed: ${speedText}</div>
+              <div><span style="color:#d93025;">●</span> Distance: ${distanceText}</div>
+            </div>
+          `;
+        }
       },
       legend: {
         enabled: true
@@ -133,8 +156,30 @@
         color: '#0f9d58',
         yAxis: 0,
         lineWidth: 3,
+        zoneAxis: 'y',
+        zones: [{
+          value: 5.01,
+          color: '#dc2626'
+        }, {
+          value: 20.01,
+          color: '#f59e0b'
+        }, {
+          value: 40.01,
+          color: '#a3e635'
+        }, {
+          value: 70.01,
+          color: '#22c55e'
+        }, {
+          color: '#0891b2'
+        }],
         marker: {
-          enabled: false
+          enabled: false,
+          states: {
+            hover: {
+              enabled: true,
+              radius: 5
+            }
+          }
         }
       }, {
         name: 'Distance',
@@ -145,7 +190,13 @@
         yAxis: 1,
         lineWidth: 2,
         marker: {
-          enabled: false
+          enabled: false,
+          states: {
+            hover: {
+              enabled: true,
+              radius: 4
+            }
+          }
         }
       }],
       credits: {
