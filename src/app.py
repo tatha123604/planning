@@ -1683,7 +1683,7 @@ def _pf_chart_speed_kmph(point: dict[str, object]) -> float | None:
 
 
 def _pf_chart_distance_km(point: dict[str, object]) -> float | None:
-    for key in ("distance", "dist", "km", "distance_km"):
+    for key in ("totalDistance", "totaldistance", "distance", "dist", "km", "distance_km"):
         try:
             value = point.get(key)
         except AttributeError:
@@ -1700,7 +1700,7 @@ def _pf_chart_distance_km(point: dict[str, object]) -> float | None:
             attributes = json.loads(str(raw_attributes))
         except (TypeError, ValueError, json.JSONDecodeError):
             attributes = {}
-        for key in ("distance", "totalDistance", "totaldistance"):
+        for key in ("totalDistance", "totaldistance", "distance"):
             value = attributes.get(key)
             if value in (None, ""):
                 continue
