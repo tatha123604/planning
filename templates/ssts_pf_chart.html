@@ -36,7 +36,7 @@
           <div class="card-head-inline">
             <div>
               <h2>Chart</h2>
-              <p>Speed trend for the selected train and date. The station geofence window is highlighted with a shaded band and entry/exit markers.</p>
+              <p>Speed trend for the selected train and date. Station geofence windows stay aligned while zooming.</p>
             </div>
           </div>
           {% if chart_error %}
@@ -72,7 +72,12 @@
 
     Highcharts.chart('pf-chart-container', {
       chart: {
-        zoomType: 'x'
+        zoomType: 'x',
+        panning: {
+          enabled: true,
+          type: 'x'
+        },
+        panKey: 'shift'
       },
       title: {
         text: 'Speed Chart'
@@ -88,31 +93,13 @@
           color: '#d97706',
           width: 2,
           dashStyle: 'ShortDash',
-          zIndex: 5,
-          label: {
-            text: 'Geofence Start',
-            rotation: 0,
-            y: 18,
-            style: {
-              color: '#92400e',
-              fontWeight: '700'
-            }
-          }
+          zIndex: 5
         }, {
           value: highlightTo,
           color: '#b91c1c',
           width: 2,
           dashStyle: 'ShortDash',
-          zIndex: 5,
-          label: {
-            text: 'Geofence End',
-            rotation: 0,
-            y: 18,
-            style: {
-              color: '#991b1b',
-              fontWeight: '700'
-            }
-          }
+          zIndex: 5
         }] : []
       },
       yAxis: [{
@@ -128,10 +115,11 @@
         opposite: true
       }],
       tooltip: {
-        shared: false,
+        shared: true,
         useHTML: true,
         formatter: function () {
-          const pointIndex = this.point ? this.point.index : -1;
+          const points = Array.isArray(this.points) ? this.points : [];
+          const pointIndex = points.length && points[0] ? Number(points[0].point.x) : (this.point ? Number(this.point.x) : -1);
           const speedValue = pointIndex >= 0 ? speedData[pointIndex] : null;
           const distanceValue = pointIndex >= 0 ? distanceData[pointIndex] : null;
           const timeLabel = pointIndex >= 0 ? categories[pointIndex] : '';
@@ -148,6 +136,18 @@
       },
       legend: {
         enabled: true
+      },
+      plotOptions: {
+        series: {
+          animation: false,
+          turboThreshold: 0,
+          stickyTracking: true,
+          states: {
+            inactive: {
+              opacity: 1
+            }
+          }
+        }
       },
       series: [{
         name: 'Speed',
