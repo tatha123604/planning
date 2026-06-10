@@ -1694,7 +1694,40 @@ def _pf_chart_distance_km(point: dict[str, object]) -> float | None:
             return float(value)
         except (TypeError, ValueError):
             continue
+    raw_attributes = point.get("attributes")
+    if raw_attributes not in (None, ""):
+        try:
+            attributes = json.loads(str(raw_attributes))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            attributes = {}
+        for key in ("distance", "totalDistance", "totaldistance"):
+            value = attributes.get(key)
+            if value in (None, ""):
+                continue
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                continue
     return None
+
+
+def _pf_chart_distance_series_km(chart_points: list[dict[str, object]]) -> list[float | None]:
+    raw_values = [_pf_chart_distance_km(point) for point in chart_points]
+    first_non_null = next((value for value in raw_values if value is not None), None)
+    if first_non_null is None:
+        return [None for _ in chart_points]
+
+    if first_non_null > 1000:
+        baseline = first_non_null
+        return [
+            None if value is None else max(0.0, (value - baseline) / 1000.0)
+            for value in raw_values
+        ]
+
+    return [
+        None if value is None else float(value) / 1000.0
+        for value in raw_values
+    ]
 
 
 def _pf_chart_time_label(point: dict[str, object]) -> str:
@@ -5084,7 +5117,7 @@ def ssts_pf_chart_page(
 
     categories = [_pf_chart_time_label(point) for point in chart_points]
     speed_series = [_pf_chart_speed_kmph(point) for point in chart_points]
-    distance_series = [_pf_chart_distance_km(point) for point in chart_points]
+    distance_series = _pf_chart_distance_series_km(chart_points)
     highlight_from = _coerce_int(start_pos)
     highlight_to = _coerce_int(end_pos)
     if highlight_from is not None and highlight_to is not None and highlight_to < highlight_from:
