@@ -1,7 +1,7 @@
 (() => {
   const ACTION_HEADER_RE = /^actions$/i;
   const EXPORT_IGNORED_HEADER_RE = /^graphical representation$/i;
-  const SKIP_PDF_HEADER_RE = /^select$/i;
+  const SKIP_PDF_HEADER_RE = /^(select|chart)$/i;
 
   const normalizeText = (value) => String(value ?? "").replace(/\s+/g, " ").trim();
 
