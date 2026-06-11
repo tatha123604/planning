@@ -36,7 +36,7 @@
           <div class="card-head-inline">
             <div>
               <h2>Chart</h2>
-              <p>Speed trend for the selected train and date. Drag with the mouse to pan left or right.</p>
+              <p>Speed trend for the selected train and date. Drag to zoom, or hold Shift and drag to pan left or right.</p>
             </div>
           </div>
           {% if chart_error %}
@@ -77,6 +77,12 @@
     }));
     const highlightFrom = {{ highlight_from if highlight_from is not none else 'null' }};
     const highlightTo = {{ highlight_to if highlight_to is not none else 'null' }};
+    const defaultFocusMin = highlightFrom !== null && highlightTo !== null
+      ? Math.max(0, Math.min(highlightFrom, highlightTo) - 120)
+      : null;
+    const defaultFocusMax = highlightFrom !== null && highlightTo !== null
+      ? Math.min(categories.length - 1, Math.max(highlightFrom, highlightTo) + 120)
+      : null;
 
     const renderStationBandLabels = (chart) => {
       const axis = chart.xAxis?.[0];
@@ -139,7 +145,7 @@
           enabled: true,
           type: 'x'
         },
-        panKey: null,
+        panKey: 'shift',
         events: {
           load: function () {
             renderStationBandLabels(this);
@@ -157,6 +163,8 @@
       },
       xAxis: {
         categories,
+        min: defaultFocusMin,
+        max: defaultFocusMax,
         plotBands: stationPlotBands,
         plotLines: highlightFrom !== null && highlightTo !== null ? [{
           value: highlightFrom,
