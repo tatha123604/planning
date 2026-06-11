@@ -119,15 +119,22 @@
           })
           .attr({
             padding: 0,
-            zIndex: 6,
+            zIndex: 3,
           })
           .add();
+        if (label.element?.style) {
+          label.element.style.pointerEvents = "none";
+        }
+        if (label.div?.style) {
+          label.div.style.pointerEvents = "none";
+        }
         chart.customStationBandLabels.push(label);
       });
     };
 
     Highcharts.chart('pf-chart-container', {
       chart: {
+        zoomType: 'x',
         panning: {
           enabled: true,
           type: 'x'
