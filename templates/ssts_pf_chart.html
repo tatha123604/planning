@@ -66,9 +66,65 @@
     const categories = {{ chart_categories_json|safe }};
     const speedData = {{ chart_speed_json|safe }};
     const distanceData = {{ chart_distance_json|safe }};
-    const stationPlotBands = {{ station_plot_bands_json|safe }};
+    const stationPlotBandMeta = {{ station_plot_bands_json|safe }};
+    const stationPlotBands = stationPlotBandMeta.map((band, index) => ({
+      from: band.from,
+      to: band.to,
+      color: band.color,
+      borderColor: band.borderColor,
+      borderWidth: band.borderWidth,
+      id: `station-band-${index}`
+    }));
     const highlightFrom = {{ highlight_from if highlight_from is not none else 'null' }};
     const highlightTo = {{ highlight_to if highlight_to is not none else 'null' }};
+
+    const renderStationBandLabels = (chart) => {
+      const axis = chart.xAxis?.[0];
+      if (!axis) return;
+      if (!chart.customStationBandLabels) {
+        chart.customStationBandLabels = [];
+      }
+      chart.customStationBandLabels.forEach((label) => label?.destroy?.());
+      chart.customStationBandLabels = [];
+
+      const plotLeft = chart.plotLeft;
+      const plotRight = chart.plotLeft + chart.plotWidth;
+      const plotTop = chart.plotTop;
+
+      stationPlotBandMeta.forEach((band) => {
+        const fromPx = axis.toPixels(band.from, false);
+        const toPx = axis.toPixels(band.to, false);
+        const left = Math.max(plotLeft, Math.min(fromPx, toPx));
+        const right = Math.min(plotRight, Math.max(fromPx, toPx));
+        const width = right - left;
+        if (!Number.isFinite(width) || width < 18) {
+          return;
+        }
+        const label = chart.renderer
+          .label(
+            `<div style="width:${Math.max(width - 8, 24)}px;text-align:center;line-height:1.2;">${band.label?.text || ""}</div>`,
+            left + 4,
+            plotTop + 6,
+            undefined,
+            undefined,
+            undefined,
+            true
+          )
+          .css({
+            color: band.label?.style?.color || "#14532d",
+            fontWeight: "700",
+            fontSize: "11px",
+            textAlign: "center",
+            pointerEvents: "none",
+          })
+          .attr({
+            padding: 0,
+            zIndex: 6,
+          })
+          .add();
+        chart.customStationBandLabels.push(label);
+      });
+    };
 
     Highcharts.chart('pf-chart-container', {
       chart: {
@@ -76,7 +132,15 @@
           enabled: true,
           type: 'x'
         },
-        panKey: null
+        panKey: null,
+        events: {
+          load: function () {
+            renderStationBandLabels(this);
+          },
+          redraw: function () {
+            renderStationBandLabels(this);
+          }
+        }
       },
       title: {
         text: 'Speed Chart'
