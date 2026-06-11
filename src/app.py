@@ -1842,6 +1842,7 @@ def _pf_build_station_plot_bands(
             {
                 "from": band_start,
                 "to": band_end,
+                "isSelected": is_selected,
                 "color": "rgba(134, 239, 172, 0.28)" if not is_selected else "rgba(253, 224, 71, 0.32)",
                 "borderColor": "rgba(34, 197, 94, 0.38)" if not is_selected else "rgba(217, 119, 6, 0.60)",
                 "borderWidth": 1,
@@ -5083,6 +5084,7 @@ def ssts_pf_chart_page(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid train_date.")
 
+    token = ""
     source = {
         "train_date_iso": report_day.isoformat(),
         "train_no": train_no,
@@ -5097,15 +5099,30 @@ def ssts_pf_chart_page(
     error_message = ""
     try:
         token = fetch_ssts_token()
+        train_report_rows = fetch_ssts_trains_report(report_day, token)
+        train_match = next(
+            (
+                item for item in train_report_rows
+                if str(item.get("train_no") or "").strip() == train_no.strip()
+            ),
+            None,
+        )
+        if isinstance(train_match, dict):
+            actual_dep = train_match.get("act_dep") or train_match.get("dep")
+            actual_arr = train_match.get("act_arr") or train_match.get("arr")
+            if actual_dep not in (None, ""):
+                source["train_dep_raw"] = actual_dep
+            if actual_arr not in (None, ""):
+                source["train_arr_raw"] = actual_arr
         chart_points = _fetch_ssts_positions(source, token)
         train_rows = _build_pf_report_rows_for_train(
-            {
+            train_match if isinstance(train_match, dict) else {
                 "train_no": train_no,
                 "device_id": _coerce_int(device_id) or device_id,
                 "org": org,
                 "dest": dest,
-                "dep": dep,
-                "arr": arr,
+                "dep": source.get("train_dep_raw"),
+                "arr": source.get("train_arr_raw"),
                 "device_name": "",
                 "crew_name": "",
             },

@@ -77,6 +77,7 @@
     }));
     const highlightFrom = {{ highlight_from if highlight_from is not none else 'null' }};
     const highlightTo = {{ highlight_to if highlight_to is not none else 'null' }};
+    const selectedBandMeta = stationPlotBandMeta.find((band) => band.isSelected) || null;
 
     const renderStationBandLabels = (chart) => {
       const axis = chart.xAxis?.[0];
@@ -90,6 +91,7 @@
       const plotLeft = chart.plotLeft;
       const plotRight = chart.plotLeft + chart.plotWidth;
       const plotTop = chart.plotTop;
+      const plotBottom = chart.plotTop + chart.plotHeight;
 
       stationPlotBandMeta.forEach((band) => {
         const fromPx = axis.toPixels(band.from, false);
@@ -97,13 +99,15 @@
         const left = Math.max(plotLeft, Math.min(fromPx, toPx));
         const right = Math.min(plotRight, Math.max(fromPx, toPx));
         const width = right - left;
-        if (!Number.isFinite(width) || width < 18) {
+        if (!Number.isFinite(width) || (width < 18 && !band.isSelected)) {
           return;
         }
+        const labelWidth = band.isSelected ? Math.max(width + 24, 90) : Math.max(width - 8, 24);
+        const centeredLeft = Math.max(plotLeft + 2, Math.min(left + 4, plotRight - labelWidth - 2));
         const label = chart.renderer
           .label(
-            `<div style="width:${Math.max(width - 8, 24)}px;text-align:center;line-height:1.2;">${band.label?.text || ""}</div>`,
-            left + 4,
+            `<div style="width:${labelWidth}px;text-align:center;line-height:1.2;">${band.label?.text || ""}</div>`,
+            centeredLeft,
             plotTop + 6,
             undefined,
             undefined,
@@ -129,6 +133,35 @@
           label.div.style.pointerEvents = "none";
         }
         chart.customStationBandLabels.push(label);
+
+        if (band.isSelected) {
+          const centerPx = Math.max(plotLeft, Math.min(plotRight, (left + right) / 2));
+          const marker = chart.renderer
+            .path([
+              "M", centerPx, plotTop + 44,
+              "L", centerPx - 8, plotTop + 28,
+              "L", centerPx + 8, plotTop + 28,
+              "Z",
+            ])
+            .attr({
+              fill: "#d97706",
+              zIndex: 6,
+            })
+            .add();
+          const guide = chart.renderer
+            .path([
+              "M", centerPx, plotTop + 44,
+              "L", centerPx, plotBottom,
+            ])
+            .attr({
+              stroke: "#d97706",
+              "stroke-width": 1,
+              dashstyle: "ShortDash",
+              zIndex: 5,
+            })
+            .add();
+          chart.customStationBandLabels.push(marker, guide);
+        }
       });
     };
 
@@ -170,7 +203,13 @@
           width: 2,
           dashStyle: 'ShortDash',
           zIndex: 5
-        }] : []
+        }, ...(selectedBandMeta ? [{
+          value: (selectedBandMeta.from + selectedBandMeta.to) / 2,
+          color: '#f59e0b',
+          width: 3,
+          dashStyle: 'Solid',
+          zIndex: 6
+        }] : [])] : []
       },
       yAxis: [{
         title: {
