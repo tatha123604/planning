@@ -36,7 +36,7 @@
           <div class="card-head-inline">
             <div>
               <h2>Chart</h2>
-              <p>Speed trend for the selected train and date. Station geofence windows stay aligned while zooming.</p>
+              <p>Speed trend for the selected train and date. Drag with the mouse to pan left or right.</p>
             </div>
           </div>
           {% if chart_error %}
@@ -72,12 +72,11 @@
 
     Highcharts.chart('pf-chart-container', {
       chart: {
-        zoomType: 'x',
         panning: {
           enabled: true,
           type: 'x'
         },
-        panKey: 'shift'
+        panKey: null
       },
       title: {
         text: 'Speed Chart'
