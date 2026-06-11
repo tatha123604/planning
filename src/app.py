@@ -1861,6 +1861,48 @@ def _pf_build_station_plot_bands(
     return plot_bands
 
 
+def _pf_normalize_station_windows_to_chart(
+    rows: list[dict[str, object]],
+    chart_point_count: int,
+    selected_start: int | None,
+    selected_end: int | None,
+) -> tuple[list[dict[str, object]], int | None, int | None]:
+    if chart_point_count <= 1:
+        return rows, selected_start, selected_end
+
+    max_end = max(
+        (
+            max(
+                _coerce_int(row.get("start_pos")) or 0,
+                _coerce_int(row.get("end_pos")) or 0,
+            )
+            for row in rows
+            if isinstance(row, dict)
+        ),
+        default=0,
+    )
+    if max_end <= 0 or max_end <= (chart_point_count - 1):
+        return rows, selected_start, selected_end
+
+    scale = (chart_point_count - 1) / max_end
+    normalized_rows: list[dict[str, object]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        row_copy = dict(row)
+        start_pos = _coerce_int(row.get("start_pos"))
+        end_pos = _coerce_int(row.get("end_pos"))
+        if start_pos is not None:
+            row_copy["start_pos"] = int(round(start_pos * scale))
+        if end_pos is not None:
+            row_copy["end_pos"] = int(round(end_pos * scale))
+        normalized_rows.append(row_copy)
+
+    normalized_selected_start = int(round(selected_start * scale)) if selected_start is not None else None
+    normalized_selected_end = int(round(selected_end * scale)) if selected_end is not None else None
+    return normalized_rows, normalized_selected_start, normalized_selected_end
+
+
 def _build_pf_positions_params(source: dict[str, object]) -> dict[str, object]:
     return {
         "train_date": source.get("train_date_iso") or source.get("train_date"),
@@ -5139,7 +5181,13 @@ def ssts_pf_chart_page(
     highlight_to = _coerce_int(end_pos)
     if highlight_from is not None and highlight_to is not None and highlight_to < highlight_from:
         highlight_from, highlight_to = highlight_to, highlight_from
-    station_plot_bands = _pf_build_station_plot_bands(train_rows, station, highlight_from, highlight_to)
+    normalized_train_rows, highlight_from, highlight_to = _pf_normalize_station_windows_to_chart(
+        train_rows,
+        len(chart_points),
+        highlight_from,
+        highlight_to,
+    )
+    station_plot_bands = _pf_build_station_plot_bands(normalized_train_rows, station, highlight_from, highlight_to)
 
     return templates.TemplateResponse(
         "ssts_pf_chart.html",
