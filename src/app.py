@@ -44,8 +44,9 @@ from .logic import (
     role_sort_key,
     normalize_role,
 )
-from .models import Employee, Requirement, SstsDeviceSnapshot, SstsSnapshotRun
+from .models import CliMatrixOverdueSnapshot, CliMatrixSummarySnapshot, Employee, Requirement, SstsDeviceSnapshot, SstsSnapshotRun
 from .seed import seed_all
+from processor import build_sheet2_df, build_summary_df
 
 BASE_PATH = Path(__file__).resolve().parent.parent
 GOOGLE_EMPLOYEE_STATION_TABS = ["North", "South", "KOAA", "DDJ", "RHA", "NH", "BT"]
@@ -188,6 +189,80 @@ def _load_li_grading_metadata() -> dict[str, str]:
         "report_date": str(raw.get("report_date") or ""),
         "saved_at": str(raw.get("saved_at") or ""),
     }
+
+
+def _cli_matrix_record_date(value: object) -> date | None:
+    if value is None:
+        return None
+    if str(value).strip().lower() == "nat":
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    try:
+        if hasattr(value, "to_pydatetime"):
+            converted = value.to_pydatetime()
+            if isinstance(converted, datetime):
+                return converted.date()
+            if isinstance(converted, date):
+                return converted
+            return None
+    except Exception:
+        return None
+    return None
+
+
+def _save_cli_matrix_snapshots(
+    session: Session,
+    report_date_value: date,
+    summary_df,
+    overdue_df,
+) -> None:
+    existing_summary = session.exec(
+        select(CliMatrixSummarySnapshot).where(CliMatrixSummarySnapshot.report_date == report_date_value)
+    ).all()
+    for row in existing_summary:
+        session.delete(row)
+
+    existing_overdue = session.exec(
+        select(CliMatrixOverdueSnapshot).where(CliMatrixOverdueSnapshot.report_date == report_date_value)
+    ).all()
+    for row in existing_overdue:
+        session.delete(row)
+
+    for record in summary_df.to_dict(orient="records"):
+        session.add(
+            CliMatrixSummarySnapshot(
+                report_date=report_date_value,
+                row_no=int(record["S.No."]),
+                cli_id=str(record["CLI ID"]),
+                cli_name=str(record["CLI Name"]),
+                alloted_desig=str(record["Alloted Desig."]),
+                fp_over_due=int(record["FP Over Due"]),
+                oldest_fp_overdue_date=_cli_matrix_record_date(record["Oldest FP OverDue Date"]),
+            )
+        )
+
+    for record in overdue_df.to_dict(orient="records"):
+        session.add(
+            CliMatrixOverdueSnapshot(
+                report_date=report_date_value,
+                row_no=int(record["S.No."]),
+                cli_id=str(record["CLI ID"]),
+                cli_name=str(record["CLI Name"]),
+                alloted_desig=str(record["Alloted Desig."]),
+                fp_over_due=int(record["FP Over Due"]),
+                oldest_fp_overdue_date=_cli_matrix_record_date(record["Oldest FP OverDue Date"]),
+                counsel_over_due=int(record["Counsel Over Due"]),
+                oldest_counsel_overdue_date=_cli_matrix_record_date(record["Oldest Counsel OverDue Date"]),
+                grading_overdue=int(record["Grading OverDue"]),
+                oldest_grading_overdue_date=_cli_matrix_record_date(record["Oldest Grading OverDue"]),
+                total_over_due_cases=int(record["Total Over Due Cases"]),
+            )
+        )
+
+    session.commit()
 
 
 def _split_cli_name_and_inline_id(value: object | None) -> tuple[str, str]:

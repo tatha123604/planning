@@ -115,8 +115,7 @@ def _replace_date_string(value: str, report_date: str) -> str:
     return re.sub(r"\d{2}[.\-_]\d{2}[.\-_]\d{4}", report_date, value)
 
 
-def _load_source_dataframe(source_file) -> pd.DataFrame:
-    df = pd.read_excel(_as_stream(source_file), skiprows=2)
+def _normalize_source_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     df.columns = [str(col).strip().replace("\n", " ") for col in df.columns]
     df = df.rename(
         columns={
@@ -163,6 +162,20 @@ def _load_source_dataframe(source_file) -> pd.DataFrame:
         df["FPOverDue"] + df["Counsel Over Due"] + df["Grading OverDue"]
     )
     return df
+
+
+def _load_source_dataframe(source_file) -> pd.DataFrame:
+    last_error: Exception | None = None
+    for skiprows in (2, 0):
+        try:
+            df = pd.read_excel(_as_stream(source_file), skiprows=skiprows)
+            return _normalize_source_dataframe(df)
+        except ValueError as exc:
+            last_error = exc
+            continue
+    if last_error is not None:
+        raise last_error
+    raise ValueError("Could not read CLI Matrix source workbook.")
 
 
 def _aggregate_source(df: pd.DataFrame) -> pd.DataFrame:
