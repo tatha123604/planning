@@ -1929,6 +1929,40 @@ def _pf_find_nearest_chart_index(
     return nearest_index
 
 
+def _pf_interpolate_position(
+    anchors: list[tuple[int, int]],
+    original_position: int,
+    chart_point_count: int,
+) -> int:
+    if not anchors:
+        return max(0, min(chart_point_count - 1, original_position))
+    if len(anchors) == 1:
+        original_anchor, mapped_anchor = anchors[0]
+        return max(0, min(chart_point_count - 1, mapped_anchor + (original_position - original_anchor)))
+    if original_position <= anchors[0][0]:
+        left_original, left_mapped = anchors[0]
+        right_original, right_mapped = anchors[1]
+    elif original_position >= anchors[-1][0]:
+        left_original, left_mapped = anchors[-2]
+        right_original, right_mapped = anchors[-1]
+    else:
+        left_original = left_mapped = right_original = right_mapped = 0
+        for idx in range(1, len(anchors)):
+            previous_original, previous_mapped = anchors[idx - 1]
+            current_original, current_mapped = anchors[idx]
+            if previous_original <= original_position <= current_original:
+                left_original, left_mapped = previous_original, previous_mapped
+                right_original, right_mapped = current_original, current_mapped
+                break
+    span_original = right_original - left_original
+    if span_original == 0:
+        mapped_position = left_mapped
+    else:
+        ratio = (original_position - left_original) / span_original
+        mapped_position = left_mapped + ((right_mapped - left_mapped) * ratio)
+    return max(0, min(chart_point_count - 1, int(round(mapped_position))))
+
+
 def _pf_normalize_station_windows_to_chart(
     rows: list[dict[str, object]],
     chart_points: list[dict[str, object]],
@@ -1945,6 +1979,33 @@ def _pf_normalize_station_windows_to_chart(
     if valid_chart_seconds:
         chart_min = min(valid_chart_seconds)
         chart_max = max(valid_chart_seconds)
+        anchor_pairs: list[tuple[int, int]] = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            original_start = _coerce_int(row.get("start_pos"))
+            original_end = _coerce_int(row.get("end_pos"))
+            if original_start is None or original_end is None:
+                continue
+            arr_seconds = _parse_hms_seconds(row.get("act_arr") or row.get("sch_arr"))
+            dep_seconds = _parse_hms_seconds(row.get("act_dep") or row.get("sch_dep"))
+            midpoint_seconds = None
+            if arr_seconds is not None and dep_seconds is not None:
+                fitted_arr = _pf_fit_seconds_to_chart_window(arr_seconds, chart_min, chart_max)
+                fitted_dep = _pf_fit_seconds_to_chart_window(dep_seconds, chart_min, chart_max)
+                if fitted_arr is not None and fitted_dep is not None:
+                    midpoint_seconds = int(round((fitted_arr + fitted_dep) / 2))
+            elif arr_seconds is not None:
+                midpoint_seconds = _pf_fit_seconds_to_chart_window(arr_seconds, chart_min, chart_max)
+            elif dep_seconds is not None:
+                midpoint_seconds = _pf_fit_seconds_to_chart_window(dep_seconds, chart_min, chart_max)
+            midpoint_index = _pf_find_nearest_chart_index(chart_second_values, midpoint_seconds)
+            if midpoint_index is None:
+                continue
+            original_midpoint = int(round((original_start + original_end) / 2))
+            anchor_pairs.append((original_midpoint, midpoint_index))
+        anchor_pairs = sorted(set(anchor_pairs), key=lambda item: item[0])
+
         normalized_rows: list[dict[str, object]] = []
         normalized_selected_start = selected_start
         normalized_selected_end = selected_end
@@ -1959,15 +2020,21 @@ def _pf_normalize_station_windows_to_chart(
             row_copy = dict(row)
             original_start = _coerce_int(row.get("start_pos"))
             original_end = _coerce_int(row.get("end_pos"))
-            arr_seconds = _parse_hms_seconds(row.get("act_arr") or row.get("sch_arr"))
-            dep_seconds = _parse_hms_seconds(row.get("act_dep") or row.get("sch_dep"))
-            fitted_arr_seconds = _pf_fit_seconds_to_chart_window(arr_seconds, chart_min, chart_max)
-            fitted_dep_seconds = _pf_fit_seconds_to_chart_window(dep_seconds, chart_min, chart_max)
-            aligned_start = _pf_find_nearest_chart_index(chart_second_values, fitted_arr_seconds)
-            aligned_end = _pf_find_nearest_chart_index(
-                chart_second_values,
-                fitted_dep_seconds if fitted_dep_seconds is not None else fitted_arr_seconds,
-            )
+            aligned_start = None
+            aligned_end = None
+            if original_start is not None and original_end is not None and anchor_pairs:
+                aligned_start = _pf_interpolate_position(anchor_pairs, original_start, chart_point_count)
+                aligned_end = _pf_interpolate_position(anchor_pairs, original_end, chart_point_count)
+            else:
+                arr_seconds = _parse_hms_seconds(row.get("act_arr") or row.get("sch_arr"))
+                dep_seconds = _parse_hms_seconds(row.get("act_dep") or row.get("sch_dep"))
+                fitted_arr_seconds = _pf_fit_seconds_to_chart_window(arr_seconds, chart_min, chart_max)
+                fitted_dep_seconds = _pf_fit_seconds_to_chart_window(dep_seconds, chart_min, chart_max)
+                aligned_start = _pf_find_nearest_chart_index(chart_second_values, fitted_arr_seconds)
+                aligned_end = _pf_find_nearest_chart_index(
+                    chart_second_values,
+                    fitted_dep_seconds if fitted_dep_seconds is not None else fitted_arr_seconds,
+                )
             if aligned_start is not None:
                 row_copy["start_pos"] = aligned_start
             if aligned_end is not None:

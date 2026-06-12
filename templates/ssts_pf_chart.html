@@ -10,6 +10,16 @@
   <script src="https://code.highcharts.com/highcharts.js"></script>
 </head>
 <body>
+  <style>
+    body.chart-sidebar-hidden .sidebar {
+      display: none;
+    }
+    body.chart-sidebar-hidden .content {
+      margin-left: 0;
+      width: 100%;
+      max-width: 100%;
+    }
+  </style>
   <div class="layout">
     <aside class="sidebar">
       <div class="brand">
@@ -36,7 +46,7 @@
           <div class="card-head-inline">
             <div>
               <h2>Chart</h2>
-              <p>Speed trend for the selected train and date. Drag to zoom, or hold Shift and drag to pan left or right.</p>
+              <p>Speed trend for the selected train and date. Drag to zoom, hold Shift and drag to pan, and press <code>H</code> to hide or show the side menu.</p>
             </div>
           </div>
           {% if chart_error %}
@@ -63,6 +73,19 @@
   </div>
 
   <script>
+    const SIDEBAR_HIDDEN_CLASS = 'chart-sidebar-hidden';
+    document.addEventListener('keydown', (event) => {
+      if (event.defaultPrevented) return;
+      const target = event.target;
+      const tagName = target && target.tagName ? String(target.tagName).toUpperCase() : '';
+      if (tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT' || (target && target.isContentEditable)) {
+        return;
+      }
+      if ((event.key || '').toLowerCase() === 'h') {
+        document.body.classList.toggle(SIDEBAR_HIDDEN_CLASS);
+      }
+    });
+
     const categories = {{ chart_categories_json|safe }};
     const speedData = {{ chart_speed_json|safe }};
     const distanceData = {{ chart_distance_json|safe }};
