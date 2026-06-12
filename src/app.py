@@ -1534,27 +1534,131 @@ def build_simple_recruit_plan(retiring: dict[str, list[Employee]], lead_days: in
     return plan
 
 
-def build_cli_distribution(employees: list[Employee]) -> list[dict[str, int | str]]:
-    """Aggregate gradation counts per CLI (case-insensitive)."""
+def _match_cli_master_employee(
+    employees: list[Employee],
+    cli_name: str | None,
+    cli_id: str | None,
+) -> Employee | None:
+    canonical_name, canonical_id = _canonicalize_cli_name(cli_name, cli_id)
+    if canonical_id:
+        for employee in employees:
+            employee_cli_name, employee_cli_id = _canonicalize_cli_name(employee.cli, employee.cli_id)
+            if employee_cli_id == canonical_id and _cli_names_equivalent(employee.name, canonical_name):
+                return employee
+    if canonical_name:
+        for employee in employees:
+            if _cli_names_equivalent(employee.name, canonical_name):
+                employee_cli_name, employee_cli_id = _canonicalize_cli_name(employee.cli, employee.cli_id)
+                if canonical_id and employee_cli_id == canonical_id:
+                    return employee
+                if _cli_names_equivalent(employee_cli_name, canonical_name):
+                    return employee
+    return None
+
+
+def build_cli_distribution(
+    employees: list[Employee],
+    cli_bio_reference_rows: list[dict[str, str]] | None = None,
+) -> list[dict[str, int | str]]:
+    """Aggregate gradation counts per CLI and preserve uploaded CLI master IDs."""
+    reference_rows = cli_bio_reference_rows or []
+    reference_lookup: dict[str, tuple[str, str]] = {}
+    for row in reference_rows:
+        ref_name, ref_id = _canonicalize_cli_name(row.get("cli_name"), row.get("cli_id"))
+        ref_key = (ref_id or "").lower() or _cli_name_key(ref_name).lower()
+        if not ref_key:
+            continue
+        reference_lookup[ref_key] = (ref_name or "", ref_id or "")
+
     dist: dict[str, dict[str, int | str]] = {}
     for e in employees:
-        cli_raw = (e.cli or "").strip()
-        cli_key = cli_raw.lower() if cli_raw else "unassigned"
-        label = cli_raw or "Unassigned"
+        cli_name, cli_id = _canonicalize_cli_name(e.cli, e.cli_id)
+        cli_key = (cli_id or "").lower() or _cli_name_key(cli_name).lower() or "unassigned"
+        ref_name, ref_id = reference_lookup.get(cli_key, ("", ""))
+        label = ref_name or cli_name or "Unassigned"
         grad = (e.gradation or "").strip().upper()
         grad_key = grad[0] if grad else ""
         if cli_key not in dist:
-            dist[cli_key] = {"cli": label, "A": 0, "B": 0, "C": 0, "total": 0}
-        # keep the first non-empty label we see for this key
-        if not dist[cli_key]["cli"] and cli_raw:
-            dist[cli_key]["cli"] = cli_raw
+            dist[cli_key] = {
+                "cli": label,
+                "cli_id": ref_id or cli_id or "",
+                "A": 0,
+                "B": 0,
+                "C": 0,
+                "total": 0,
+                "total_staff": 0,
+            }
+        if not dist[cli_key]["cli"] and cli_name:
+            dist[cli_key]["cli"] = cli_name
+        if not dist[cli_key]["cli_id"] and cli_id:
+            dist[cli_key]["cli_id"] = cli_id
         if grad_key in ("A", "B", "C"):
             dist[cli_key][grad_key] += 1  # type: ignore[index]
-        dist[cli_key]["total"] += 1  # type: ignore[index]
+            dist[cli_key]["total"] += 1  # type: ignore[index]
+        dist[cli_key]["total_staff"] += 1  # type: ignore[index]
+
+    for ref_name, ref_id in reference_lookup.values():
+        cli_key = (ref_id or "").lower() or _cli_name_key(ref_name).lower()
+        if cli_key not in dist:
+            dist[cli_key] = {
+                "cli": ref_name or "Unassigned",
+                "cli_id": ref_id or "",
+                "A": 0,
+                "B": 0,
+                "C": 0,
+                "total": 0,
+                "total_staff": 0,
+            }
+
     return [
-        {"cli": counts["cli"], "A": counts["A"], "B": counts["B"], "C": counts["C"], "total": counts["total"]}
-        for _, counts in sorted(dist.items(), key=lambda item: item[0])
+        {
+            "cli": counts["cli"],
+            "cli_id": counts["cli_id"],
+            "A": counts["A"],
+            "B": counts["B"],
+            "C": counts["C"],
+            "total": counts["total"],
+            "total_staff": counts["total_staff"],
+        }
+        for _, counts in sorted(
+            dist.items(),
+            key=lambda item: (
+                str(item[1].get("cli") or "").lower(),
+                str(item[1].get("cli_id") or "").lower(),
+            ),
+        )
     ]
+
+
+def build_cli_master_roster(
+    employees: list[Employee],
+    cli_bio_reference_rows: list[dict[str, str]],
+) -> list[dict[str, object]]:
+    roster: list[dict[str, object]] = []
+    for row in sorted(
+        cli_bio_reference_rows,
+        key=lambda item: (
+            str(item.get("cli_name") or "").lower(),
+            str(item.get("cli_id") or "").lower(),
+        ),
+    ):
+        cli_name, cli_id = _canonicalize_cli_name(row.get("cli_name"), row.get("cli_id"))
+        matched_employee = _match_cli_master_employee(employees, cli_name, cli_id)
+        roster.append(
+            {
+                "id": matched_employee.id if matched_employee else None,
+                "cli": cli_name or "",
+                "cli_id": cli_id or "",
+                "cli_label": format_cli_label(cli_name, cli_id),
+                "name": matched_employee.name if matched_employee else (cli_name or ""),
+                "hrms": matched_employee.hrms if matched_employee else "",
+                "crew_id": matched_employee.crew_id if matched_employee else "",
+                "role": matched_employee.role if matched_employee else "Chief Loco Inspector",
+                "gradation": matched_employee.gradation if matched_employee else "",
+                "grading_due": matched_employee.grading_due if matched_employee else None,
+            }
+        )
+    return roster
 
 
 def build_working_location_summary(
@@ -4996,10 +5100,17 @@ def _cli_page_context(
         except ValueError:
             grading_saved_at = saved_at_raw
     cli_bio_reference_rows = _load_cli_bio_reference_rows(session)
-    cli_opts = sorted({(e.cli or "").strip() for e in employees if (e.cli or "").strip()})
+    cli_opts = sorted(
+        {
+            str(row.get("cli_name") or "").strip()
+            for row in cli_bio_reference_rows
+            if str(row.get("cli_name") or "").strip()
+        }
+        or {(e.cli or "").strip() for e in employees if (e.cli or "").strip()}
+    )
     role_opts = ROLE_ORDER + sorted({e.role for e in employees if e.role not in ROLE_ORDER})
     gradation_opts = sorted({e.gradation for e in employees if e.gradation})
-    cli_distribution = build_cli_distribution(employees)
+    cli_distribution = build_cli_distribution(employees, cli_bio_reference_rows)
     for row in cli_distribution:
         row["detail_href"] = f"/cli?roster_cli={urlparse.quote(str(row.get('cli') or ''))}#cli-distribution-detail"
         row["selected"] = bool(roster_cli and str(row.get("cli") or "").strip().lower() == roster_cli.strip().lower())
@@ -5012,25 +5123,30 @@ def _cli_page_context(
         "total_staff": sum(int(row.get("total_staff") or 0) for row in cli_distribution),
     }
 
-    cli_roster = list(employees)
-    if roster_cli_status in (None, ""):
-        cli_roster = [e for e in cli_roster if e.cli or e.cli_id]
-    elif roster_cli_status == "assigned":
-        cli_roster = [e for e in cli_roster if e.cli or e.cli_id]
-    elif roster_cli_status == "unassigned":
-        cli_roster = [e for e in cli_roster if not e.cli and not e.cli_id]
+    cli_roster = build_cli_master_roster(employees, cli_bio_reference_rows)
+    if roster_cli_status == "unassigned":
+        cli_roster = [e for e in cli_roster if not e.get("id")]
+    else:
+        cli_roster = [e for e in cli_roster if e.get("id")]
     if roster_name:
         name_lower = roster_name.lower()
-        cli_roster = [e for e in cli_roster if name_lower in e.name.lower()]
+        cli_roster = [e for e in cli_roster if name_lower in str(e.get("name") or "").lower()]
     if roster_cli:
         cli_lower = roster_cli.strip().lower()
-        cli_roster = [e for e in cli_roster if e.cli and cli_lower in e.cli.strip().lower()]
+        cli_roster = [e for e in cli_roster if cli_lower in str(e.get("cli") or "").strip().lower()]
     if roster_role:
-        cli_roster = [e for e in cli_roster if e.role == roster_role]
+        cli_roster = [e for e in cli_roster if str(e.get("role") or "") == roster_role]
     if roster_gradation:
         grad_lower = roster_gradation.lower()
-        cli_roster = [e for e in cli_roster if e.gradation and grad_lower in e.gradation.lower()]
-    cli_roster = sorted(cli_roster, key=lambda e: ((e.cli or "").strip().lower(), role_sort_key(e.role), e.name))
+        cli_roster = [e for e in cli_roster if e.get("gradation") and grad_lower in str(e.get("gradation") or "").lower()]
+    cli_roster = sorted(
+        cli_roster,
+        key=lambda e: (
+            str(e.get("cli") or "").strip().lower(),
+            role_sort_key(str(e.get("role") or "")),
+            str(e.get("name") or "").lower(),
+        ),
+    )
 
     return {
         "request": request,

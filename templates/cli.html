@@ -145,7 +145,7 @@
           <summary>CLI Distribution by Gradation</summary>
           <div style="display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap;">
             <div>
-              <p>Counts of Gradation A, B, and C staff per CLI (all employees).</p>
+              <p>Counts of Gradation A, B, and C staff per uploaded CLI master, with total assigned staff under each CLI.</p>
               {% if grading_report_date %}
               <p class="hint">Distribution file date: <strong>{{ grading_report_date }}</strong></p>
               {% endif %}
@@ -241,6 +241,7 @@
       <section class="card collapsible" id="cli-roster">
         <details {% if roster_open %}open{% else %}open{% endif %}>
           <summary>CLI Roster</summary>
+          <p class="hint">Shows the uploaded CLI master roster. Unassigned means a CLI bio reference row exists but no matching employee profile was found yet.</p>
           <form class="inline" method="get" action="/cli#cli-roster">
             <label>Name
               <input name="roster_name" value="{{ roster_name }}" placeholder="Search name" />
