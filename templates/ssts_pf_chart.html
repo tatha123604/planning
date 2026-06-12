@@ -11,10 +11,7 @@
 </head>
 <body>
   <style>
-    body.chart-sidebar-hidden .sidebar {
-      display: none;
-    }
-    body.chart-sidebar-hidden .content {
+    body.nav-hidden .content {
       margin-left: 0;
       width: 100%;
       max-width: 100%;
@@ -46,7 +43,7 @@
           <div class="card-head-inline">
             <div>
               <h2>Chart</h2>
-              <p>Speed trend for the selected train and date. Drag to zoom, hold Shift and drag to pan, and press <code>H</code> to hide or show the side menu.</p>
+              <p>Speed trend for the selected train and date. Drag to zoom, hold Shift and drag to pan, and use the side hide button or press <code>H</code> to hide or show the side menu.</p>
             </div>
           </div>
           {% if chart_error %}
@@ -73,26 +70,15 @@
   </div>
 
   <script>
-    const SIDEBAR_HIDDEN_CLASS = 'chart-sidebar-hidden';
-    document.addEventListener('keydown', (event) => {
-      if (event.defaultPrevented) return;
-      const target = event.target;
-      const tagName = target && target.tagName ? String(target.tagName).toUpperCase() : '';
-      if (tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT' || (target && target.isContentEditable)) {
-        return;
-      }
-      if ((event.key || '').toLowerCase() === 'h') {
-        document.body.classList.toggle(SIDEBAR_HIDDEN_CLASS);
-      }
-    });
-
     const categories = {{ chart_categories_json|safe }};
     const speedData = {{ chart_speed_json|safe }};
     const distanceData = {{ chart_distance_json|safe }};
     const stationPlotBandMeta = {{ station_plot_bands_json|safe }};
+    const getBandAxisFrom = (value) => Math.max(-0.5, Number(value) - 0.5);
+    const getBandAxisTo = (value) => Number(value) + 0.5;
     const stationPlotBands = stationPlotBandMeta.map((band, index) => ({
-      from: band.from,
-      to: band.to,
+      from: getBandAxisFrom(band.from),
+      to: getBandAxisTo(band.to),
       color: band.color,
       borderColor: band.borderColor,
       borderWidth: band.borderWidth,
@@ -117,8 +103,8 @@
       const plotBottom = chart.plotTop + chart.plotHeight;
 
       stationPlotBandMeta.forEach((band) => {
-        const fromPx = axis.toPixels(band.from, false);
-        const toPx = axis.toPixels(band.to, false);
+        const fromPx = axis.toPixels(getBandAxisFrom(band.from), false);
+        const toPx = axis.toPixels(getBandAxisTo(band.to), false);
         const left = Math.max(plotLeft, Math.min(fromPx, toPx));
         const right = Math.min(plotRight, Math.max(fromPx, toPx));
         const width = right - left;
@@ -215,13 +201,13 @@
         categories,
         plotBands: stationPlotBands,
         plotLines: highlightFrom !== null && highlightTo !== null ? [{
-          value: highlightFrom,
+          value: getBandAxisFrom(highlightFrom),
           color: '#d97706',
           width: 2,
           dashStyle: 'ShortDash',
           zIndex: 5
         }, {
-          value: highlightTo,
+          value: getBandAxisTo(highlightTo),
           color: '#b91c1c',
           width: 2,
           dashStyle: 'ShortDash',
@@ -335,6 +321,34 @@
         enabled: false
       }
     });
+
+    (() => {
+      const STORAGE_KEY = 'sidebarHiddenDesktop';
+      const hiddenClass = 'nav-hidden';
+      const toggleSidebar = () => {
+        document.body.classList.toggle(hiddenClass);
+        try {
+          localStorage.setItem(STORAGE_KEY, document.body.classList.contains(hiddenClass) ? '1' : '0');
+        } catch (err) {}
+      };
+      try {
+        if (localStorage.getItem(STORAGE_KEY) === '1') {
+          document.body.classList.add(hiddenClass);
+        }
+      } catch (err) {}
+      document.addEventListener('keydown', (event) => {
+        if (event.defaultPrevented) return;
+        const target = event.target;
+        const tagName = target && target.tagName ? String(target.tagName).toUpperCase() : '';
+        if (tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT' || (target && target.isContentEditable)) {
+          return;
+        }
+        if ((event.key || '').toLowerCase() === 'h') {
+          toggleSidebar();
+        }
+      });
+    })();
   </script>
+  <script src="/static/sidebar-toggle.js?v={{ asset_ver }}"></script>
 </body>
 </html>
