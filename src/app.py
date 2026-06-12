@@ -4793,9 +4793,23 @@ def _cli_page_context(
     roster_role: str | None = None,
     roster_gradation: str | None = None,
     roster_cli_status: str | None = None,
+    grading_update_error: str = "",
+    grading_update_notice: str = "",
+    grading_update_warning: str = "",
+    grading_update_details: list[str] | None = None,
+    grading_warning_details: list[str] | None = None,
 ) -> dict[str, object]:
     init_db()
     employees = session.exec(select(Employee)).all()
+    grading_meta = _load_li_grading_metadata()
+    grading_report_date = coerce_report_date(grading_meta.get("report_date"))
+    saved_at_raw = grading_meta.get("saved_at", "")
+    grading_saved_at = ""
+    if saved_at_raw:
+        try:
+            grading_saved_at = datetime.fromisoformat(saved_at_raw).strftime("%d/%m/%Y %I:%M %p")
+        except ValueError:
+            grading_saved_at = saved_at_raw
     cli_opts = sorted({(e.cli or "").strip() for e in employees if (e.cli or "").strip()})
     role_opts = ROLE_ORDER + sorted({e.role for e in employees if e.role not in ROLE_ORDER})
     gradation_opts = sorted({e.gradation for e in employees if e.gradation})
@@ -4851,14 +4865,14 @@ def _cli_page_context(
         "roster_gradation": roster_gradation or "",
         "roster_cli_status": roster_cli_status or "",
         "roster_open": True,
-        "grading_update_error": "",
-        "grading_update_notice": "",
-        "grading_update_warning": "",
-        "grading_update_details": [],
-        "grading_warning_details": [],
-        "grading_source_name": "",
-        "grading_report_date": "",
-        "grading_saved_at": "",
+        "grading_update_error": grading_update_error,
+        "grading_update_notice": grading_update_notice,
+        "grading_update_warning": grading_update_warning,
+        "grading_update_details": grading_update_details or [],
+        "grading_warning_details": grading_warning_details or [],
+        "grading_source_name": grading_meta.get("filename", ""),
+        "grading_report_date": grading_report_date.strftime("%d-%m-%Y") if grading_report_date else "",
+        "grading_saved_at": grading_saved_at,
     }
 
 
