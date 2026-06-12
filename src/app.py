@@ -50,6 +50,7 @@ from .seed import seed_all
 BASE_PATH = Path(__file__).resolve().parent.parent
 GOOGLE_EMPLOYEE_STATION_TABS = ["North", "South", "KOAA", "DDJ", "RHA", "NH", "BT"]
 EMPLOYEE_SYNC_BACKUP_DIR = DB_PATH.parent / "employee_sync_backups"
+LI_GRADING_METADATA_FILE = DB_PATH.parent / "li_grading_metadata.json"
 GOOGLE_SHEETS_READONLY_SCOPE = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 templates = Jinja2Templates(directory=str(BASE_PATH / "templates"))
 # Jinja filter for dd-mm-yyyy display
@@ -133,6 +134,60 @@ def _latest_employee_sync_backup() -> tuple[Optional[Path], str]:
     latest = backups[0]
     label = latest.name.replace("employee_sync_", "").replace(".db", "").replace("_", " ")
     return latest, label
+
+
+def infer_report_date(filename: str | None) -> date | None:
+    text = str(filename or "")
+    for pattern in (r"(\d{2})[-_ ](\d{2})[-_ ](\d{4})", r"(\d{4})[-_ ](\d{2})[-_ ](\d{2})"):
+        match = re.search(pattern, text)
+        if not match:
+            continue
+        parts = [int(part) for part in match.groups()]
+        try:
+            if len(str(parts[0])) == 4:
+                return date(parts[0], parts[1], parts[2])
+            return date(parts[2], parts[1], parts[0])
+        except ValueError:
+            return None
+    return None
+
+
+def coerce_report_date(value: object | None) -> date | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _save_li_grading_metadata(filename: str | None) -> None:
+    report_date = infer_report_date(filename or "")
+    payload = {
+        "filename": filename or "",
+        "report_date": report_date.isoformat() if report_date else "",
+        "saved_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    LI_GRADING_METADATA_FILE.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")
+
+
+def _load_li_grading_metadata() -> dict[str, str]:
+    if not LI_GRADING_METADATA_FILE.exists():
+        return {"filename": "", "report_date": "", "saved_at": ""}
+    try:
+        raw = json.loads(LI_GRADING_METADATA_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {"filename": "", "report_date": "", "saved_at": ""}
+    if not isinstance(raw, dict):
+        return {"filename": "", "report_date": "", "saved_at": ""}
+    return {
+        "filename": str(raw.get("filename") or ""),
+        "report_date": str(raw.get("report_date") or ""),
+        "saved_at": str(raw.get("saved_at") or ""),
+    }
 
 
 def _split_cli_name_and_inline_id(value: object | None) -> tuple[str, str]:
