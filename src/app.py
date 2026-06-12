@@ -26,7 +26,7 @@ from fastapi.templating import Jinja2Templates
 from openpyxl import load_workbook, Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
-from sqlalchemy import case, func
+from sqlalchemy import case, func, text
 from sqlmodel import Session, select
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -189,6 +189,61 @@ def _load_li_grading_metadata() -> dict[str, str]:
         "report_date": str(raw.get("report_date") or ""),
         "saved_at": str(raw.get("saved_at") or ""),
     }
+
+
+def _save_cli_bio_reference_rows(
+    session: Session,
+    records: list[dict[str, object]],
+    source_filename: str,
+) -> None:
+    unique_rows: dict[str, str] = {}
+    for record in records:
+        cli_id = str(record.get("cli_id") or "").strip()
+        cli_name = str(record.get("cli_name") or record.get("name") or "").strip()
+        if not cli_id or not cli_name:
+            continue
+        unique_rows[cli_id] = cli_name
+
+    session.execute(text("DELETE FROM cli_bio_reference;"))
+    for cli_id, cli_name in sorted(unique_rows.items()):
+        session.execute(
+            text(
+                """
+                INSERT INTO cli_bio_reference (cli_id, cli_name, gradation, source_file, updated_at)
+                VALUES (:cli_id, :cli_name, '0', :source_file, CURRENT_TIMESTAMP)
+                """
+            ),
+            {"cli_id": cli_id, "cli_name": cli_name, "source_file": source_filename},
+        )
+
+
+def _load_cli_bio_reference_rows(session: Session) -> list[dict[str, str]]:
+    rows = session.exec(
+        text(
+            """
+            SELECT cli_id, cli_name, gradation, source_file
+            FROM cli_bio_reference
+            ORDER BY cli_name, cli_id
+            """
+        )
+    ).fetchall()
+    return [
+        {
+            "cli_id": str(row[0] or ""),
+            "cli_name": str(row[1] or ""),
+            "gradation": str(row[2] or "0"),
+            "source_file": str(row[3] or ""),
+        }
+        for row in rows
+    ]
+
+
+def _refresh_cli_bio_reference_from_records(
+    session: Session,
+    records: list[dict[str, object]],
+    source_filename: str,
+) -> None:
+    _save_cli_bio_reference_rows(session, records, source_filename)
 
 
 def _cli_matrix_record_date(value: object) -> date | None:
@@ -4940,6 +4995,7 @@ def _cli_page_context(
             grading_saved_at = datetime.fromisoformat(saved_at_raw).strftime("%d/%m/%Y %I:%M %p")
         except ValueError:
             grading_saved_at = saved_at_raw
+    cli_bio_reference_rows = _load_cli_bio_reference_rows(session)
     cli_opts = sorted({(e.cli or "").strip() for e in employees if (e.cli or "").strip()})
     role_opts = ROLE_ORDER + sorted({e.role for e in employees if e.role not in ROLE_ORDER})
     gradation_opts = sorted({e.gradation for e in employees if e.gradation})
@@ -4984,7 +5040,7 @@ def _cli_page_context(
         "cli_distribution_breakdown": [],
         "cli_distribution_totals": {"A": 0, "B": 0, "C": 0, "total": 0},
         "cli_distribution_detail_label": roster_cli or "",
-        "cli_bio_reference_rows": [],
+        "cli_bio_reference_rows": cli_bio_reference_rows,
         "cli_roster": cli_roster,
         "cli_opts": cli_opts,
         "role_opts": role_opts,
@@ -8422,8 +8478,10 @@ def _apply_cli_biodata_records(
     session: Session,
     records: list[dict[str, object]],
     warnings: list[str],
+    source_filename: str = "",
 ) -> tuple[str, str, list[str], list[str]]:
     init_db()
+    _refresh_cli_bio_reference_from_records(session, records, source_filename)
     employees = session.exec(select(Employee)).all()
     by_emp_no: dict[str, Employee] = {}
     by_name_role: dict[tuple[str, str], list[Employee]] = {}
@@ -8578,7 +8636,7 @@ async def upload_li_grading(
                 if bio_kind != "cli_biodata":
                     raise HTTPException(status_code=400, detail="The second file must be a CLITI Biodata workbook.")
                 bio_records, warnings = _parse_cli_biodata_workbook(bio_content)
-                bio_notice, bio_warning, details, warnings = _apply_cli_biodata_records(session, bio_records, warnings)
+                bio_notice, bio_warning, details, warnings = _apply_cli_biodata_records(session, bio_records, warnings, bio_name)
                 notice_parts.append(bio_notice)
                 if bio_warning:
                     warning_bits.append(bio_warning)
@@ -8598,7 +8656,7 @@ async def upload_li_grading(
         if upload_kind == "cli_biodata":
             records, warnings = _parse_cli_biodata_workbook(content)
             _save_li_grading_metadata(filename)
-            notice, warning_message, details, warnings = _apply_cli_biodata_records(session, records, warnings)
+            notice, warning_message, details, warnings = _apply_cli_biodata_records(session, records, warnings, filename)
             return templates.TemplateResponse(
                 "cli.html",
                 _cli_page_context(
