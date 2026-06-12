@@ -4794,6 +4794,7 @@ def _cli_page_context(
     roster_gradation: str | None = None,
     roster_cli_status: str | None = None,
 ) -> dict[str, object]:
+    init_db()
     employees = session.exec(select(Employee)).all()
     cli_opts = sorted({(e.cli or "").strip() for e in employees if (e.cli or "").strip()})
     role_opts = ROLE_ORDER + sorted({e.role for e in employees if e.role not in ROLE_ORDER})
@@ -8278,6 +8279,7 @@ def _apply_cli_biodata_records(
     records: list[dict[str, object]],
     warnings: list[str],
 ) -> tuple[str, str, list[str], list[str]]:
+    init_db()
     employees = session.exec(select(Employee)).all()
     by_emp_no: dict[str, Employee] = {}
     by_name_role: dict[tuple[str, str], list[Employee]] = {}
@@ -8406,6 +8408,7 @@ async def upload_li_grading(
     session: Session = Depends(get_session),
 ):
     try:
+        init_db()
         _validate_sensitive_action_password(action_password)
         filename = file.filename or ""
         if not filename.lower().endswith((".xlsx", ".xlsm")):
