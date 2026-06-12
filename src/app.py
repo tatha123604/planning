@@ -1861,14 +1861,147 @@ def _pf_build_station_plot_bands(
     return plot_bands
 
 
+def _pf_chart_point_seconds(point: dict[str, object]) -> int | None:
+    for key in ("gpstime", "gps_time", "time", "device_time", "servertime", "updatedon", "updated_at"):
+        value = point.get(key)
+        text = str(value or "").strip()
+        if not text:
+            continue
+        try:
+            parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+            if parsed.tzinfo is not None:
+                parsed = parsed.astimezone(IST)
+            return (parsed.hour * 3600) + (parsed.minute * 60) + parsed.second
+        except ValueError:
+            parts = text.split()
+            hhmmss = parts[-1][:8] if parts else text[:8]
+            parsed_seconds = _parse_hms_seconds(hhmmss)
+            if parsed_seconds is not None:
+                return parsed_seconds
+    return None
+
+
+def _pf_monotonic_seconds(values: list[int | None]) -> list[int | None]:
+    normalized: list[int | None] = []
+    day_offset = 0
+    previous_value: int | None = None
+    for value in values:
+        if value is None:
+            normalized.append(None)
+            continue
+        adjusted_value = value + day_offset
+        if previous_value is not None and adjusted_value < previous_value - 43200:
+            day_offset += 86400
+            adjusted_value = value + day_offset
+        normalized.append(adjusted_value)
+        previous_value = adjusted_value
+    return normalized
+
+
+def _pf_fit_seconds_to_chart_window(value: int | None, chart_min: int, chart_max: int) -> int | None:
+    if value is None:
+        return None
+    candidates = [value + (86400 * offset) for offset in (-1, 0, 1, 2)]
+    return min(
+        candidates,
+        key=lambda candidate: (
+            0 if chart_min <= candidate <= chart_max else min(abs(candidate - chart_min), abs(candidate - chart_max)),
+            abs(candidate - chart_min),
+        ),
+    )
+
+
+def _pf_find_nearest_chart_index(
+    chart_seconds: list[int | None],
+    target_seconds: int | None,
+) -> int | None:
+    if target_seconds is None:
+        return None
+    nearest_index: int | None = None
+    nearest_gap: int | None = None
+    for index, point_seconds in enumerate(chart_seconds):
+        if point_seconds is None:
+            continue
+        gap = abs(point_seconds - target_seconds)
+        if nearest_gap is None or gap < nearest_gap:
+            nearest_index = index
+            nearest_gap = gap
+    return nearest_index
+
+
 def _pf_normalize_station_windows_to_chart(
     rows: list[dict[str, object]],
+    chart_points: list[dict[str, object]],
     chart_point_count: int,
+    selected_station: str,
     selected_start: int | None,
     selected_end: int | None,
 ) -> tuple[list[dict[str, object]], int | None, int | None]:
     if chart_point_count <= 1:
         return rows, selected_start, selected_end
+
+    chart_second_values = _pf_monotonic_seconds([_pf_chart_point_seconds(point) for point in chart_points])
+    valid_chart_seconds = [value for value in chart_second_values if value is not None]
+    if valid_chart_seconds:
+        chart_min = min(valid_chart_seconds)
+        chart_max = max(valid_chart_seconds)
+        normalized_rows: list[dict[str, object]] = []
+        normalized_selected_start = selected_start
+        normalized_selected_end = selected_end
+        selected_bounds = None
+        if selected_start is not None and selected_end is not None:
+            selected_bounds = (min(selected_start, selected_end), max(selected_start, selected_end))
+        selected_row_aligned = False
+
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            row_copy = dict(row)
+            original_start = _coerce_int(row.get("start_pos"))
+            original_end = _coerce_int(row.get("end_pos"))
+            arr_seconds = _parse_hms_seconds(row.get("act_arr") or row.get("sch_arr"))
+            dep_seconds = _parse_hms_seconds(row.get("act_dep") or row.get("sch_dep"))
+            fitted_arr_seconds = _pf_fit_seconds_to_chart_window(arr_seconds, chart_min, chart_max)
+            fitted_dep_seconds = _pf_fit_seconds_to_chart_window(dep_seconds, chart_min, chart_max)
+            aligned_start = _pf_find_nearest_chart_index(chart_second_values, fitted_arr_seconds)
+            aligned_end = _pf_find_nearest_chart_index(
+                chart_second_values,
+                fitted_dep_seconds if fitted_dep_seconds is not None else fitted_arr_seconds,
+            )
+            if aligned_start is not None:
+                row_copy["start_pos"] = aligned_start
+            if aligned_end is not None:
+                row_copy["end_pos"] = aligned_end
+            if aligned_start is not None and aligned_end is None:
+                row_copy["end_pos"] = aligned_start
+            elif aligned_end is not None and aligned_start is None:
+                row_copy["start_pos"] = aligned_end
+
+            station_name = str(row.get("station") or "").strip()
+            current_bounds = None
+            if original_start is not None and original_end is not None:
+                current_bounds = (min(original_start, original_end), max(original_start, original_end))
+            aligned_bounds = None
+            new_start = _coerce_int(row_copy.get("start_pos"))
+            new_end = _coerce_int(row_copy.get("end_pos"))
+            if new_start is not None and new_end is not None:
+                aligned_bounds = (min(new_start, new_end), max(new_start, new_end))
+            if (
+                not selected_row_aligned
+                and station_name == selected_station
+                and aligned_bounds is not None
+                and (
+                    selected_bounds is None
+                    or current_bounds == selected_bounds
+                )
+            ):
+                normalized_selected_start, normalized_selected_end = aligned_bounds
+                selected_row_aligned = True
+            normalized_rows.append(row_copy)
+
+        if selected_row_aligned:
+            return normalized_rows, normalized_selected_start, normalized_selected_end
+        rows = normalized_rows
 
     max_end = max(
         (
@@ -5183,7 +5316,9 @@ def ssts_pf_chart_page(
         highlight_from, highlight_to = highlight_to, highlight_from
     normalized_train_rows, highlight_from, highlight_to = _pf_normalize_station_windows_to_chart(
         train_rows,
+        chart_points,
         len(chart_points),
+        station,
         highlight_from,
         highlight_to,
     )
