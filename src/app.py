@@ -6401,6 +6401,2162 @@ def _to_int(val: object | None) -> int | None:
             raise ValueError(f"Invalid integer value: {val!r}") from exc
 
 
+
+
+def _employee_has_value(value: object | None) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    return True
+
+
+def _employee_completeness(employee: Employee) -> int:
+    fields = (
+        "name",
+        "role",
+        "hire_date",
+        "retirement_date",
+        "promotion_ready_date",
+        "category",
+        "pf_no",
+        "hrms",
+        "crew_id",
+        "dob",
+        "doa",
+        "do_report",
+        "status",
+        "working_at",
+        "gradation",
+        "cli",
+        "pme_due",
+        "technical_due",
+        "transportation_due",
+    )
+    return sum(1 for field in fields if _employee_has_value(getattr(employee, field)))
+
+
+def _employee_cleanup_sort_key(employee: Employee) -> tuple[int, int, int]:
+    has_crew_id = 1 if _employee_has_value(employee.crew_id) else 0
+    return (-has_crew_id, -_employee_completeness(employee), employee.id or 0)
+
+
+def _dedupe_uploaded_employee_rows(session: Session, sync_details: list[str]) -> int:
+    groups: dict[tuple[str, str, str], list[Employee]] = {}
+    for employee in session.exec(select(Employee)).all():
+        name_key = _normalize_import_name(employee.name)
+        pf_key = _clean_import_text(employee.pf_no)
+        dob_key = employee.dob.isoformat() if employee.dob else None
+        if not name_key or not pf_key or not dob_key:
+            continue
+        groups.setdefault((name_key, dob_key, pf_key), []).append(employee)
+
+    removed = 0
+    merge_fields = (
+        "role",
+        "hire_date",
+        "retirement_date",
+        "promotion_role",
+        "promotion_ready_date",
+        "category",
+        "hrms",
+        "crew_id",
+        "doa",
+        "do_report",
+        "status",
+        "gradation",
+        "cli",
+        "pme_due",
+        "technical_due",
+        "transportation_due",
+    )
+
+    for employees in groups.values():
+        if len(employees) < 2:
+            continue
+
+        by_working_at: dict[str, list[Employee]] = {}
+        for employee in employees:
+            working_at_key = (_clean_import_text(employee.working_at) or "").upper()
+            by_working_at.setdefault(working_at_key, []).append(employee)
+
+        for working_at_group in by_working_at.values():
+            if len(working_at_group) < 2:
+                continue
+
+            ordered = sorted(working_at_group, key=_employee_cleanup_sort_key)
+            keeper = ordered[0]
+            merged_count = 0
+
+            for duplicate in ordered[1:]:
+                for field_name in merge_fields:
+                    if not _employee_has_value(getattr(keeper, field_name)) and _employee_has_value(
+                        getattr(duplicate, field_name)
+                    ):
+                        setattr(keeper, field_name, getattr(duplicate, field_name))
+                session.delete(duplicate)
+                removed += 1
+                merged_count += 1
+
+            if merged_count:
+                location = _clean_import_text(keeper.working_at) or "blank working_at"
+                sync_details.append(
+                    f"Deduplicated {keeper.name}: kept 1 row for EMP NO {_format_sync_value(keeper.pf_no)} at {location}; removed {merged_count} duplicate row(s)."
+                )
+
+    return removed
+
+
+def _working_at_key(value: object | None) -> str:
+    return (_clean_import_text(value) or "").upper()
+
+
+def _one_working_at_blank(first: object | None, second: object | None) -> bool:
+    first_key = _working_at_key(first)
+    second_key = _working_at_key(second)
+    return (not first_key and bool(second_key)) or (bool(first_key) and not second_key)
+
+
+def _cleanup_row_payload(employee: Employee) -> dict[str, object]:
+    return {
+        "id": employee.id,
+        "name": employee.name,
+        "designation": employee.role,
+        "dob": employee.dob.strftime("%d/%m/%Y") if employee.dob else "",
+        "hire_date": employee.hire_date.strftime("%d/%m/%Y") if employee.hire_date else "",
+        "retirement_date": employee.retirement_date.strftime("%d/%m/%Y") if employee.retirement_date else "",
+        "emp_no": employee.pf_no or "",
+        "working_at": employee.working_at or "",
+        "crew_id": employee.crew_id or "",
+        "hrms": employee.hrms or "",
+        "category": employee.category or "",
+        "gradation": employee.gradation or "",
+        "cli": _employee_cli_label(employee),
+    }
+
+
+def _cleanup_conflict_key(reason: str, rows: list[Employee]) -> str:
+    row_ids = ",".join(str(employee.id or 0) for employee in sorted(rows, key=lambda item: item.id or 0))
+    return f"{reason}|{row_ids}"
+
+
+def _load_string_set(path: Path) -> set[str]:
+    if not path.exists():
+        return set()
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return set()
+    if not isinstance(raw, list):
+        return set()
+    return {str(item) for item in raw if item}
+
+
+def _save_string_set(path: Path, keys: set[str]) -> None:
+    path.write_text(
+        json.dumps(sorted(keys), ensure_ascii=True, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _load_keep_both_decisions() -> set[str]:
+    return _load_string_set(EMPLOYEE_MASTER_KEEP_BOTH_FILE)
+
+
+def _save_keep_both_decisions(keys: set[str]) -> None:
+    _save_string_set(EMPLOYEE_MASTER_KEEP_BOTH_FILE, keys)
+
+
+def _review_group_key(reason: str, keep_id: int | None, review_ids: list[int]) -> str:
+    review_string = ",".join(str(row_id) for row_id in sorted(review_ids))
+    return f"{reason}|{keep_id or 0}|{review_string}"
+
+
+def _serialize_employee_master_snapshot(records: dict[str, dict[str, object]]) -> list[dict[str, object]]:
+    payload: list[dict[str, object]] = []
+    for emp_no, record in sorted(records.items()):
+        payload.append(
+            {
+                "row_hint": str(record.get("row_hint") or ""),
+                "name": _clean_import_text(record.get("name")) or "",
+                "role": _clean_import_text(record.get("role")) or "",
+                "pf_no": emp_no,
+                "crew_id": _clean_import_text(record.get("crew_id")) or "",
+                "dob": record.get("dob").isoformat() if isinstance(record.get("dob"), date) else "",
+                "category": _clean_import_text(record.get("category"), blank_na=True) or "",
+            }
+        )
+    return payload
+
+
+def _save_employee_master_source_snapshot(records: dict[str, dict[str, object]]) -> None:
+    EMPLOYEE_MASTER_SOURCE_SNAPSHOT_FILE.write_text(
+        json.dumps(_serialize_employee_master_snapshot(records), ensure_ascii=True, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _load_employee_master_source_snapshot() -> list[dict[str, object]]:
+    if not EMPLOYEE_MASTER_SOURCE_SNAPSHOT_FILE.exists():
+        return []
+    try:
+        raw = json.loads(EMPLOYEE_MASTER_SOURCE_SNAPSHOT_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    if not isinstance(raw, list):
+        return []
+    return [item for item in raw if isinstance(item, dict)]
+
+
+def _build_duplicate_cleanup_plan(session: Session) -> tuple[list[dict[str, object]], list[dict[str, object]], dict[str, int]]:
+    employees = session.exec(select(Employee)).all()
+    plan: list[dict[str, object]] = []
+    conflicts: list[dict[str, object]] = []
+    used_ids: set[int] = set()
+    seen_conflicts: set[tuple[int, ...]] = set()
+    keep_both_keys = _load_keep_both_decisions()
+
+    def register_plan(reason: str, rows: list[Employee]) -> None:
+        if len(rows) < 2:
+            return
+        ordered = sorted(rows, key=_employee_cleanup_sort_key)
+        keeper = ordered[0]
+        remove_rows = ordered[1:]
+        used_ids.update(employee.id for employee in ordered if employee.id is not None)
+        keep_payload = _cleanup_row_payload(keeper)
+        remove_payloads = [_cleanup_row_payload(employee) for employee in remove_rows]
+        plan.append(
+            {
+                "reason": reason,
+                "keep": keep_payload,
+                "remove": remove_payloads,
+                "rows": [keep_payload] + remove_payloads,
+                "row_ids": [employee.id for employee in ordered if employee.id is not None],
+                "suggested_keep_id": keeper.id if keeper.id is not None else None,
+            }
+        )
+
+    def register_conflict(reason: str, rows: list[Employee]) -> None:
+        if len(rows) < 2:
+            return
+        row_ids = tuple(sorted(employee.id or 0 for employee in rows))
+        if row_ids in seen_conflicts:
+            return
+        seen_conflicts.add(row_ids)
+        key_string = _cleanup_conflict_key(reason, rows)
+        if key_string in keep_both_keys:
+            return
+        ordered_rows = sorted(rows, key=_employee_cleanup_sort_key)
+        conflicts.append(
+            {
+                "reason": reason,
+                "conflict_key": key_string,
+                "row_ids": [employee.id for employee in sorted(rows, key=lambda item: item.id or 0)],
+                "suggested_keep_id": ordered_rows[0].id if ordered_rows else None,
+                "rows": [_cleanup_row_payload(employee) for employee in sorted(rows, key=lambda item: item.id or 0)],
+            }
+        )
+
+    def has_dob_mismatch(rows: list[Employee]) -> bool:
+        dob_keys = {employee.dob.isoformat() for employee in rows if employee.dob}
+        return len(dob_keys) > 1
+
+    by_name_dob: dict[tuple[str, str], list[Employee]] = {}
+    for employee in employees:
+        name_key = _normalize_import_name(employee.name)
+        dob_key = employee.dob.isoformat() if employee.dob else None
+        if not name_key or not dob_key:
+            continue
+        by_name_dob.setdefault((name_key, dob_key), []).append(employee)
+
+    for rows in by_name_dob.values():
+        if len(rows) < 2:
+            continue
+        register_plan("Same Name + DOB", rows)
+
+    by_name_crew: dict[tuple[str, str], list[Employee]] = {}
+    for employee in employees:
+        if employee.id is not None and employee.id in used_ids:
+            continue
+        name_key = _normalize_import_name(employee.name)
+        crew_key = _clean_import_text(employee.crew_id)
+        if not name_key or not crew_key:
+            continue
+        by_name_crew.setdefault((name_key, crew_key), []).append(employee)
+
+    for rows in by_name_crew.values():
+        if len(rows) < 2:
+            continue
+        if has_dob_mismatch(rows):
+            register_conflict("Same Name + same CREW ID but DOB differs", rows)
+            continue
+        register_plan("Same Name + same CREW ID", rows)
+
+    by_dob_last5: dict[tuple[str, str], list[Employee]] = {}
+    for employee in employees:
+        if employee.id is not None and employee.id in used_ids:
+            continue
+        dob_key = employee.dob.isoformat() if employee.dob else None
+        last5_key = _emp_no_last5(employee.pf_no)
+        if not dob_key or not last5_key:
+            continue
+        by_dob_last5.setdefault((dob_key, last5_key), []).append(employee)
+
+    for rows in by_dob_last5.values():
+        if len(rows) < 2:
+            continue
+        register_plan("Same DOB + EMP NO last 5 match", rows)
+
+    by_name_last5: dict[tuple[str, str], list[Employee]] = {}
+    for employee in employees:
+        if employee.id is not None and employee.id in used_ids:
+            continue
+        name_key = _normalize_import_name(employee.name)
+        last5_key = _emp_no_last5(employee.pf_no)
+        if not name_key or not last5_key:
+            continue
+        by_name_last5.setdefault((name_key, last5_key), []).append(employee)
+
+    for rows in by_name_last5.values():
+        if len(rows) < 2:
+            continue
+
+        working_groups: dict[str, list[Employee]] = {}
+        for employee in rows:
+            working_groups.setdefault(_working_at_key(employee.working_at), []).append(employee)
+
+        blank_group = working_groups.get("", [])
+        filled_groups = [group for key, group in working_groups.items() if key]
+        if not blank_group:
+            continue
+
+        if has_dob_mismatch(rows):
+            register_conflict("Same Name + EMP NO last 5 match but DOB differs", rows)
+            continue
+
+        if len(filled_groups) == 1:
+            register_plan("Same Name + EMP NO last 5 match and one Working At is blank", rows)
+        else:
+            register_conflict("Same Name + EMP NO last 5 match but Working At differs", rows)
+
+    by_name_role: dict[tuple[str, str], list[Employee]] = {}
+    for employee in employees:
+        if employee.id is not None and employee.id in used_ids:
+            continue
+        name_key = _normalize_import_name(employee.name)
+        role_key = normalize_role(employee.role) if employee.role else None
+        if not name_key or not role_key:
+            continue
+        by_name_role.setdefault((name_key, role_key), []).append(employee)
+
+    for rows in by_name_role.values():
+        if len(rows) < 2:
+            continue
+
+        by_working_last5: dict[tuple[str, str], list[Employee]] = {}
+        for employee in rows:
+            last5_key = _emp_no_last5(employee.pf_no)
+            if not last5_key:
+                continue
+            by_working_last5.setdefault((_working_at_key(employee.working_at), last5_key), []).append(employee)
+
+        by_last5_all_working: dict[str, set[str]] = {}
+        for working_key, last5_key in by_working_last5.keys():
+            by_last5_all_working.setdefault(last5_key, set()).add(working_key)
+
+        for last5_key, working_keys in by_last5_all_working.items():
+            if len(working_keys) > 1:
+                conflict_rows = [
+                    employee
+                    for employee in rows
+                    if _emp_no_last5(employee.pf_no) == last5_key
+                ]
+                register_conflict("Same Name + Designation + EMP NO last 5 match but Working At differs", conflict_rows)
+
+        for group_rows in by_working_last5.values():
+            if len(group_rows) > 1:
+                if has_dob_mismatch(group_rows):
+                    register_conflict("Same Name + Designation + EMP NO last 5 match but DOB differs", group_rows)
+                else:
+                    register_plan("Same Name + Designation + EMP NO last 5 match", group_rows)
+
+    conflicts = [
+        item
+        for item in conflicts
+        if not any(row_id and row_id in used_ids for row_id in item["row_ids"])
+    ]
+
+    summary = {
+        "merge_groups": len(plan),
+        "rows_to_delete": sum(len(item["remove"]) for item in plan),
+        "conflict_groups": len(conflicts),
+    }
+    return plan, conflicts, summary
+
+
+def _apply_duplicate_cleanup_plan(
+    session: Session,
+    plan: list[dict[str, object]],
+    details: list[str],
+) -> int:
+    merge_fields = (
+        "role",
+        "hire_date",
+        "retirement_date",
+        "promotion_role",
+        "promotion_ready_date",
+        "category",
+        "hrms",
+        "crew_id",
+        "doa",
+        "do_report",
+        "status",
+        "working_at",
+        "gradation",
+        "cli",
+        "pme_due",
+        "technical_due",
+        "transportation_due",
+    )
+    removed = 0
+
+    for item in plan:
+        keep_id = item["keep"]["id"]
+        remove_ids = [row["id"] for row in item["remove"]]
+        keeper = session.get(Employee, keep_id) if keep_id is not None else None
+        if keeper is None:
+            continue
+
+        merged_count = 0
+        for duplicate_id in remove_ids:
+            duplicate = session.get(Employee, duplicate_id) if duplicate_id is not None else None
+            if duplicate is None:
+                continue
+            for field_name in merge_fields:
+                if not _employee_has_value(getattr(keeper, field_name)) and _employee_has_value(getattr(duplicate, field_name)):
+                    setattr(keeper, field_name, getattr(duplicate, field_name))
+            session.delete(duplicate)
+            removed += 1
+            merged_count += 1
+
+        if merged_count:
+            details.append(
+                f"{item['reason']}: kept {keeper.name} ({_format_sync_value(keeper.pf_no)}), removed {merged_count} duplicate row(s)."
+            )
+
+    session.commit()
+    return removed
+
+
+def _merge_conflict_rows(
+    session: Session,
+    *,
+    reason: str,
+    row_ids: list[int],
+    details: list[str],
+) -> int:
+    rows = [session.get(Employee, row_id) for row_id in row_ids]
+    employees = [row for row in rows if row is not None]
+    if len(employees) < 2:
+        return 0
+
+    ordered = sorted(employees, key=_employee_cleanup_sort_key)
+    keeper = ordered[0]
+    removed = 0
+    merge_fields = (
+        "role",
+        "hire_date",
+        "retirement_date",
+        "promotion_role",
+        "promotion_ready_date",
+        "category",
+        "hrms",
+        "crew_id",
+        "doa",
+        "do_report",
+        "status",
+        "working_at",
+        "gradation",
+        "cli",
+        "pme_due",
+        "technical_due",
+        "transportation_due",
+    )
+
+    for duplicate in ordered[1:]:
+        for field_name in merge_fields:
+            if not _employee_has_value(getattr(keeper, field_name)) and _employee_has_value(getattr(duplicate, field_name)):
+                setattr(keeper, field_name, getattr(duplicate, field_name))
+        session.delete(duplicate)
+        removed += 1
+
+    if removed:
+        details.append(
+            f"Manual merge applied for {reason}: kept {keeper.name} ({_format_sync_value(keeper.pf_no)}), removed {removed} duplicate row(s)."
+        )
+    session.commit()
+    return removed
+
+
+def _merge_employee_rows(
+    session: Session,
+    *,
+    reason: str,
+    keep_id: int,
+    remove_ids: list[int],
+    details: list[str],
+) -> int:
+    keeper = session.get(Employee, keep_id)
+    if keeper is None:
+        return 0
+
+    merge_fields = (
+        "role",
+        "hire_date",
+        "retirement_date",
+        "promotion_role",
+        "promotion_ready_date",
+        "category",
+        "hrms",
+        "crew_id",
+        "doa",
+        "do_report",
+        "status",
+        "working_at",
+        "gradation",
+        "cli",
+        "pme_due",
+        "technical_due",
+        "transportation_due",
+    )
+    removed = 0
+
+    for duplicate_id in remove_ids:
+        duplicate = session.get(Employee, duplicate_id)
+        if duplicate is None or duplicate is keeper:
+            continue
+        for field_name in merge_fields:
+            if not _employee_has_value(getattr(keeper, field_name)) and _employee_has_value(getattr(duplicate, field_name)):
+                setattr(keeper, field_name, getattr(duplicate, field_name))
+        session.delete(duplicate)
+        removed += 1
+
+    if removed:
+        details.append(
+            f"{reason}: kept {keeper.name} ({_format_sync_value(keeper.pf_no)}), removed {removed} extra row(s)."
+        )
+    session.commit()
+    return removed
+
+
+def _delete_employee_rows(
+    session: Session,
+    *,
+    reason: str,
+    row_ids: list[int],
+    details: list[str],
+) -> int:
+    removed = 0
+    for row_id in row_ids:
+        employee = session.get(Employee, row_id)
+        if employee is None:
+            continue
+        details.append(
+            f"{reason}: deleted {employee.name} ({_format_sync_value(employee.pf_no)}) from the current table."
+        )
+        session.delete(employee)
+        removed += 1
+    session.commit()
+    return removed
+
+
+def _build_employee_master_extra_review(session: Session) -> tuple[list[dict[str, object]], dict[str, object]]:
+    snapshot = _load_employee_master_source_snapshot()
+    if not snapshot:
+        return [], {
+            "groups": 0,
+            "review_rows": 0,
+            "mergeable_groups": 0,
+            "db_only_groups": 0,
+            "reason_counts": [],
+        }
+
+    employees = session.exec(select(Employee)).all()
+    keep_keys = _load_string_set(EMPLOYEE_MASTER_EXTRA_REVIEW_KEEP_FILE)
+
+    source_by_pf: dict[str, dict[str, object]] = {}
+    source_by_crew: dict[str, dict[str, object]] = {}
+    for row in snapshot:
+        pf_value = _clean_import_text(row.get("pf_no"))
+        crew_value = _clean_import_text(row.get("crew_id"))
+        if pf_value and pf_value not in source_by_pf:
+            source_by_pf[pf_value] = row
+        if crew_value and crew_value not in source_by_crew:
+            source_by_crew[crew_value] = row
+
+    represented_ids: set[int] = set()
+    represented_rows: list[Employee] = []
+    for employee in employees:
+        pf_value = _clean_import_text(employee.pf_no)
+        crew_value = _clean_import_text(employee.crew_id)
+        if (pf_value and pf_value in source_by_pf) or (crew_value and crew_value in source_by_crew):
+            if employee.id is not None:
+                represented_ids.add(employee.id)
+            represented_rows.append(employee)
+
+    by_name_crew_keep: dict[tuple[str, str], list[Employee]] = {}
+    by_name_last5_keep: dict[tuple[str, str], list[Employee]] = {}
+    by_dob_last5_keep: dict[tuple[str, str], list[Employee]] = {}
+    for employee in represented_rows:
+        name_key = _normalize_import_name(employee.name)
+        crew_key = _clean_import_text(employee.crew_id)
+        last5_key = _emp_no_last5(employee.pf_no)
+        if name_key and crew_key:
+            by_name_crew_keep.setdefault((name_key, crew_key), []).append(employee)
+        if name_key and last5_key:
+            by_name_last5_keep.setdefault((name_key, last5_key), []).append(employee)
+        if employee.dob and last5_key:
+            by_dob_last5_keep.setdefault((employee.dob.isoformat(), last5_key), []).append(employee)
+
+    groups: list[dict[str, object]] = []
+
+    def add_group(reason: str, keep_row: Employee | None, review_rows: list[Employee]) -> None:
+        if not review_rows:
+            return
+        ordered_review = sorted(review_rows, key=_employee_cleanup_sort_key)
+        review_ids = [employee.id for employee in ordered_review if employee.id is not None]
+        if not review_ids:
+            return
+        keep_id = keep_row.id if keep_row is not None else None
+        group_key = _review_group_key(reason, keep_id, review_ids)
+        if group_key in keep_keys:
+            return
+        groups.append(
+            {
+                "reason": reason,
+                "group_key": group_key,
+                "keep": _cleanup_row_payload(keep_row) if keep_row is not None else None,
+                "review_rows": [_cleanup_row_payload(employee) for employee in ordered_review],
+                "row_ids": review_ids,
+                "can_merge": keep_row is not None,
+            }
+        )
+
+    for employee in employees:
+        if employee.id is None or employee.id in represented_ids:
+            continue
+        name_key = _normalize_import_name(employee.name)
+        crew_key = _clean_import_text(employee.crew_id)
+        last5_key = _emp_no_last5(employee.pf_no)
+        matched = False
+
+        if name_key and crew_key:
+            keep_matches = by_name_crew_keep.get((name_key, crew_key), [])
+            if len(keep_matches) == 1:
+                keep_row = keep_matches[0]
+                reason = "Possible extra row: same Name + same CREW ID"
+                if employee.dob and keep_row.dob and employee.dob != keep_row.dob:
+                    reason = "Possible extra row: same Name + same CREW ID but DOB differs"
+                add_group(reason, keep_row, [employee])
+                matched = True
+
+        if matched:
+            continue
+
+        if employee.dob and last5_key:
+            keep_matches = by_dob_last5_keep.get((employee.dob.isoformat(), last5_key), [])
+            if len(keep_matches) == 1:
+                keep_row = keep_matches[0]
+                add_group("Possible extra row: same DOB + EMP NO last 5 match", keep_row, [employee])
+                matched = True
+
+        if matched:
+            continue
+
+        if name_key and last5_key:
+            keep_matches = by_name_last5_keep.get((name_key, last5_key), [])
+            if len(keep_matches) == 1:
+                keep_row = keep_matches[0]
+                if _one_working_at_blank(employee.working_at, keep_row.working_at):
+                    reason = "Possible extra row: same Name + EMP NO last 5 match and one Working At is blank"
+                    if employee.dob and keep_row.dob and employee.dob != keep_row.dob:
+                        reason = "Possible extra row: same Name + EMP NO last 5 match but DOB differs"
+                    add_group(reason, keep_row, [employee])
+                    matched = True
+
+        if matched:
+            continue
+
+        add_group("Only in current DB, no latest source match", None, [employee])
+
+    reason_counts = Counter(group["reason"] for group in groups)
+    summary = {
+        "groups": len(groups),
+        "review_rows": sum(len(group["review_rows"]) for group in groups),
+        "mergeable_groups": sum(1 for group in groups if group["can_merge"]),
+        "db_only_groups": sum(1 for group in groups if not group["can_merge"]),
+        "reason_counts": [{"reason": reason, "count": count} for reason, count in reason_counts.most_common()],
+    }
+    return groups, summary
+
+
+def _extra_group_to_conflict_item(group: dict[str, object]) -> dict[str, object]:
+    keep_row = group.get("keep")
+    review_rows = list(group.get("review_rows") or [])
+    rows = []
+    suggested_keep_id = None
+    if isinstance(keep_row, dict):
+        rows.append(keep_row)
+        suggested_keep_id = keep_row.get("id")
+    rows.extend(review_rows)
+    return {
+        "reason": group.get("reason", "Possible extra row"),
+        "row_ids": list(group.get("row_ids") or []),
+        "suggested_keep_id": suggested_keep_id,
+        "rows": rows,
+        "merge_action": "/uploads/employee-master-extra-merge" if suggested_keep_id else "",
+        "delete_action": "/uploads/employee-master-extra-delete",
+        "keep_action": "/uploads/employee-master-extra-keep",
+        "keep_button_label": "Keep",
+        "keep_id": suggested_keep_id,
+        "allow_merge": bool(suggested_keep_id),
+        "allow_delete": True,
+    }
+
+
+def _build_combined_cleanup_view(session: Session) -> tuple[list[dict[str, object]], list[dict[str, object]], dict[str, int]]:
+    base_plan, base_conflicts, _ = _build_duplicate_cleanup_plan(session)
+
+    plan: list[dict[str, object]] = []
+    conflicts: list[dict[str, object]] = []
+    covered_review_ids: set[int] = set()
+
+    for item in base_plan:
+        item = {
+            **item,
+            "merge_action": "/uploads/employee-master-cleanup-merge",
+            "delete_action": "/uploads/employee-master-cleanup-delete-row",
+            "keep_action": "/uploads/employee-master-cleanup-keep-both",
+            "keep_button_label": "Keep Both",
+            "keep_id": item.get("suggested_keep_id"),
+            "allow_merge": True,
+            "allow_delete": True,
+        }
+        plan.append(item)
+        if isinstance(item.get("keep"), dict) and item["keep"].get("id") is not None:
+            covered_review_ids.add(int(item["keep"]["id"]))
+        for row in item.get("remove", []):
+            if isinstance(row, dict) and row.get("id") is not None:
+                covered_review_ids.add(int(row["id"]))
+
+    for item in base_conflicts:
+        row_ids = [int(row_id) for row_id in item.get("row_ids", []) if row_id is not None]
+        covered_review_ids.update(row_ids)
+        conflicts.append(
+            {
+                **item,
+                "merge_action": "/uploads/employee-master-cleanup-merge",
+                "delete_action": "/uploads/employee-master-cleanup-delete-row",
+                "keep_action": "/uploads/employee-master-cleanup-keep-both",
+                "keep_button_label": "Keep Both",
+                "keep_id": item.get("suggested_keep_id"),
+                "allow_merge": True,
+                "allow_delete": True,
+            }
+        )
+
+    extra_groups, _ = _build_employee_master_extra_review(session)
+    for group in extra_groups:
+        review_ids = [int(row_id) for row_id in group.get("row_ids", []) if row_id is not None]
+        if any(row_id in covered_review_ids for row_id in review_ids):
+            continue
+        covered_review_ids.update(review_ids)
+        keep_row = group.get("keep")
+        reason = str(group.get("reason") or "")
+        if keep_row and "DOB differs" not in reason:
+            plan.append(
+                {
+                    "reason": reason,
+                    "keep": keep_row,
+                    "remove": list(group.get("review_rows") or []),
+                }
+            )
+            continue
+        conflicts.append(_extra_group_to_conflict_item(group))
+
+    summary = {
+        "merge_groups": len(plan),
+        "rows_to_delete": sum(len(item.get("remove", [])) for item in plan),
+        "conflict_groups": len(conflicts),
+    }
+    return plan, conflicts, summary
+
+
+def _cleanup_item_summary(item: dict[str, object], kind: str) -> str:
+    if kind == "plan":
+        keep = item.get("keep") or {}
+        keep_name = str(keep.get("name") or "Unknown")
+        remove_count = len(item.get("remove", []))
+        return f"{keep_name} - keep 1, delete {remove_count}"
+    rows = list(item.get("rows") or [])
+    names = [str(row.get("name") or "Unknown") for row in rows[:3]]
+    more = max(len(rows) - len(names), 0)
+    suffix = f" +{more} more" if more else ""
+    return f"{', '.join(names)}{suffix}"
+
+
+def _cleanup_group_names(items: list[dict[str, object]], kind: str) -> list[str]:
+    names: list[str] = []
+    for item in items:
+        if kind == "plan":
+            keep = item.get("keep") or {}
+            remove = list(item.get("remove") or [])
+            row_names = [str(keep.get("name") or "").strip()] + [str(row.get("name") or "").strip() for row in remove]
+        else:
+            row_names = [str(row.get("name") or "").strip() for row in list(item.get("rows") or [])]
+        for name in row_names:
+            if name and name not in names:
+                names.append(name)
+    return names
+
+
+def _group_cleanup_items(plan: list[dict[str, object]], conflicts: list[dict[str, object]]) -> list[dict[str, object]]:
+    grouped: dict[str, dict[str, object]] = {}
+
+    def add_item(reason: str, kind: str, item: dict[str, object]) -> None:
+        group = grouped.setdefault(
+            reason,
+            {
+                "reason": reason,
+                "plan_items": [],
+                "conflict_items": [],
+            },
+        )
+        key = "plan_items" if kind == "plan" else "conflict_items"
+        item_copy = dict(item)
+        item_copy["summary"] = _cleanup_item_summary(item, kind)
+        search_names = _cleanup_group_names([item], kind)
+        item_copy["search_text"] = " ".join(search_names).lower()
+        group[key].append(item_copy)
+
+    for item in plan:
+        add_item(str(item.get("reason") or "Auto merge"), "plan", item)
+    for item in conflicts:
+        add_item(str(item.get("reason") or "Conflict"), "conflict", item)
+
+    output: list[dict[str, object]] = []
+    for reason, group in grouped.items():
+        all_items = list(group["plan_items"]) + list(group["conflict_items"])
+        names = _cleanup_group_names(group["plan_items"], "plan") + [
+            name for name in _cleanup_group_names(group["conflict_items"], "conflict")
+            if name not in _cleanup_group_names(group["plan_items"], "plan")
+        ]
+        output.append(
+            {
+                "reason": reason,
+                "item_count": len(all_items),
+                "names": names,
+                "items": all_items,
+            }
+        )
+    output.sort(key=lambda item: (item["reason"].lower(), item["item_count"]))
+    return output
+
+
+def _cleanup_employee_master_duplicates_for_record(
+    employees: list[Employee],
+    target: Employee,
+    *,
+    emp_no: str | None,
+    name: str | None,
+    role: str | None,
+    dob: date | None,
+    sync_details: list[str],
+    session: Session,
+) -> int:
+    target_name = _normalize_import_name(name)
+    target_role = normalize_role(role) if role else None
+    target_last5 = _emp_no_last5(emp_no)
+    target_working_at = _working_at_key(target.working_at)
+    removed = 0
+
+    merge_fields = (
+        "role",
+        "hire_date",
+        "retirement_date",
+        "promotion_role",
+        "promotion_ready_date",
+        "category",
+        "hrms",
+        "crew_id",
+        "doa",
+        "do_report",
+        "status",
+        "working_at",
+        "gradation",
+        "cli",
+        "pme_due",
+        "technical_due",
+        "transportation_due",
+    )
+
+    duplicates: list[tuple[Employee, str]] = []
+    for employee in list(employees):
+        if employee is target:
+            continue
+
+        candidate_pf = _clean_import_text(employee.pf_no)
+        candidate_name = _normalize_import_name(employee.name)
+        same_working_at = _working_at_key(employee.working_at) == target_working_at
+        blank_vs_value_working_at = _one_working_at_blank(employee.working_at, target.working_at)
+        candidate_last5 = _emp_no_last5(candidate_pf)
+
+        if dob and target_last5 and employee.dob == dob and candidate_last5 == target_last5:
+            duplicates.append((employee, "Same DOB + EMP NO last 5"))
+            continue
+
+        if target_name and dob and candidate_name == target_name and employee.dob == dob:
+            if same_working_at and (
+                candidate_pf is None or emp_no is None or (target_last5 and candidate_last5 == target_last5)
+            ):
+                duplicates.append((employee, "Same Name + DOB"))
+                continue
+            if blank_vs_value_working_at and target_last5 and candidate_pf and candidate_last5 == target_last5:
+                duplicates.append((employee, "Same Name + DOB and one Working At is blank"))
+                continue
+
+        if not same_working_at:
+            continue
+
+        if target_name and target_role and candidate_name == target_name and normalize_role(employee.role) == target_role:
+            if candidate_pf and target_last5 and candidate_last5 == target_last5:
+                duplicates.append((employee, "Same Name + Designation"))
+
+    for duplicate, reason in duplicates:
+        for field_name in merge_fields:
+            if not _employee_has_value(getattr(target, field_name)) and _employee_has_value(getattr(duplicate, field_name)):
+                setattr(target, field_name, getattr(duplicate, field_name))
+        session.delete(duplicate)
+        if duplicate in employees:
+            employees.remove(duplicate)
+        removed += 1
+        sync_details.append(
+            f"Deduplicated {target.name}: removed duplicate row by {reason} at {_clean_import_text(target.working_at) or 'blank working_at'}."
+        )
+
+    return removed
+
+
+def _build_service_particular_records(
+    content: bytes,
+    warnings: list[str],
+) -> tuple[dict[str, dict[str, object]], dict[str, str]]:
+    wb = load_workbook(filename=BytesIO(content), data_only=True)
+    ws = wb.active
+    rows = list(ws.iter_rows(values_only=True))
+    if not rows:
+        raise HTTPException(status_code=400, detail="Service Particulars workbook is empty.")
+
+    header_row = next((row for row in rows if any(cell not in (None, "", " ") for cell in row)), None)
+    if header_row is None:
+        raise HTTPException(status_code=400, detail="Service Particulars workbook has no header row.")
+
+    header = {_employee_norm(cell): idx for idx, cell in enumerate(header_row) if cell not in (None, "")}
+    required = {
+        "crewname": "CREW NAME",
+        "crewdesg": "CREW DESG",
+        "crewid": "CREW ID",
+        "empno": "EMP NO",
+        "birthdate": "BIRTH DATE",
+        "appointdate": "APPOINT DATE",
+        "retirementdate": "RETIREMENT DATE",
+    }
+    missing = [label for key, label in required.items() if key not in header]
+    if missing:
+        raise HTTPException(status_code=400, detail=f"Service Particulars is missing columns: {', '.join(missing)}")
+
+    records: dict[str, dict[str, object]] = {}
+    crew_to_emp: dict[str, str] = {}
+    duplicate_emp: set[str] = set()
+    duplicate_crew: set[str] = set()
+
+    for row in rows[rows.index(header_row) + 1 :]:
+        if not any(cell not in (None, "", " ") for cell in row):
+            continue
+
+        emp_no = _clean_import_text(row[header["empno"]])
+        crew_id = _clean_import_text(row[header["crewid"]])
+        name = _clean_import_text(row[header["crewname"]])
+        role_raw = _clean_import_text(row[header["crewdesg"]])
+        row_hint = name or crew_id or emp_no or "Unknown row"
+
+        if not emp_no:
+            warnings.append(f"Service Particulars {row_hint}: skipped because EMP NO is blank.")
+            continue
+        if emp_no in records:
+            duplicate_emp.add(emp_no)
+            continue
+        if crew_id and crew_id in crew_to_emp:
+            duplicate_crew.add(crew_id)
+            continue
+
+        try:
+            dob = _excel_to_date_with_correction(row[header["birthdate"]], warnings, "Service Particulars", row_hint, "birth_date")
+            hire_date = _excel_to_date_with_correction(row[header["appointdate"]], warnings, "Service Particulars", row_hint, "appoint_date")
+            retirement_date = _excel_to_date_with_correction(row[header["retirementdate"]], warnings, "Service Particulars", row_hint, "retirement_date")
+            promotion_ready = None
+            if "promotiondate" in header:
+                promotion_ready = _excel_to_date_with_correction(row[header["promotiondate"]], warnings, "Service Particulars", row_hint, "promotion_date")
+        except Exception as exc:
+            warnings.append(f"Service Particulars {row_hint}: skipped because {exc}.")
+            continue
+
+        role = normalize_role(role_raw or "")
+        if not name or not role or not hire_date:
+            warnings.append(f"Service Particulars {row_hint}: skipped because name, designation, or appoint date is missing.")
+            continue
+
+        records[emp_no] = {
+            "row_hint": row_hint,
+            "name": name,
+            "role": role,
+            "pf_no": emp_no,
+            "crew_id": crew_id,
+            "dob": dob,
+            "hire_date": hire_date,
+            "doa": hire_date,
+            "retirement_date": retirement_date,
+            "promotion_ready_date": promotion_ready,
+            "present_fields": {
+                "name",
+                "role",
+                "pf_no",
+                "crew_id",
+                "dob",
+                "hire_date",
+                "doa",
+                "retirement_date",
+                "promotion_ready_date",
+            },
+        }
+        if crew_id:
+            crew_to_emp[crew_id] = emp_no
+
+    for emp_no in sorted(duplicate_emp):
+        warnings.append(f"Service Particulars duplicate EMP NO skipped: {emp_no}")
+        records.pop(emp_no, None)
+    for crew_id in sorted(duplicate_crew):
+        emp_no = crew_to_emp.get(crew_id)
+        if emp_no:
+            records.pop(emp_no, None)
+        warnings.append(f"Service Particulars duplicate CREW ID skipped: {crew_id}")
+
+    if not records:
+        raise HTTPException(status_code=400, detail="Service Particulars did not produce any usable employee rows.")
+    return records, crew_to_emp
+
+
+def _merge_cms_other_bio(
+    records: dict[str, dict[str, object]],
+    crew_to_emp: dict[str, str],
+    content: bytes,
+    warnings: list[str],
+) -> None:
+    text = _decode_uploaded_text(content)
+    reader = csv.DictReader(StringIO(text))
+    if not reader.fieldnames:
+        raise HTTPException(status_code=400, detail="CMS other bio data file has no header row.")
+
+    normalized_header = {_employee_norm(name): name for name in reader.fieldnames if name}
+    if "crewid" not in normalized_header:
+        raise HTTPException(status_code=400, detail="CMS other bio data is missing column: CREWID")
+
+    seen_hrms: set[str] = set()
+    for row in reader:
+        hrms_key = normalized_header["crewid"]
+        hrms = _clean_import_text(row.get(hrms_key))
+        row_hint = _clean_import_text(row.get(normalized_header.get("crewname", hrms_key))) or hrms or "Unknown row"
+        if not hrms:
+            warnings.append("CMS other bio data row skipped because CREWID is blank.")
+            continue
+        if hrms in seen_hrms:
+            warnings.append(f"CMS other bio data duplicate CREWID skipped: {hrms}")
+            continue
+        seen_hrms.add(hrms)
+
+        emp_no = crew_to_emp.get(hrms)
+        if not emp_no or emp_no not in records:
+            warnings.append(f"CMS other bio data {row_hint} ({hrms}): no matching Service Particulars row found.")
+            continue
+
+        record = records[emp_no]
+        present_fields: set[str] = record["present_fields"]  # type: ignore[assignment]
+        name = _clean_import_text(row.get(normalized_header.get("crewname", "")))
+        if name:
+            record["name"] = name
+            record["row_hint"] = f"{name} ({hrms})"
+            present_fields.add("name")
+
+        role_raw = _clean_import_text(row.get(normalized_header.get("desig", "")))
+        if role_raw:
+            record["role"] = normalize_role(role_raw)
+            present_fields.add("role")
+
+        category = _clean_import_text(row.get(normalized_header.get("category", "")), blank_na=True)
+        if "category" in normalized_header:
+            record["category"] = category
+            present_fields.add("category")
+
+        try:
+            retirement_raw = row.get(normalized_header["retirementdate"]) if "retirementdate" in normalized_header else None
+            if _clean_import_text(retirement_raw) is not None:
+                record["retirement_date"] = _excel_to_date_with_correction(
+                    retirement_raw,
+                    warnings,
+                    "CMS other bio data",
+                    str(record["row_hint"]),
+                    "retirement_date",
+                )
+                present_fields.add("retirement_date")
+            appoint_raw = row.get(normalized_header["appointmentdate"]) if "appointmentdate" in normalized_header else None
+            if _clean_import_text(appoint_raw) is not None:
+                appoint_date = _excel_to_date_with_correction(
+                    appoint_raw,
+                    warnings,
+                    "CMS other bio data",
+                    str(record["row_hint"]),
+                    "appointment_date",
+                )
+                record["hire_date"] = appoint_date
+                record["doa"] = appoint_date
+                present_fields.update({"hire_date", "doa"})
+            pme_raw = row.get(normalized_header["pmedue"]) if "pmedue" in normalized_header else None
+            if _clean_import_text(pme_raw) is not None:
+                record["pme_due"] = _excel_to_date_with_correction(
+                    pme_raw,
+                    warnings,
+                    "CMS other bio data",
+                    str(record["row_hint"]),
+                    "pme_due",
+                )
+                present_fields.add("pme_due")
+        except Exception as exc:
+            warnings.append(f"CMS other bio data {record['row_hint']}: {exc}")
+
+
+def _serialize_employee_payload(record_values: dict[str, object]) -> dict[str, object]:
+    def _date_to_iso(value: object) -> str | None:
+        return value.isoformat() if isinstance(value, date) else None
+
+    return {
+        "name": record_values.get("name"),
+        "role": record_values.get("role"),
+        "hire_date": _date_to_iso(record_values.get("hire_date")),
+        "doa": _date_to_iso(record_values.get("doa")),
+        "retirement_date": _date_to_iso(record_values.get("retirement_date")),
+        "promotion_ready_date": _date_to_iso(record_values.get("promotion_ready_date")),
+        "category": record_values.get("category"),
+        "pf_no": record_values.get("pf_no"),
+        "crew_id": record_values.get("crew_id"),
+        "dob": _date_to_iso(record_values.get("dob")),
+        "pme_due": _date_to_iso(record_values.get("pme_due")),
+    }
+
+
+def _deserialize_employee_payload(payload: dict[str, object]) -> dict[str, object]:
+    def _iso_to_date(value: object) -> date | None:
+        if isinstance(value, str) and value:
+            try:
+                return date.fromisoformat(value)
+            except ValueError:
+                return None
+        return None
+
+    return {
+        "name": _clean_import_text(payload.get("name")),
+        "role": normalize_role(_clean_import_text(payload.get("role")) or ""),
+        "hire_date": _iso_to_date(payload.get("hire_date")),
+        "doa": _iso_to_date(payload.get("doa")),
+        "retirement_date": _iso_to_date(payload.get("retirement_date")),
+        "promotion_ready_date": _iso_to_date(payload.get("promotion_ready_date")),
+        "category": _clean_import_text(payload.get("category"), blank_na=True),
+        "pf_no": _clean_import_text(payload.get("pf_no")),
+        "crew_id": _clean_import_text(payload.get("crew_id")),
+        "dob": _iso_to_date(payload.get("dob")),
+        "pme_due": _iso_to_date(payload.get("pme_due")),
+    }
+
+
+def _build_mismatch_action(
+    *,
+    reason: str,
+    row_hint: str,
+    existing: Employee,
+    incoming_values: dict[str, object],
+) -> dict[str, object]:
+    incoming_payload = _serialize_employee_payload(incoming_values)
+    return {
+        "reason": reason,
+        "row_hint": row_hint,
+        "existing_id": existing.id,
+        "existing": {
+            "name": existing.name,
+            "role": existing.role,
+            "pf_no": existing.pf_no,
+            "crew_id": existing.crew_id,
+            "dob": existing.dob.isoformat() if existing.dob else "",
+            "working_at": existing.working_at or "",
+        },
+        "incoming": incoming_payload,
+        "incoming_json": json.dumps(incoming_payload, default=str),
+    }
+
+
+def _upsert_employee_master_records(
+    session: Session,
+    records: dict[str, dict[str, object]],
+    warnings: list[str],
+    sync_details: list[str],
+) -> tuple[int, int, int, int, int, list[dict[str, object]]]:
+    added = 0
+    updated = 0
+    unchanged = 0
+    skipped = 0
+    deduplicated = 0
+    mismatch_actions: list[dict[str, object]] = []
+    employees = session.exec(select(Employee)).all()
+
+    by_pf: dict[str, list[Employee]] = {}
+    by_crew_id: dict[str, list[Employee]] = {}
+
+    def rebuild_exact_indexes() -> None:
+        by_pf.clear()
+        by_crew_id.clear()
+        for employee in employees:
+            pf_value = _clean_import_text(employee.pf_no)
+            if pf_value:
+                by_pf.setdefault(pf_value, []).append(employee)
+            crew_value = _clean_import_text(employee.crew_id)
+            if crew_value:
+                by_crew_id.setdefault(crew_value, []).append(employee)
+
+    rebuild_exact_indexes()
+
+    for emp_no, record in records.items():
+        row_hint = str(record.get("row_hint") or record.get("name") or emp_no)
+        name = _clean_import_text(record.get("name"))
+        role = _clean_import_text(record.get("role"))
+        hire_date = record.get("hire_date")
+        present_fields = set(record.get("present_fields") or set())
+
+        if not name or not role or not isinstance(hire_date, date):
+            warnings.append(f"{row_hint}: skipped because name, designation, or appoint date is missing after merge.")
+            skipped += 1
+            continue
+
+        pf_matches = by_pf.get(emp_no, [])
+        if len(pf_matches) > 1:
+            warnings.append(f"{row_hint}: skipped because EMP NO {emp_no} matches multiple employees in the current database.")
+            skipped += 1
+            continue
+
+        existing = pf_matches[0] if pf_matches else None
+        crew_id = _clean_import_text(record.get("crew_id"))
+        if existing is None and crew_id:
+            crew_matches = by_crew_id.get(crew_id, [])
+            if len(crew_matches) > 1:
+                warnings.append(f"{row_hint}: skipped because CREW ID {crew_id} matches multiple employees in the current database.")
+                skipped += 1
+                continue
+            if len(crew_matches) == 1:
+                existing = crew_matches[0]
+                if existing.pf_no and existing.pf_no != emp_no:
+                    warnings.append(
+                        f"{row_hint}: skipped because EMP NO {emp_no} conflicts with existing employee EMP NO {existing.pf_no}."
+                    )
+                    mismatch_actions.append(
+                        _build_mismatch_action(
+                            reason="EMP NO conflicts with existing employee",
+                            row_hint=row_hint,
+                            existing=existing,
+                            incoming_values={
+                                "name": name,
+                                "role": normalize_role(role),
+                                "hire_date": hire_date,
+                                "doa": record.get("doa"),
+                                "retirement_date": record.get("retirement_date"),
+                                "promotion_ready_date": record.get("promotion_ready_date"),
+                                "category": record.get("category"),
+                                "pf_no": emp_no,
+                                "crew_id": crew_id,
+                                "dob": record.get("dob"),
+                                "pme_due": record.get("pme_due"),
+                            },
+                        )
+                    )
+                    skipped += 1
+                    continue
+
+        if existing is None:
+            existing = _find_employee_master_merge_candidate(
+                employees,
+                emp_no=emp_no,
+                name=name,
+                role=role,
+                dob=record.get("dob") if isinstance(record.get("dob"), date) else None,
+            )
+
+        if existing and crew_id:
+            crew_conflicts = [employee for employee in by_crew_id.get(crew_id, []) if employee is not existing]
+            if crew_conflicts:
+                warnings.append(f"{row_hint}: skipped because CREW ID {crew_id} already belongs to another employee.")
+                skipped += 1
+                continue
+
+        record_values = {
+            "name": name,
+            "role": normalize_role(role),
+            "hire_date": hire_date,
+            "doa": record.get("doa"),
+            "retirement_date": record.get("retirement_date"),
+            "promotion_ready_date": record.get("promotion_ready_date"),
+            "category": record.get("category"),
+            "pf_no": emp_no,
+            "crew_id": crew_id,
+            "dob": record.get("dob"),
+            "pme_due": record.get("pme_due"),
+        }
+
+        if existing:
+            field_labels = {
+                "name": "Name",
+                "role": "Designation",
+                "hire_date": "Hire Date",
+                "doa": "DOA",
+                "retirement_date": "Retirement Date",
+                "promotion_ready_date": "Promotion Date",
+                "category": "Category",
+                "pf_no": "EMP NO",
+                "crew_id": "CREW ID",
+                "dob": "DOB",
+                "pme_due": "PME Due",
+            }
+            changed_fields: list[str] = []
+            for field_name, label in field_labels.items():
+                if field_name not in present_fields and field_name != "pf_no":
+                    continue
+                old_value = getattr(existing, field_name)
+                new_value = record_values[field_name]
+                if old_value != new_value:
+                    changed_fields.append(
+                        f"{label}: {_format_sync_value(old_value)} -> {_format_sync_value(new_value)}"
+                    )
+                    setattr(existing, field_name, new_value)
+            if changed_fields:
+                updated += 1
+                sync_details.append(f"Updated {row_hint}: {'; '.join(changed_fields)}")
+            else:
+                unchanged += 1
+            deduplicated += _cleanup_employee_master_duplicates_for_record(
+                employees,
+                existing,
+                emp_no=emp_no,
+                name=name,
+                role=role,
+                dob=record.get("dob") if isinstance(record.get("dob"), date) else None,
+                sync_details=sync_details,
+                session=session,
+            )
+            rebuild_exact_indexes()
+        else:
+            employee = Employee(
+                name=record_values["name"],
+                role=record_values["role"],
+                hire_date=record_values["hire_date"],
+                retirement_date=record_values["retirement_date"],
+                promotion_ready_date=record_values["promotion_ready_date"],
+                category=record_values["category"],
+                pf_no=record_values["pf_no"],
+                crew_id=record_values["crew_id"],
+                dob=record_values["dob"],
+                doa=record_values["doa"],
+                pme_due=record_values["pme_due"],
+                status="ACTIVE",
+            )
+            session.add(employee)
+            employees.append(employee)
+            added += 1
+            sync_details.append(
+                f"Added {row_hint}: EMP NO {_format_sync_value(emp_no)}; CREW ID {_format_sync_value(crew_id)}"
+            )
+            deduplicated += _cleanup_employee_master_duplicates_for_record(
+                employees,
+                employee,
+                emp_no=emp_no,
+                name=name,
+                role=role,
+                dob=record.get("dob") if isinstance(record.get("dob"), date) else None,
+                sync_details=sync_details,
+                session=session,
+            )
+            rebuild_exact_indexes()
+
+    deduplicated += _dedupe_uploaded_employee_rows(session, sync_details)
+    session.commit()
+    return added, updated, unchanged, skipped, deduplicated, mismatch_actions
+
+
+@app.post("/uploads/employee-master-sync")
+async def upload_employee_master_sync(
+    request: Request,
+    service_file: UploadFile = File(...),
+    cms_file: UploadFile = File(...),
+    action_password: str = Form(...),
+    session: Session = Depends(get_session),
+):
+    try:
+        _validate_sensitive_action_password(action_password)
+        service_name = service_file.filename or ""
+        cms_name = cms_file.filename or ""
+        if not service_name.lower().endswith((".xlsx", ".xlsm")):
+            raise HTTPException(status_code=400, detail="Service Particulars file must be an .xlsx workbook.")
+        if not cms_name.lower().endswith(".csv"):
+            raise HTTPException(status_code=400, detail="CMS other bio data file must be a .csv file.")
+
+        service_content = await service_file.read()
+        cms_content = await cms_file.read()
+        warnings: list[str] = []
+        sync_details: list[str] = []
+
+        records, hrms_to_emp = _build_service_particular_records(service_content, warnings)
+        _merge_cms_other_bio(records, hrms_to_emp, cms_content, warnings)
+        _save_employee_master_source_snapshot(records)
+        added, updated, unchanged, skipped, deduplicated, mismatch_actions = _upsert_employee_master_records(
+            session,
+            records,
+            warnings,
+            sync_details,
+        )
+
+        if added == 0 and updated == 0 and skipped == 0 and deduplicated == 0:
+            notice = "No change found"
+        else:
+            notice = (
+                "Employee table update complete: "
+                f"{added} added, {updated} updated, {unchanged} unchanged, {skipped} skipped, {deduplicated} deduplicated."
+            )
+        warning_text = ""
+        if warnings:
+            warning_text = f"Mismatch / auto-fixed records: {len(warnings)}"
+
+        return templates.TemplateResponse(
+            "uploads.html",
+            _uploads_context(
+                request,
+                update_notice=notice,
+                update_warning=warning_text,
+                update_details=sync_details,
+                warning_details=warnings,
+                update_mismatch_actions=mismatch_actions,
+            ),
+        )
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "Employee table update failed."
+        return templates.TemplateResponse(
+            "uploads.html",
+            _uploads_context(request, update_error=detail),
+            status_code=exc.status_code,
+        )
+    except Exception as exc:
+        return templates.TemplateResponse(
+            "uploads.html",
+            _uploads_context(request, update_error=str(exc)),
+            status_code=500,
+        )
+
+
+def _create_employee_from_payload(payload: dict[str, object]) -> Employee:
+    values = _deserialize_employee_payload(payload)
+    name = _clean_import_text(values.get("name"))
+    role = _clean_import_text(values.get("role"))
+    hire_date = values.get("hire_date")
+    if not name or not role or not isinstance(hire_date, date):
+        raise ValueError("Incoming row is missing name, designation, or appoint date.")
+    return Employee(
+        name=name,
+        role=normalize_role(role),
+        hire_date=hire_date,
+        retirement_date=values.get("retirement_date"),
+        promotion_ready_date=values.get("promotion_ready_date"),
+        category=values.get("category"),
+        pf_no=values.get("pf_no"),
+        crew_id=values.get("crew_id"),
+        dob=values.get("dob"),
+        doa=values.get("doa"),
+        pme_due=values.get("pme_due"),
+        status="ACTIVE",
+    )
+
+
+@app.post("/uploads/employee-master-mismatch-merge")
+async def upload_employee_master_mismatch_merge(
+    request: Request,
+    existing_id: int = Form(...),
+    incoming_payload: str = Form(...),
+    action_password: str = Form(...),
+    session: Session = Depends(get_session),
+):
+    try:
+        _validate_sensitive_action_password(action_password)
+        incoming_data = json.loads(incoming_payload)
+        existing = session.get(Employee, existing_id)
+        if not existing:
+            raise HTTPException(status_code=404, detail="Existing row not found.")
+        employee = _create_employee_from_payload(incoming_data)
+        session.add(employee)
+        session.commit()
+        notice = "Mismatch merge complete: incoming row added alongside existing."
+        return templates.TemplateResponse(
+            "uploads.html",
+            _uploads_context(request, update_notice=notice),
+        )
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "Merge failed."
+        return templates.TemplateResponse(
+            "uploads.html",
+            _uploads_context(request, update_error=detail),
+            status_code=exc.status_code,
+        )
+    except Exception as exc:
+        return templates.TemplateResponse(
+            "uploads.html",
+            _uploads_context(request, update_error=str(exc)),
+            status_code=500,
+        )
+
+
+@app.post("/uploads/employee-master-mismatch-delete")
+async def upload_employee_master_mismatch_delete(
+    request: Request,
+    existing_id: int = Form(...),
+    incoming_payload: str = Form(...),
+    delete_target: str = Form(...),
+    action_password: str = Form(...),
+    session: Session = Depends(get_session),
+):
+    try:
+        _validate_sensitive_action_password(action_password)
+        incoming_data = json.loads(incoming_payload)
+        existing = session.get(Employee, existing_id)
+        if not existing:
+            raise HTTPException(status_code=404, detail="Existing row not found.")
+        if delete_target == "existing":
+            session.delete(existing)
+            employee = _create_employee_from_payload(incoming_data)
+            session.add(employee)
+            session.commit()
+            notice = "Delete complete: existing row removed, incoming row kept."
+        else:
+            notice = "Delete complete: incoming row ignored, existing row kept."
+        return templates.TemplateResponse(
+            "uploads.html",
+            _uploads_context(request, update_notice=notice),
+        )
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "Delete failed."
+        return templates.TemplateResponse(
+            "uploads.html",
+            _uploads_context(request, update_error=detail),
+            status_code=exc.status_code,
+        )
+    except Exception as exc:
+        return templates.TemplateResponse(
+            "uploads.html",
+            _uploads_context(request, update_error=str(exc)),
+            status_code=500,
+        )
+
+
+def _normalize_li_grading_header(value: object | None) -> str:
+    text = _clean_import_text(value)
+    if text is None:
+        return ""
+    return re.sub(r"[^A-Z0-9]+", "", text.upper())
+
+
+def _load_cli_upload_rows(content: bytes) -> list[tuple[object, ...]]:
+    workbook = load_workbook(filename=BytesIO(content), data_only=True)
+    worksheet = workbook.active
+    return list(worksheet.iter_rows(values_only=True))
+
+
+def _detect_cli_upload_kind(rows: list[tuple[object, ...]]) -> str:
+    for row in rows[:8]:
+        normalized = {_normalize_li_grading_header(cell) for cell in row if _normalize_li_grading_header(cell)}
+        if not normalized:
+            continue
+        if {"CLIID", "CLINAME", "ALLOTEDDESIG"}.issubset(normalized):
+            return "cli_matrix"
+        if {"CLIID", "NAME", "EMPNO", "DESIG"}.issubset(normalized):
+            return "cli_biodata"
+        if {"CLIID", "CLINAME", "CREWID", "NAME", "CURRENTGRADE", "DUEDATE"}.issubset(normalized):
+            return "li_grading"
+    return "unknown"
+
+
+def _parse_li_grading_workbook(content: bytes) -> tuple[list[dict[str, object]], list[str]]:
+    rows = _load_cli_upload_rows(content)
+    if not rows:
+        raise HTTPException(status_code=400, detail="CLI Grading workbook is empty.")
+
+    header_row_index: int | None = None
+    cli_id_idx: int | None = None
+    cli_name_idx: int | None = None
+    crew_idx: int | None = None
+    name_idx: int | None = None
+    role_idx: int | None = None
+    current_grade_idx: int | None = None
+    due_date_idx: int | None = None
+
+    for idx, row in enumerate(rows):
+        normalized = [_normalize_li_grading_header(cell) for cell in row]
+        if "CLIID" not in normalized or "CLINAME" not in normalized or "CREWID" not in normalized or "NAME" not in normalized or "CURRENTGRADE" not in normalized:
+            continue
+        role_idx = next((i for i, value in enumerate(normalized) if value in {"DESIG", "DESIGNATION", "ROLE"}), None)
+        if role_idx is None:
+            continue
+        current_grade_idx = normalized.index("CURRENTGRADE")
+        due_date_idx = next((i for i in range(current_grade_idx + 1, len(normalized)) if normalized[i] == "DUEDATE"), None)
+        if due_date_idx is None:
+            due_date_idx = next((i for i, value in enumerate(normalized) if value == "DUEDATE"), None)
+        if due_date_idx is None:
+            continue
+        cli_id_idx = normalized.index("CLIID")
+        cli_name_idx = normalized.index("CLINAME")
+        crew_idx = normalized.index("CREWID")
+        name_idx = normalized.index("NAME")
+        header_row_index = idx
+        break
+
+    if header_row_index is None or None in {cli_id_idx, cli_name_idx, crew_idx, name_idx, role_idx, current_grade_idx, due_date_idx}:
+        raise HTTPException(
+            status_code=400,
+            detail="Could not find the CLI Grading columns. Required columns: CLI ID, CLI NAME, CREW ID, NAME, DESIG., CURRENT GRADE, DUE DATE.",
+        )
+
+    warnings: list[str] = []
+    records: list[dict[str, object]] = []
+
+    for row_number, row in enumerate(rows[header_row_index + 1 :], start=header_row_index + 2):
+        def get(column_index: int | None) -> object | None:
+            if column_index is None or column_index >= len(row):
+                return None
+            return row[column_index]
+
+        cli_id = _clean_import_text(get(cli_id_idx))
+        cli_name = _clean_import_text(get(cli_name_idx))
+        crew_id = _clean_import_text(get(crew_idx))
+        name = _clean_import_text(get(name_idx))
+        role_raw = _clean_import_text(get(role_idx))
+        current_grade = _clean_import_text(get(current_grade_idx))
+        due_raw = get(due_date_idx)
+
+        if not any([cli_id, cli_name, crew_id, name, role_raw, current_grade, due_raw]):
+            continue
+
+        row_hint = name or crew_id or f"row {row_number}"
+        if not cli_name:
+            warnings.append(f"CLI Grading {row_hint}: skipped because CLI NAME is blank.")
+            continue
+        if not name:
+            warnings.append(f"CLI Grading row {row_number}: skipped because NAME is blank.")
+            continue
+        if not role_raw:
+            warnings.append(f"CLI Grading {row_hint}: skipped because DESIG. is blank.")
+            continue
+        if not current_grade:
+            warnings.append(f"CLI Grading {row_hint}: skipped because CURRENT GRADE is blank.")
+            continue
+
+        try:
+            due_date = _excel_to_date_with_correction(due_raw, warnings, "CLI Grading", row_hint, "due_date") if due_raw not in (None, "") else None
+        except ValueError as exc:
+            warnings.append(f"CLI Grading {row_hint}: skipped because DUE DATE is invalid ({exc}).")
+            continue
+
+        records.append(
+            {
+                "cli_id": cli_id,
+                "cli_name": cli_name,
+                "crew_id": crew_id,
+                "name": name,
+                "role": normalize_role(role_raw),
+                "gradation": current_grade.upper(),
+                "grading_due": due_date,
+                "row_hint": row_hint,
+            }
+        )
+
+    if not records:
+        raise HTTPException(status_code=400, detail="CLI Grading workbook did not produce any usable rows.")
+    return records, warnings
+
+
+def _parse_cli_biodata_workbook(content: bytes) -> tuple[list[dict[str, object]], list[str]]:
+    rows = _load_cli_upload_rows(content)
+    if not rows:
+        raise HTTPException(status_code=400, detail="CLITI Biodata workbook is empty.")
+
+    header_row_index: int | None = None
+    cli_id_idx: int | None = None
+    name_idx: int | None = None
+    emp_no_idx: int | None = None
+    role_idx: int | None = None
+    dob_idx: int | None = None
+    doa_idx: int | None = None
+    dop_idx: int | None = None
+    hq_idx: int | None = None
+
+    for idx, row in enumerate(rows):
+        normalized = [_normalize_li_grading_header(cell) for cell in row]
+        if "CLIID" not in normalized or "NAME" not in normalized or "EMPNO" not in normalized:
+            continue
+        role_idx = next((i for i, value in enumerate(normalized) if value in {"DESIG", "DESIGNATION", "ROLE"}), None)
+        if role_idx is None:
+            continue
+        header_row_index = idx
+        cli_id_idx = normalized.index("CLIID")
+        name_idx = normalized.index("NAME")
+        emp_no_idx = normalized.index("EMPNO")
+        dob_idx = next((i for i, value in enumerate(normalized) if value in {"DOB", "DOBSTAR"}), None)
+        doa_idx = next((i for i, value in enumerate(normalized) if value in {"DOA", "DOASTAR"}), None)
+        dop_idx = next((i for i, value in enumerate(normalized) if value in {"DOP", "DOPSTAR"}), None)
+        hq_idx = next((i for i, value in enumerate(normalized) if value in {"HQ", "WORKINGAT"}), None)
+        break
+
+    if header_row_index is None or None in {cli_id_idx, name_idx, emp_no_idx, role_idx}:
+        raise HTTPException(
+            status_code=400,
+            detail="Could not find the CLITI Biodata columns. Required columns: CLI ID, NAME, EMP NO, DESIG.",
+        )
+
+    warnings: list[str] = []
+    records: list[dict[str, object]] = []
+
+    for row_number, row in enumerate(rows[header_row_index + 1 :], start=header_row_index + 2):
+        def get(column_index: int | None) -> object | None:
+            if column_index is None or column_index >= len(row):
+                return None
+            return row[column_index]
+
+        cli_id = _clean_import_text(get(cli_id_idx))
+        name = _clean_import_text(get(name_idx))
+        emp_no = _clean_import_text(get(emp_no_idx))
+        role_raw = _clean_import_text(get(role_idx))
+        hq = _clean_import_text(get(hq_idx))
+
+        if not any([cli_id, name, emp_no, role_raw, hq]):
+            continue
+
+        row_hint = name or cli_id or emp_no or f"row {row_number}"
+        if not cli_id:
+            warnings.append(f"CLITI Biodata {row_hint}: skipped because CLI ID is blank.")
+            continue
+        if not name:
+            warnings.append(f"CLITI Biodata row {row_number}: skipped because NAME is blank.")
+            continue
+        if not role_raw:
+            warnings.append(f"CLITI Biodata {row_hint}: skipped because DESIG is blank.")
+            continue
+        if not emp_no:
+            warnings.append(f"CLITI Biodata {row_hint}: skipped because EMP NO is blank.")
+            continue
+
+        try:
+            dob = _excel_to_date_with_correction(get(dob_idx), warnings, "CLITI Biodata", row_hint, "dob") if get(dob_idx) not in (None, "") else None
+            doa = _excel_to_date_with_correction(get(doa_idx), warnings, "CLITI Biodata", row_hint, "doa") if get(doa_idx) not in (None, "") else None
+            dop = _excel_to_date_with_correction(get(dop_idx), warnings, "CLITI Biodata", row_hint, "dop") if get(dop_idx) not in (None, "") else None
+        except ValueError as exc:
+            warnings.append(f"CLITI Biodata {row_hint}: skipped because a date is invalid ({exc}).")
+            continue
+
+        hire_date = doa or dop
+        if hire_date is None:
+            warnings.append(f"CLITI Biodata {row_hint}: skipped because DOA/DOP is blank.")
+            continue
+
+        records.append(
+            {
+                "cli_id": cli_id,
+                "cli_name": name,
+                "emp_no": emp_no,
+                "name": name,
+                "role": normalize_role(role_raw) or role_raw,
+                "dob": dob,
+                "doa": doa,
+                "do_report": dop,
+                "hire_date": hire_date,
+                "working_at": hq,
+                "row_hint": row_hint,
+            }
+        )
+
+    if not records:
+        raise HTTPException(status_code=400, detail="CLITI Biodata workbook did not produce any usable rows.")
+    return records, warnings
+
+
+def _apply_cli_biodata_records(
+    session: Session,
+    records: list[dict[str, object]],
+    warnings: list[str],
+) -> tuple[str, str, list[str], list[str]]:
+    employees = session.exec(select(Employee)).all()
+    by_emp_no: dict[str, Employee] = {}
+    by_name_role: dict[tuple[str, str], list[Employee]] = {}
+    for employee in employees:
+        emp_no_key = _clean_import_text(employee.pf_no)
+        if emp_no_key:
+            by_emp_no[emp_no_key] = employee
+        name_key = _normalize_import_name(employee.name)
+        role_key = normalize_role(employee.role) or employee.role
+        if name_key and role_key:
+            by_name_role.setdefault((name_key, role_key), []).append(employee)
+
+    added = 0
+    updated = 0
+    skipped = 0
+    unchanged = 0
+    details: list[str] = []
+
+    for record in records:
+        row_hint = str(record["row_hint"])
+        emp_no = str(record["emp_no"] or "")
+        name = str(record["name"] or "")
+        role = str(record["role"] or "")
+        name_key = _normalize_import_name(name)
+        target = by_emp_no.get(emp_no)
+        if target is None:
+            matches = by_name_role.get((name_key, role), [])
+            if len(matches) == 1:
+                target = matches[0]
+            elif len(matches) > 1:
+                warnings.append(f"CLITI Biodata {row_hint}: skipped because NAME + DESIG matched multiple rows.")
+                skipped += 1
+                continue
+
+        cli_name, cli_id = _canonicalize_cli_name(record.get("cli_name"), record.get("cli_id"))
+        hire_date = record.get("hire_date")
+        if not isinstance(hire_date, date):
+            warnings.append(f"CLITI Biodata {row_hint}: skipped because hire date is missing.")
+            skipped += 1
+            continue
+
+        if target is None:
+            employee = Employee(
+                name=name,
+                role=role,
+                hire_date=hire_date,
+                retirement_date=None,
+                pf_no=emp_no or None,
+                dob=record.get("dob"),
+                doa=record.get("doa"),
+                do_report=record.get("do_report"),
+                status="ACTIVE",
+                working_at=str(record.get("working_at") or "") or None,
+                cli=cli_name,
+                cli_id=cli_id,
+            )
+            session.add(employee)
+            added += 1
+            details.append(f"Added {name} ({emp_no}): CLI {_format_sync_value(cli_name)}; CLI ID {_format_sync_value(cli_id)}")
+            continue
+
+        changes: list[str] = []
+        old_cli, old_cli_id = _canonicalize_cli_name(target.cli, target.cli_id)
+        new_working_at = str(record.get("working_at") or "") or None
+        if target.name != name:
+            changes.append(f"Name: {_format_sync_value(target.name)} -> {_format_sync_value(name)}")
+            target.name = name
+        if normalize_role(target.role) != role:
+            changes.append(f"Designation: {_format_sync_value(target.role)} -> {_format_sync_value(role)}")
+            target.role = role
+        if target.pf_no != emp_no:
+            changes.append(f"EMP NO: {_format_sync_value(target.pf_no)} -> {_format_sync_value(emp_no)}")
+            target.pf_no = emp_no
+        if target.dob != record.get("dob"):
+            changes.append(f"DOB: {_format_sync_value(target.dob)} -> {_format_sync_value(record.get('dob'))}")
+            target.dob = record.get("dob")
+        if target.doa != record.get("doa"):
+            changes.append(f"DOA: {_format_sync_value(target.doa)} -> {_format_sync_value(record.get('doa'))}")
+            target.doa = record.get("doa")
+        if target.do_report != record.get("do_report"):
+            changes.append(f"DOP: {_format_sync_value(target.do_report)} -> {_format_sync_value(record.get('do_report'))}")
+            target.do_report = record.get("do_report")
+        if target.hire_date != hire_date:
+            changes.append(f"Hire Date: {_format_sync_value(target.hire_date)} -> {_format_sync_value(hire_date)}")
+            target.hire_date = hire_date
+        if target.working_at != new_working_at:
+            changes.append(f"HQ: {_format_sync_value(target.working_at)} -> {_format_sync_value(new_working_at)}")
+            target.working_at = new_working_at
+        if old_cli != cli_name:
+            changes.append(f"CLI: {_format_sync_value(old_cli)} -> {_format_sync_value(cli_name)}")
+        if old_cli_id != cli_id:
+            changes.append(f"CLI ID: {_format_sync_value(old_cli_id)} -> {_format_sync_value(cli_id)}")
+        target.cli, target.cli_id = _canonicalize_cli_name(cli_name, cli_id)
+        if (target.status or "").strip().upper() != "ACTIVE":
+            changes.append(f"Status: {_format_sync_value(target.status)} -> ACTIVE")
+            target.status = "ACTIVE"
+
+        if changes:
+            updated += 1
+            details.append(f"Updated {target.name} ({target.pf_no or target.id}): " + "; ".join(changes))
+        else:
+            unchanged += 1
+
+    session.commit()
+    _normalize_employee_cli_names(session)
+    notice_parts = []
+    if added:
+        notice_parts.append(f"{added} added")
+    if updated:
+        notice_parts.append(f"{updated} updated")
+    if skipped:
+        notice_parts.append(f"{skipped} skipped")
+    if not notice_parts:
+        notice_parts.append("No change found")
+    notice = "CLITI Biodata import complete: " + ", ".join(notice_parts) + "."
+    warning_message = f"Mismatch / auto-fixed records: {len(warnings)}" if warnings else ""
+    return notice, warning_message, details, warnings
+
+
+@app.post("/upload-li-grading")
+async def upload_li_grading(
+    request: Request,
+    file: UploadFile = File(...),
+    bio_data_file: Optional[UploadFile] = File(None),
+    action_password: str = Form(...),
+    session: Session = Depends(get_session),
+):
+    try:
+        _validate_sensitive_action_password(action_password)
+        filename = file.filename or ""
+        if not filename.lower().endswith((".xlsx", ".xlsm")):
+            raise HTTPException(status_code=400, detail="Upload the CLI Grading .xlsx workbook.")
+
+        content = await file.read()
+        upload_kind = _detect_cli_upload_kind(_load_cli_upload_rows(content))
+        if upload_kind == "cli_matrix":
+            report_date = infer_report_date(filename) or date.today()
+            summary_df = build_summary_df(content)
+            overdue_df = build_sheet2_df(content)
+            _save_cli_matrix_snapshots(session, report_date, summary_df, overdue_df)
+            notice_parts = [f"CLI Matrix import complete for {report_date.strftime('%d-%m-%Y')}."]
+            details: list[str] = []
+            warnings: list[str] = []
+            warning_bits = ["Detected a CLI Matrix file and routed it to the CLI Matrix snapshot importer."]
+            if bio_data_file and bio_data_file.filename:
+                bio_name = bio_data_file.filename or ""
+                if not bio_name.lower().endswith((".xlsx", ".xlsm")):
+                    raise HTTPException(status_code=400, detail="Upload the CLITI Biodata file as .xlsx.")
+                bio_content = await bio_data_file.read()
+                bio_kind = _detect_cli_upload_kind(_load_cli_upload_rows(bio_content))
+                if bio_kind != "cli_biodata":
+                    raise HTTPException(status_code=400, detail="The second file must be a CLITI Biodata workbook.")
+                bio_records, warnings = _parse_cli_biodata_workbook(bio_content)
+                bio_notice, bio_warning, details, warnings = _apply_cli_biodata_records(session, bio_records, warnings)
+                notice_parts.append(bio_notice)
+                if bio_warning:
+                    warning_bits.append(bio_warning)
+            _save_li_grading_metadata(filename)
+            return templates.TemplateResponse(
+                "cli.html",
+                _cli_page_context(
+                    request,
+                    session,
+                    grading_update_notice=" ".join(notice_parts),
+                    grading_update_warning=" ".join(warning_bits),
+                    grading_update_details=details,
+                    grading_warning_details=warnings,
+                ),
+            )
+
+        if upload_kind == "cli_biodata":
+            records, warnings = _parse_cli_biodata_workbook(content)
+            _save_li_grading_metadata(filename)
+            notice, warning_message, details, warnings = _apply_cli_biodata_records(session, records, warnings)
+            return templates.TemplateResponse(
+                "cli.html",
+                _cli_page_context(
+                    request,
+                    session,
+                    grading_update_notice=notice,
+                    grading_update_warning=warning_message,
+                    grading_update_details=details,
+                    grading_warning_details=warnings,
+                ),
+            )
+
+        records, warnings = _parse_li_grading_workbook(content)
+        employees = session.exec(select(Employee)).all()
+        canonical_by_id, alias_map, id_by_name = _build_cli_name_maps((employee.cli, employee.cli_id) for employee in employees)
+
+        by_crew: dict[str, list[Employee]] = {}
+        by_crew_name: dict[tuple[str, str], list[Employee]] = {}
+        by_name_role: dict[tuple[str, str], list[Employee]] = {}
+        for employee in employees:
+            crew_key = (_clean_import_text(employee.crew_id) or "").upper()
+            name_key = _normalize_import_name(employee.name)
+            if crew_key:
+                by_crew.setdefault(crew_key, []).append(employee)
+                if name_key:
+                    by_crew_name.setdefault((crew_key, name_key), []).append(employee)
+            role_key = normalize_role(employee.role)
+            if name_key and role_key:
+                by_name_role.setdefault((name_key, role_key), []).append(employee)
+
+        updated = 0
+        unchanged = 0
+        skipped = 0
+        details: list[str] = []
+        touched_ids: set[int] = set()
+
+        for record in records:
+            row_hint = str(record["row_hint"])
+            cli_name = _clean_import_text(record.get("cli_name"))
+            cli_id = _clean_import_text(record.get("cli_id"))
+            cli_name, cli_id = _canonicalize_cli_name(cli_name, cli_id, canonical_by_id=canonical_by_id, alias_map=alias_map, id_by_name=id_by_name)
+            crew_key = str(record.get("crew_id") or "").upper()
+            name_key = _normalize_import_name(record.get("name"))
+            role_key = str(record.get("role") or "")
+            target: Employee | None = None
+
+            if crew_key and name_key:
+                crew_name_matches = by_crew_name.get((crew_key, name_key), [])
+                if len(crew_name_matches) == 1:
+                    target = crew_name_matches[0]
+                elif len(crew_name_matches) > 1:
+                    filtered_matches = [
+                        employee
+                        for employee in crew_name_matches
+                        if normalize_role(employee.role) == role_key
+                    ]
+                    if len(filtered_matches) == 1:
+                        target = filtered_matches[0]
+                    else:
+                        warnings.append(f"CLI Grading {row_hint}: skipped because CREW ID + NAME matched multiple roster rows.")
+                        skipped += 1
+                        continue
+
+            if target is None and crew_key:
+                crew_matches = by_crew.get(crew_key, [])
+                filtered_matches = [
+                    employee
+                    for employee in crew_matches
+                    if _normalize_import_name(employee.name) == name_key and normalize_role(employee.role) == role_key
+                ]
+                if len(filtered_matches) == 1:
+                    target = filtered_matches[0]
+                elif len(filtered_matches) > 1:
+                    warnings.append(f"CLI Grading {row_hint}: skipped because CREW ID, NAME, and DESIGNATION matched multiple roster rows.")
+                    skipped += 1
+                    continue
+                elif crew_matches:
+                    warnings.append(f"CLI Grading {row_hint}: skipped because CREW ID {crew_key} matched the roster but NAME / DESIGNATION did not match.")
+                    skipped += 1
+                    continue
+
+            if target is None:
+                if not name_key or not role_key:
+                    warnings.append(f"CLI Grading {row_hint}: no matching CLI Roster row found.")
+                    skipped += 1
+                    continue
+                fallback_matches = by_name_role.get((name_key, role_key), [])
+                if len(fallback_matches) == 1:
+                    target = fallback_matches[0]
+                elif len(fallback_matches) > 1:
+                    warnings.append(f"CLI Grading {row_hint}: skipped because NAME + DESIGNATION matched multiple CLI Roster rows.")
+                    skipped += 1
+                    continue
+                else:
+                    warnings.append(f"CLI Grading {row_hint}: no matching CLI Roster row found.")
+                    skipped += 1
+                    continue
+
+            if target.id is not None and target.id in touched_ids:
+                warnings.append(f"CLI Grading {row_hint}: skipped because that roster row already received a grading update from another row in this workbook.")
+                skipped += 1
+                continue
+
+            new_grade = _clean_import_text(record.get("gradation"))
+            new_due = record.get("grading_due")
+            old_grade = _clean_import_text(target.gradation)
+            old_due = target.grading_due
+            old_cli, old_cli_id = _canonicalize_cli_name(target.cli, target.cli_id, canonical_by_id=canonical_by_id, alias_map=alias_map, id_by_name=id_by_name)
+
+            if old_grade == new_grade and old_due == new_due and old_cli == cli_name and old_cli_id == cli_id:
+                unchanged += 1
+                if target.id is not None:
+                    touched_ids.add(target.id)
+                continue
+
+            changes: list[str] = []
+            if old_grade != new_grade:
+                changes.append(f"Gradation: {_format_sync_value(old_grade)} -> {_format_sync_value(new_grade)}")
+            if old_due != new_due:
+                changes.append(f"Grading Due: {_format_sync_value(old_due)} -> {_format_sync_value(new_due)}")
+            if old_cli != cli_name:
+                changes.append(f"CLI: {_format_sync_value(old_cli)} -> {_format_sync_value(cli_name)}")
+            if old_cli_id != cli_id:
+                changes.append(f"CLI ID: {_format_sync_value(old_cli_id)} -> {_format_sync_value(cli_id)}")
+
+            target.gradation = new_grade
+            target.grading_due = new_due
+            target.cli, target.cli_id = _canonicalize_cli_name(cli_name, cli_id, canonical_by_id=canonical_by_id, alias_map=alias_map, id_by_name=id_by_name)
+            updated += 1
+            if target.id is not None:
+                touched_ids.add(target.id)
+            details.append(
+                f"Updated {target.name} ({target.crew_id or target.hrms or target.id}): " + "; ".join(changes)
+            )
+
+        session.commit()
+        _normalize_employee_cli_names(session)
+        _save_li_grading_metadata(filename)
+        if updated == 0 and unchanged > 0 and skipped == 0:
+            notice = "No change found in CLI grading file."
+        else:
+            notice_parts = []
+            if updated:
+                notice_parts.append(f"{updated} updated")
+            if skipped:
+                notice_parts.append(f"{skipped} skipped")
+            if not notice_parts:
+                notice_parts.append("No change found")
+            notice = "CLI grading update complete: " + ", ".join(notice_parts) + "."
+        warning_message = f"Mismatch / auto-fixed records: {len(warnings)}" if warnings else ""
+        return templates.TemplateResponse(
+            "cli.html",
+            _cli_page_context(
+                request,
+                session,
+                grading_update_notice=notice,
+                grading_update_warning=warning_message,
+                grading_update_details=details,
+                grading_warning_details=warnings,
+            ),
+        )
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "CLI grading update failed."
+        return templates.TemplateResponse(
+            "cli.html",
+            _cli_page_context(
+                request,
+                session,
+                grading_update_error=detail,
+            ),
+            status_code=exc.status_code,
+        )
 @app.post("/upload")
 async def upload_employees(
     file: UploadFile = File(...),
