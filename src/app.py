@@ -5026,6 +5026,7 @@ def _cli_page_context(
     *,
     roster_name: str | None = None,
     roster_cli: str | None = None,
+    roster_cli_id: str | None = None,
     roster_role: str | None = None,
     roster_gradation: str | None = None,
     roster_cli_status: str | None = None,
@@ -5059,8 +5060,16 @@ def _cli_page_context(
     gradation_opts = sorted({e.gradation for e in employees if e.gradation})
     cli_distribution = build_cli_distribution(employees, cli_bio_reference_rows)
     for row in cli_distribution:
-        row["detail_href"] = f"/cli?roster_cli={urlparse.quote(str(row.get('cli') or ''))}#cli-roster"
-        row["selected"] = bool(roster_cli and str(row.get("cli") or "").strip().lower() == roster_cli.strip().lower())
+        detail_params = [f"roster_cli={urlparse.quote(str(row.get('cli') or ''))}"]
+        if row.get("cli_id"):
+            detail_params.append(f"roster_cli_id={urlparse.quote(str(row.get('cli_id') or ''))}")
+        row["detail_href"] = f"/cli?{'&'.join(detail_params)}#cli-roster"
+        row_cli_name, row_cli_id = _canonicalize_cli_name(row.get("cli"), row.get("cli_id"))
+        selected_cli_name, selected_cli_id = _canonicalize_cli_name(roster_cli, roster_cli_id)
+        row["selected"] = bool(
+            (selected_cli_id and row_cli_id == selected_cli_id)
+            or (selected_cli_name and _cli_names_equivalent(row_cli_name, selected_cli_name))
+        )
 
     totals_all = {
         "A": sum(int(row.get("A") or 0) for row in cli_distribution),
@@ -5081,8 +5090,18 @@ def _cli_page_context(
         name_lower = roster_name.lower()
         cli_roster = [e for e in cli_roster if name_lower in e.name.lower()]
     if roster_cli:
-        cli_lower = roster_cli.strip().lower()
-        cli_roster = [e for e in cli_roster if e.cli and cli_lower in e.cli.strip().lower()]
+        selected_cli_name, selected_cli_id = _canonicalize_cli_name(roster_cli, roster_cli_id)
+        cli_roster = [
+            e
+            for e in cli_roster
+            if (
+                lambda employee_cli_name, employee_cli_id: (
+                    (selected_cli_id and employee_cli_id == selected_cli_id)
+                    or (selected_cli_name and _cli_names_equivalent(employee_cli_name, selected_cli_name))
+                    or (not selected_cli_id and not selected_cli_name and roster_cli.strip().lower() in _employee_cli_label(e).lower())
+                )
+            )(*_canonicalize_cli_name(e.cli, e.cli_id))
+        ]
     if roster_role:
         cli_roster = [e for e in cli_roster if e.role == roster_role]
     if roster_gradation:
@@ -5105,6 +5124,7 @@ def _cli_page_context(
         "gradation_opts": gradation_opts,
         "roster_name": roster_name or "",
         "roster_cli": roster_cli or "",
+        "roster_cli_id": roster_cli_id or "",
         "roster_role": roster_role or "",
         "roster_gradation": roster_gradation or "",
         "roster_cli_status": roster_cli_status or "",
@@ -5125,6 +5145,7 @@ def cli_page(
     request: Request,
     roster_name: Optional[str] = None,
     roster_cli: Optional[str] = None,
+    roster_cli_id: Optional[str] = None,
     roster_role: Optional[str] = None,
     roster_gradation: Optional[str] = None,
     roster_cli_status: Optional[str] = None,
@@ -5137,6 +5158,7 @@ def cli_page(
             session,
             roster_name=roster_name,
             roster_cli=roster_cli,
+            roster_cli_id=roster_cli_id,
             roster_role=roster_role,
             roster_gradation=roster_gradation,
             roster_cli_status=roster_cli_status,
@@ -8327,6 +8349,8 @@ def _detect_cli_upload_kind(rows: list[tuple[object, ...]]) -> str:
             return "cli_biodata"
         if {"CLIID", "CLINAME", "CREWID", "NAME", "CURRENTGRADE", "DUEDATE"}.issubset(normalized):
             return "li_grading"
+        if {"LIID", "CREWID", "CREWNAME", "GRADE", "GRADINGDATE"}.issubset(normalized):
+            return "li_grading"
     return "unknown"
 
 
@@ -8343,10 +8367,22 @@ def _parse_li_grading_workbook(content: bytes) -> tuple[list[dict[str, object]],
     role_idx: int | None = None
     current_grade_idx: int | None = None
     due_date_idx: int | None = None
+    alternate_layout = False
 
     for idx, row in enumerate(rows):
         normalized = [_normalize_li_grading_header(cell) for cell in row]
         if "CLIID" not in normalized or "CLINAME" not in normalized or "CREWID" not in normalized or "NAME" not in normalized or "CURRENTGRADE" not in normalized:
+            if {"LIID", "CREWID", "CREWNAME", "GRADE", "GRADINGDATE"}.issubset(normalized):
+                alternate_layout = True
+                header_row_index = idx
+                cli_id_idx = normalized.index("LIID")
+                cli_name_idx = None
+                crew_idx = normalized.index("CREWID")
+                name_idx = normalized.index("CREWNAME")
+                role_idx = None
+                current_grade_idx = normalized.index("GRADE")
+                due_date_idx = normalized.index("GRADINGDATE")
+                break
             continue
         role_idx = next((i for i, value in enumerate(normalized) if value in {"DESIG", "DESIGNATION", "ROLE"}), None)
         if role_idx is None:
@@ -8364,10 +8400,10 @@ def _parse_li_grading_workbook(content: bytes) -> tuple[list[dict[str, object]],
         header_row_index = idx
         break
 
-    if header_row_index is None or None in {cli_id_idx, cli_name_idx, crew_idx, name_idx, role_idx, current_grade_idx, due_date_idx}:
+    if header_row_index is None or cli_id_idx is None or crew_idx is None or name_idx is None or current_grade_idx is None or due_date_idx is None:
         raise HTTPException(
             status_code=400,
-            detail="Could not find the CLI Grading columns. Required columns: CLI ID, CLI NAME, CREW ID, NAME, DESIG., CURRENT GRADE, DUE DATE.",
+            detail="Could not find the CLI Grading columns. Required columns: CLI ID, CLI NAME, CREW ID, NAME, DESIG., CURRENT GRADE, DUE DATE. Alternate supported format: LI ID, CREW ID, CREW NAME, GRADE, GRADING DATE.",
         )
 
     warnings: list[str] = []
@@ -8391,13 +8427,16 @@ def _parse_li_grading_workbook(content: bytes) -> tuple[list[dict[str, object]],
             continue
 
         row_hint = name or crew_id or f"row {row_number}"
-        if not cli_name:
+        if not cli_id:
+            warnings.append(f"CLI Grading {row_hint}: skipped because CLI ID is blank.")
+            continue
+        if not cli_name and not alternate_layout:
             warnings.append(f"CLI Grading {row_hint}: skipped because CLI NAME is blank.")
             continue
         if not name:
             warnings.append(f"CLI Grading row {row_number}: skipped because NAME is blank.")
             continue
-        if not role_raw:
+        if not role_raw and not alternate_layout:
             warnings.append(f"CLI Grading {row_hint}: skipped because DESIG. is blank.")
             continue
         if not current_grade:
@@ -8416,7 +8455,7 @@ def _parse_li_grading_workbook(content: bytes) -> tuple[list[dict[str, object]],
                 "cli_name": cli_name,
                 "crew_id": crew_id,
                 "name": name,
-                "role": normalize_role(role_raw),
+                "role": normalize_role(role_raw) if role_raw else "",
                 "gradation": current_grade.upper(),
                 "grading_due": due_date,
                 "row_hint": row_hint,
