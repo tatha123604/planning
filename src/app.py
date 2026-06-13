@@ -2256,21 +2256,19 @@ def _pf_normalize_station_windows_to_chart(
             row_copy = dict(row)
             original_start = _coerce_int(row.get("start_pos"))
             original_end = _coerce_int(row.get("end_pos"))
-            aligned_start = None
-            aligned_end = None
-            if original_start is not None and original_end is not None and anchor_pairs:
+            arr_seconds = _parse_hms_seconds(row.get("act_arr") or row.get("sch_arr"))
+            dep_seconds = _parse_hms_seconds(row.get("act_dep") or row.get("sch_dep"))
+            fitted_arr_seconds = _pf_fit_seconds_to_chart_window(arr_seconds, chart_min, chart_max)
+            fitted_dep_seconds = _pf_fit_seconds_to_chart_window(dep_seconds, chart_min, chart_max)
+            aligned_start = _pf_find_nearest_chart_index(chart_second_values, fitted_arr_seconds)
+            aligned_end = _pf_find_nearest_chart_index(
+                chart_second_values,
+                fitted_dep_seconds if fitted_dep_seconds is not None else fitted_arr_seconds,
+            )
+
+            if aligned_start is None and aligned_end is None and original_start is not None and original_end is not None and anchor_pairs:
                 aligned_start = _pf_interpolate_position(anchor_pairs, original_start, chart_point_count)
                 aligned_end = _pf_interpolate_position(anchor_pairs, original_end, chart_point_count)
-            else:
-                arr_seconds = _parse_hms_seconds(row.get("act_arr") or row.get("sch_arr"))
-                dep_seconds = _parse_hms_seconds(row.get("act_dep") or row.get("sch_dep"))
-                fitted_arr_seconds = _pf_fit_seconds_to_chart_window(arr_seconds, chart_min, chart_max)
-                fitted_dep_seconds = _pf_fit_seconds_to_chart_window(dep_seconds, chart_min, chart_max)
-                aligned_start = _pf_find_nearest_chart_index(chart_second_values, fitted_arr_seconds)
-                aligned_end = _pf_find_nearest_chart_index(
-                    chart_second_values,
-                    fitted_dep_seconds if fitted_dep_seconds is not None else fitted_arr_seconds,
-                )
             if aligned_start is not None:
                 row_copy["start_pos"] = aligned_start
             if aligned_end is not None:
