@@ -87,9 +87,9 @@
           </label>
           <button type="submit" data-password-gated-button disabled>Cleanup Junk Files</button>
         </form>
-        {% if ssts_junk_cleanup_summary.items %}
+        {% if ssts_junk_cleanup_summary.get('items') %}
         <p class="hint">Cleanup list:
-          {% for item in ssts_junk_cleanup_summary.items[:6] %}
+          {% for item in ssts_junk_cleanup_summary.get('items', [])[:6] %}
             <span>{{ item.label }} ({{ item.size_label }}){% if not loop.last %}, {% endif %}</span>
           {% endfor %}
           {% if ssts_junk_cleanup_summary.item_count > 6 %}
