@@ -1384,5 +1384,33 @@
   <script src="/static/table-export.js?v={{ asset_ver }}"></script>
   <script src="/static/button-confirm.js?v={{ asset_ver }}"></script>
   <script src="/static/sidebar-toggle.js?v={{ asset_ver }}"></script>
+  <script>
+    (() => {
+      const wirePasswordGate = () => {
+        document.querySelectorAll('[data-password-gated-form]').forEach((form) => {
+          const passwordInput = form.querySelector('[data-password-gated-input]');
+          const submitButton = form.querySelector('[data-password-gated-button]');
+          if (!passwordInput || !submitButton) return;
+
+          const requiredCode = form.dataset.passwordGatedCode || '11111';
+          const syncButtonState = () => {
+            submitButton.disabled = passwordInput.value.trim() !== requiredCode;
+          };
+
+          if (!passwordInput.dataset.passwordGateBound) {
+            passwordInput.addEventListener('input', syncButtonState);
+            passwordInput.dataset.passwordGateBound = '1';
+          }
+          syncButtonState();
+        });
+      };
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', wirePasswordGate);
+      } else {
+        wirePasswordGate();
+      }
+    })();
+  </script>
 </body>
 </html>
