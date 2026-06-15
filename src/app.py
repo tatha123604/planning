@@ -2298,6 +2298,60 @@ def _pf_interpolate_position(
     return max(0, min(chart_point_count - 1, int(round(mapped_position))))
 
 
+def _pf_snap_station_window_to_stop(
+    chart_points: list[dict[str, object]],
+    start_index: int | None,
+    end_index: int | None,
+    stop_time_seconds: int | None,
+) -> tuple[int | None, int | None]:
+    if not chart_points or start_index is None or end_index is None:
+        return start_index, end_index
+    left = min(start_index, end_index)
+    right = max(start_index, end_index)
+    if left < 0 or right < 0:
+        return start_index, end_index
+
+    search_left = max(0, left - 18)
+    search_right = min(len(chart_points) - 1, right + 24)
+    midpoint = (left + right) / 2
+    candidates: list[tuple[float, float, int]] = []
+    for idx in range(search_left, search_right + 1):
+        speed = _pf_chart_speed_kmph(chart_points[idx])
+        if speed is None:
+            continue
+        if speed <= 12:
+            candidates.append((speed, abs(idx - midpoint), idx))
+    if not candidates:
+        return start_index, end_index
+
+    _, _, valley_index = min(candidates, key=lambda item: (item[0], item[1], item[2]))
+
+    snapped_left = valley_index
+    snapped_right = valley_index
+    while snapped_left > search_left:
+        speed = _pf_chart_speed_kmph(chart_points[snapped_left - 1])
+        if speed is None or speed > 15:
+            break
+        snapped_left -= 1
+    while snapped_right < search_right:
+        speed = _pf_chart_speed_kmph(chart_points[snapped_right + 1])
+        if speed is None or speed > 15:
+            break
+        snapped_right += 1
+
+    if stop_time_seconds is not None and stop_time_seconds > 0:
+        minimum_span = max(2, min(18, int(round(stop_time_seconds / 15))))
+        current_span = snapped_right - snapped_left
+        if current_span < minimum_span:
+            pad = int(math.ceil((minimum_span - current_span) / 2))
+            snapped_left = max(search_left, snapped_left - pad)
+            snapped_right = min(search_right, snapped_right + pad)
+
+    if abs(((snapped_left + snapped_right) / 2) - midpoint) >= 3:
+        return snapped_left, snapped_right
+    return start_index, end_index
+
+
 def _pf_normalize_station_windows_to_chart(
     rows: list[dict[str, object]],
     chart_points: list[dict[str, object]],
@@ -2357,6 +2411,7 @@ def _pf_normalize_station_windows_to_chart(
             original_end = _coerce_int(row.get("end_pos"))
             arr_seconds = _parse_hms_seconds(row.get("act_arr") or row.get("sch_arr"))
             dep_seconds = _parse_hms_seconds(row.get("act_dep") or row.get("sch_dep"))
+            stop_time_seconds = _parse_hms_seconds(row.get("stop_time"))
             fitted_arr_seconds = _pf_fit_seconds_to_chart_window(arr_seconds, chart_min, chart_max)
             fitted_dep_seconds = _pf_fit_seconds_to_chart_window(dep_seconds, chart_min, chart_max)
             aligned_start = _pf_find_nearest_chart_index(chart_second_values, fitted_arr_seconds)
@@ -2368,6 +2423,12 @@ def _pf_normalize_station_windows_to_chart(
             if aligned_start is None and aligned_end is None and original_start is not None and original_end is not None and anchor_pairs:
                 aligned_start = _pf_interpolate_position(anchor_pairs, original_start, chart_point_count)
                 aligned_end = _pf_interpolate_position(anchor_pairs, original_end, chart_point_count)
+            aligned_start, aligned_end = _pf_snap_station_window_to_stop(
+                chart_points,
+                aligned_start,
+                aligned_end,
+                stop_time_seconds,
+            )
             if aligned_start is not None:
                 row_copy["start_pos"] = aligned_start
             if aligned_end is not None:
