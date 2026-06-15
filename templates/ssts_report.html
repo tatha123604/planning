@@ -1364,6 +1364,20 @@
         setButtonState(initialButton, true, 'Running...');
         pollStatus(initialTaskId, getResultUrl(initialForm, initialTaskId), initialButton, initialForm);
       }
+
+      document.querySelectorAll('[data-password-gated-form]').forEach((form) => {
+        const passwordInput = form.querySelector('[data-password-gated-input]');
+        const submitButton = form.querySelector('[data-password-gated-button]');
+        if (!passwordInput || !submitButton) return;
+
+        const requiredCode = form.dataset.passwordGatedCode || '11111';
+        const syncButtonState = () => {
+          submitButton.disabled = passwordInput.value.trim() !== requiredCode;
+        };
+
+        passwordInput.addEventListener('input', syncButtonState);
+        syncButtonState();
+      });
     })();
   </script>
   <script src="/static/table-pager.js?v={{ asset_ver }}"></script>
