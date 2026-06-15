@@ -73,8 +73,8 @@
         </div>
         <form method="post" action="/ssts-report/cleanup-junk" class="inline sensitive-inline-form" data-password-gated-form data-password-gated-code="11111" onsubmit="return confirm('Delete removable junk files from the server?');">
           <input type="hidden" name="report_tab" value="{{ active_report_tab or 'online_offline' }}" />
-          <input type="hidden" name="selected_day" value="{{ selected_day.isoformat() if selected_day else '' }}" />
-          <input type="hidden" name="analysis_day" value="{{ selected_analysis_day.isoformat() if selected_analysis_day else '' }}" />
+          <input type="hidden" name="selected_day" value="{{ selected_day or '' }}" />
+          <input type="hidden" name="analysis_day" value="{{ selected_analysis_day or '' }}" />
           <input type="hidden" name="selected_analysis_rake" value="{{ selected_analysis_rake or '' }}" />
           <input type="hidden" name="detail_view" value="{{ active_detail_view or '' }}" />
           <input type="hidden" name="pf_day" value="{{ pf_report_day or '' }}" />
