@@ -4,8 +4,8 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1
 
 WORKDIR /app
-COPY requirements.txt .
-RUN pip install -r requirements.txt
+COPY requirements-server.txt .
+RUN pip install -r requirements-server.txt
 
 COPY . .
 # Preserve the tracked baseline DB outside the mounted data volume.

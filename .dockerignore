@@ -3,6 +3,9 @@ __pycache__/
 .env
 .git
 .tmp
+excel/
+app.py
+cli matrix run.txt
 data/*.db
 data/*.sqlite
 !data/hr.db
