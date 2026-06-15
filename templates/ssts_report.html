@@ -57,6 +57,48 @@
         </div>
       </header>
 
+      <section class="card">
+        <div class="card-head-inline">
+          <div>
+            <h2>Server Cleanup</h2>
+            <p>Safe cleanup removes cache, temp files, and old local backup files only. Main project DB and source files stay untouched.</p>
+            <p class="hint">Current removable junk: <strong>{{ ssts_junk_cleanup_summary.total_label }}</strong> across {{ ssts_junk_cleanup_summary.item_count }} item(s).</p>
+            {% if ssts_junk_cleanup_notice %}
+            <p class="hint success-text">{{ ssts_junk_cleanup_notice }}</p>
+            {% endif %}
+            {% if ssts_junk_cleanup_error %}
+            <p class="error-text">{{ ssts_junk_cleanup_error }}</p>
+            {% endif %}
+          </div>
+        </div>
+        <form method="post" action="/ssts-report/cleanup-junk" class="inline sensitive-inline-form" data-password-gated-form data-password-gated-code="11111" onsubmit="return confirm('Delete removable junk files from the server?');">
+          <input type="hidden" name="report_tab" value="{{ active_report_tab or 'online_offline' }}" />
+          <input type="hidden" name="selected_day" value="{{ selected_day.isoformat() if selected_day else '' }}" />
+          <input type="hidden" name="analysis_day" value="{{ selected_analysis_day.isoformat() if selected_analysis_day else '' }}" />
+          <input type="hidden" name="selected_analysis_rake" value="{{ selected_analysis_rake or '' }}" />
+          <input type="hidden" name="detail_view" value="{{ active_detail_view or '' }}" />
+          <input type="hidden" name="pf_day" value="{{ pf_report_day or '' }}" />
+          <input type="hidden" name="pf_speed_threshold" value="{{ pf_speed_threshold or '' }}" />
+          <input type="hidden" name="pf_task_id" value="{{ pf_analysis_task_id or '' }}" />
+          <input type="hidden" name="pf_train" value="{{ pf_analysis_selected_train or '' }}" />
+          <input type="hidden" name="pf_detail_mode" value="{{ pf_analysis_selected_mode or '' }}" />
+          <label class="site-password-label compact-site-password">Action Code
+            <input class="site-password-input compact-site-password-input" type="password" name="action_password" autocomplete="current-password" required data-password-gated-input />
+          </label>
+          <button type="submit" data-password-gated-button disabled>Cleanup Junk Files</button>
+        </form>
+        {% if ssts_junk_cleanup_summary.items %}
+        <p class="hint">Cleanup list:
+          {% for item in ssts_junk_cleanup_summary.items[:6] %}
+            <span>{{ item.label }} ({{ item.size_label }}){% if not loop.last %}, {% endif %}</span>
+          {% endfor %}
+          {% if ssts_junk_cleanup_summary.item_count > 6 %}
+            <span>and {{ ssts_junk_cleanup_summary.item_count - 6 }} more.</span>
+          {% endif %}
+        </p>
+        {% endif %}
+      </section>
+
       <nav class="report-tabs" aria-label="SSTS report tabs">
         <a
           class="report-tab {{ 'active' if active_report_tab == 'online_offline' else '' }}"
@@ -1326,6 +1368,7 @@
   </script>
   <script src="/static/table-pager.js?v={{ asset_ver }}"></script>
   <script src="/static/table-export.js?v={{ asset_ver }}"></script>
+  <script src="/static/button-confirm.js?v={{ asset_ver }}"></script>
   <script src="/static/sidebar-toggle.js?v={{ asset_ver }}"></script>
 </body>
 </html>

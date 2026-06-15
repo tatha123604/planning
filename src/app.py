@@ -67,6 +67,12 @@ ASSET_VER = "v20260514c"
 templates.env.globals["asset_ver"] = ASSET_VER
 TOP_PERFORMER_STORE_PATH = BASE_PATH / "data" / "top_performer_store.json"
 TOP_PERFORMER_PHOTO_DIR = BASE_PATH / "static" / "top_performer_photos"
+SSTS_JUNK_FILE_PATTERNS = [
+    BASE_PATH / "__pycache__",
+    BASE_PATH / "src" / "__pycache__",
+    BASE_PATH / "tmp_upload.xlsx",
+    BASE_PATH / "temp_openapi.json",
+]
 
 
 CLI_NAME_MANUAL_ALIASES = {
@@ -116,6 +122,99 @@ def _cli_names_equivalent(a: Optional[str], b: Optional[str]) -> bool:
 def _ensure_employee_sync_backup_dir() -> Path:
     EMPLOYEE_SYNC_BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     return EMPLOYEE_SYNC_BACKUP_DIR
+
+
+def _iter_ssts_cleanup_targets() -> list[Path]:
+    targets: list[Path] = []
+    targets.extend(SSTS_JUNK_FILE_PATTERNS)
+    backup_dir = DB_PATH.parent
+    if backup_dir.exists():
+        targets.extend(sorted(backup_dir.glob("hr_backup_*.db")))
+    employee_backup_dir = EMPLOYEE_SYNC_BACKUP_DIR
+    if employee_backup_dir.exists():
+        targets.extend(sorted(employee_backup_dir.glob("*.db")))
+    unique_targets: list[Path] = []
+    seen: set[str] = set()
+    for path in targets:
+        key = str(path.resolve()) if path.exists() else str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique_targets.append(path)
+    return unique_targets
+
+
+def _path_size_bytes(path: Path) -> int:
+    if not path.exists():
+        return 0
+    if path.is_file():
+        return path.stat().st_size
+    total = 0
+    for child in path.rglob("*"):
+        if child.is_file():
+            try:
+                total += child.stat().st_size
+            except OSError:
+                continue
+    return total
+
+
+def _format_storage_size(size_bytes: int) -> str:
+    if size_bytes <= 0:
+        return "0 B"
+    if size_bytes < 1024:
+        return f"{size_bytes} B"
+    if size_bytes < 1024 * 1024:
+        return f"{size_bytes / 1024:.1f} KB"
+    return f"{size_bytes / (1024 * 1024):.2f} MB"
+
+
+def _ssts_cleanup_junk_summary() -> dict[str, object]:
+    items: list[dict[str, object]] = []
+    total_bytes = 0
+    for path in _iter_ssts_cleanup_targets():
+        if not path.exists():
+            continue
+        size_bytes = _path_size_bytes(path)
+        total_bytes += size_bytes
+        items.append(
+            {
+                "label": path.relative_to(BASE_PATH).as_posix() if path.exists() and BASE_PATH in path.resolve().parents else path.name,
+                "size_bytes": size_bytes,
+                "size_label": _format_storage_size(size_bytes),
+                "kind": "folder" if path.is_dir() else "file",
+            }
+        )
+    return {
+        "items": items,
+        "item_count": len(items),
+        "total_bytes": total_bytes,
+        "total_label": _format_storage_size(total_bytes),
+    }
+
+
+def _delete_ssts_junk_files() -> dict[str, object]:
+    deleted_items: list[str] = []
+    freed_bytes = 0
+    for path in _iter_ssts_cleanup_targets():
+        if not path.exists():
+            continue
+        size_bytes = _path_size_bytes(path)
+        try:
+            if path.is_dir():
+                shutil.rmtree(path)
+            else:
+                path.unlink()
+        except OSError:
+            continue
+        deleted_items.append(path.relative_to(BASE_PATH).as_posix() if BASE_PATH in path.resolve().parents else path.name)
+        freed_bytes += size_bytes
+    return {
+        "deleted_items": deleted_items,
+        "deleted_count": len(deleted_items),
+        "freed_bytes": freed_bytes,
+        "freed_label": _format_storage_size(freed_bytes),
+    }
 
 
 def _create_employee_sync_backup(tag: str = "pre_sync") -> str:
@@ -5418,10 +5517,11 @@ def sub_non_continuous_duty_page(request: Request, report_date: Optional[str] = 
     )
 
 
-@app.get("/ssts-report")
-def ssts_report_page(
+def _build_ssts_report_response(
     request: Request,
-    force: int = 0,
+    session: Session,
+    *,
+    force: bool = False,
     report_tab: str = "online_offline",
     selected_day: str | None = None,
     analysis_day: str | None = None,
@@ -5432,9 +5532,11 @@ def ssts_report_page(
     pf_task_id: str | None = None,
     pf_train: str | None = None,
     pf_detail_mode: str | None = None,
-    session: Session = Depends(get_session),
+    junk_cleanup_notice: str = "",
+    junk_cleanup_error: str = "",
+    status_code: int = 200,
 ):
-    sync_result = refresh_ssts_snapshot(session, force=bool(force))
+    sync_result = refresh_ssts_snapshot(session, force=force)
     active_report_tab = report_tab if report_tab in {"online_offline", "pf_entering"} else "online_offline"
     selected_day_value = _parse_report_date(selected_day)
     analysis_day_value = _parse_report_date(analysis_day)
@@ -5556,6 +5658,7 @@ def ssts_report_page(
             except Exception as exc:
                 pf_context["pf_report_error"] = f"PF analysis restore failed: {exc}"
     latest_run = context.get("latest_run")
+    junk_cleanup_summary = _ssts_cleanup_junk_summary()
     latest_summary = {
         "total_rakes": len(context.get("latest_rows", [])),
         "online_now_count": len(context.get("online_now", [])),
@@ -5577,13 +5680,108 @@ def ssts_report_page(
             "ssts_sync_message": sync_result.get("message"),
             "ssts_sync_observed_at": sync_result.get("observed_at"),
             "ssts_cleanup_summary": sync_result.get("cleanup_summary") or {"deleted_runs": 0, "deleted_snapshots": 0},
+            "ssts_junk_cleanup_summary": junk_cleanup_summary,
+            "ssts_junk_cleanup_notice": junk_cleanup_notice,
+            "ssts_junk_cleanup_error": junk_cleanup_error,
             "ssts_retention_days": SSTS_SNAPSHOT_RETENTION_DAYS,
             "IST": IST,
             "active_detail_view": detail_view if detail_view in {"recent_offline", "recently_online"} else None,
             **context,
             **pf_context,
         },
+        status_code=status_code,
     )
+
+
+@app.get("/ssts-report")
+def ssts_report_page(
+    request: Request,
+    force: int = 0,
+    report_tab: str = "online_offline",
+    selected_day: str | None = None,
+    analysis_day: str | None = None,
+    selected_analysis_rake: str | None = None,
+    detail_view: str | None = None,
+    pf_day: str | None = None,
+    pf_speed_threshold: str | None = None,
+    pf_task_id: str | None = None,
+    pf_train: str | None = None,
+    pf_detail_mode: str | None = None,
+    session: Session = Depends(get_session),
+):
+    return _build_ssts_report_response(
+        request,
+        session,
+        force=bool(force),
+        report_tab=report_tab,
+        selected_day=selected_day,
+        analysis_day=analysis_day,
+        selected_analysis_rake=selected_analysis_rake,
+        detail_view=detail_view,
+        pf_day=pf_day,
+        pf_speed_threshold=pf_speed_threshold,
+        pf_task_id=pf_task_id,
+        pf_train=pf_train,
+        pf_detail_mode=pf_detail_mode,
+    )
+
+
+@app.post("/ssts-report/cleanup-junk")
+def ssts_report_cleanup_junk(
+    request: Request,
+    report_tab: str = Form("online_offline"),
+    selected_day: str = Form(""),
+    analysis_day: str = Form(""),
+    selected_analysis_rake: str = Form(""),
+    detail_view: str = Form(""),
+    pf_day: str = Form(""),
+    pf_speed_threshold: str = Form(""),
+    pf_task_id: str = Form(""),
+    pf_train: str = Form(""),
+    pf_detail_mode: str = Form(""),
+    action_password: str = Form(...),
+    session: Session = Depends(get_session),
+):
+    try:
+        _validate_sensitive_action_password(action_password)
+        cleanup_result = _delete_ssts_junk_files()
+        cleanup_notice = (
+            f"Deleted {cleanup_result['deleted_count']} junk item(s), freed {cleanup_result['freed_label']}."
+            if cleanup_result["deleted_count"]
+            else "No removable junk files were found."
+        )
+        return _build_ssts_report_response(
+            request,
+            session,
+            report_tab=report_tab,
+            selected_day=selected_day or None,
+            analysis_day=analysis_day or None,
+            selected_analysis_rake=selected_analysis_rake or None,
+            detail_view=detail_view or None,
+            pf_day=pf_day or None,
+            pf_speed_threshold=pf_speed_threshold or None,
+            pf_task_id=pf_task_id or None,
+            pf_train=pf_train or None,
+            pf_detail_mode=pf_detail_mode or None,
+            junk_cleanup_notice=cleanup_notice,
+        )
+    except HTTPException as exc:
+        return _build_ssts_report_response(
+            request,
+            session,
+            report_tab=report_tab,
+            selected_day=selected_day or None,
+            analysis_day=analysis_day or None,
+            selected_analysis_rake=selected_analysis_rake or None,
+            detail_view=detail_view or None,
+            pf_day=pf_day or None,
+            pf_speed_threshold=pf_speed_threshold or None,
+            pf_task_id=pf_task_id or None,
+            pf_train=pf_train or None,
+            pf_detail_mode=pf_detail_mode or None,
+            junk_cleanup_error=exc.detail if isinstance(exc.detail, str) else "Cleanup failed.",
+            status_code=exc.status_code,
+        )
 
 
 @app.get("/ssts-report/pf-chart")
