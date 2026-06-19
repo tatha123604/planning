@@ -51,6 +51,7 @@ from processor import build_sheet2_df, build_summary_df
 
 BASE_PATH = Path(__file__).resolve().parent.parent
 GOOGLE_EMPLOYEE_STATION_TABS = ["North", "South", "KOAA", "DDJ", "RHA", "NH", "BT"]
+HIDDEN_EMPLOYEE_ROLES = {normalize_role("Chief Loco Inspector")}
 EMPLOYEE_SYNC_BACKUP_DIR = DB_PATH.parent / "employee_sync_backups"
 EMPLOYEE_MASTER_SOURCE_SNAPSHOT_FILE = DB_PATH.parent / "employee_master_source_snapshot.json"
 EMPLOYEE_MASTER_SERVICE_SNAPSHOT_FILE = DB_PATH.parent / "employee_master_service_snapshot.json"
@@ -4452,6 +4453,11 @@ def _retired_employee_candidates(session: Session, *, today_value: date | None =
     )
 
 
+def _is_hidden_employee_role(role: object | None) -> bool:
+    normalized = normalize_role(_clean_import_text(role) or "")
+    return normalized in HIDDEN_EMPLOYEE_ROLES
+
+
 @app.get("/")
 def index(
     request: Request,
@@ -4581,7 +4587,7 @@ def employees_page(
     employees: list[Employee] = []
     if q or cli or cli_status:
         employees_all = session.exec(query_employees).all()
-        employees = list(employees_all)
+        employees = [e for e in employees_all if not _is_hidden_employee_role(e.role)]
         if q:
             q_lower = q.lower()
             employees = [
@@ -4635,14 +4641,14 @@ def employees_page(
         else:
             query_employees = query_employees.order_by(role_case, Employee.name)
 
-        employees = session.exec(query_employees).all()
+        employees = [e for e in session.exec(query_employees).all() if not _is_hidden_employee_role(e.role)]
         total_count = len(employees)
 
     cli_roster: list[Employee] = []
     if roster_filter_active:
         if not employees_all:
             employees_all = session.exec(select(Employee)).all()
-        cli_roster = [e for e in employees_all if e.cli]
+        cli_roster = [e for e in employees_all if e.cli and not _is_hidden_employee_role(e.role)]
     if roster_name:
         name_lower = roster_name.lower()
         cli_roster = [e for e in cli_roster if name_lower in e.name.lower()]
@@ -5230,7 +5236,7 @@ def _cli_page_context(
     grading_warning_details: list[str] | None = None,
 ) -> dict[str, object]:
     init_db()
-    employees = session.exec(select(Employee)).all()
+    employees = [employee for employee in session.exec(select(Employee)).all() if not _is_hidden_employee_role(employee.role)]
     grading_meta = _load_li_grading_metadata()
     grading_report_date = coerce_report_date(grading_meta.get("report_date"))
     saved_at_raw = grading_meta.get("saved_at", "")
