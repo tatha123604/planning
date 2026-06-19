@@ -4969,17 +4969,19 @@ def _uploads_context(
     update_mismatch_actions: Optional[list[dict[str, object]]] = None,
 ) -> dict[str, object]:
     saved_review_report = _load_employee_master_review_report()
+    review_reports = list(saved_review_report.get("history") or [])
+    latest_review = review_reports[0] if review_reports else saved_review_report
     mismatch_actions = update_mismatch_actions
     if mismatch_actions is None:
-        mismatch_actions = list(saved_review_report.get("update_mismatch_actions") or _load_employee_master_mismatch_actions())
+        mismatch_actions = list(latest_review.get("update_mismatch_actions") or _load_employee_master_mismatch_actions())
     if not update_notice:
-        update_notice = str(saved_review_report.get("update_notice") or "")
+        update_notice = str(latest_review.get("update_notice") or "")
     if not update_warning:
-        update_warning = str(saved_review_report.get("update_warning") or "")
+        update_warning = str(latest_review.get("update_warning") or "")
     if update_details is None:
-        update_details = list(saved_review_report.get("update_details") or [])
+        update_details = list(latest_review.get("update_details") or [])
     if warning_details is None:
-        warning_details = list(saved_review_report.get("warning_details") or [])
+        warning_details = list(latest_review.get("warning_details") or [])
     service_snapshot_ready = EMPLOYEE_MASTER_SERVICE_SNAPSHOT_FILE.exists()
     service_snapshot_saved_at = (
         datetime.fromtimestamp(EMPLOYEE_MASTER_SERVICE_SNAPSHOT_FILE.stat().st_mtime).strftime("%d-%m-%Y %H:%M")
@@ -5004,10 +5006,11 @@ def _uploads_context(
         "update_mismatch_actions": mismatch_actions or [],
         "update_preview_ready": False,
         "update_preview_password": "",
-        "update_added_details": list(saved_review_report.get("update_added_details") or []),
-        "update_updated_details": list(saved_review_report.get("update_updated_details") or []),
-        "update_deduplicated_details": list(saved_review_report.get("update_deduplicated_details") or []),
-        "review_report_saved_at": str(saved_review_report.get("saved_at") or ""),
+        "update_added_details": list(latest_review.get("update_added_details") or []),
+        "update_updated_details": list(latest_review.get("update_updated_details") or []),
+        "update_deduplicated_details": list(latest_review.get("update_deduplicated_details") or []),
+        "review_report_saved_at": str(latest_review.get("saved_at") or ""),
+        "review_reports": review_reports,
         "cleanup_error": "",
         "cleanup_notice": "",
         "cleanup_summary": None,
@@ -7413,8 +7416,9 @@ def _save_employee_master_review_report(
     update_added_details: Optional[list[str]] = None,
     update_updated_details: Optional[list[str]] = None,
     update_deduplicated_details: Optional[list[str]] = None,
+    append_history: bool = False,
 ) -> None:
-    payload = {
+    entry = {
         "saved_at": datetime.now().strftime("%d-%m-%Y %H:%M"),
         "update_notice": update_notice,
         "update_warning": update_warning,
@@ -7425,6 +7429,16 @@ def _save_employee_master_review_report(
         "update_updated_details": list(update_updated_details or []),
         "update_deduplicated_details": list(update_deduplicated_details or []),
     }
+    existing = _load_employee_master_review_report()
+    history = list(existing.get("history") or [])
+    if append_history:
+        history = [entry] + history
+    elif history:
+        history[0] = entry
+    else:
+        history = [entry]
+    payload = dict(entry)
+    payload["history"] = history[:25]
     EMPLOYEE_MASTER_REVIEW_REPORT_FILE.write_text(
         json.dumps(payload, ensure_ascii=True, indent=2),
         encoding="utf-8",
@@ -7438,7 +7452,13 @@ def _load_employee_master_review_report() -> dict[str, object]:
         raw = json.loads(EMPLOYEE_MASTER_REVIEW_REPORT_FILE.read_text(encoding="utf-8"))
     except Exception:
         return {}
-    return raw if isinstance(raw, dict) else {}
+    if not isinstance(raw, dict):
+        return {}
+    history = raw.get("history")
+    if not isinstance(history, list):
+        entry = dict(raw)
+        raw["history"] = [entry] if entry else []
+    return raw
 
 
 def _build_duplicate_cleanup_plan(session: Session) -> tuple[list[dict[str, object]], list[dict[str, object]], dict[str, int]]:
@@ -8754,6 +8774,7 @@ async def upload_employee_master_sync(
             update_details=sync_details,
             warning_details=warnings,
             update_mismatch_actions=mismatch_actions,
+            append_history=True,
         )
 
         return _uploads_template_response(

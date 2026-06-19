@@ -103,52 +103,53 @@
         </div>
 
         <div class="card collapsible" style="grid-column: 1 / -1;">
-          <details {% if update_notice or update_warning or update_details or warning_details or update_mismatch_actions or update_added_details or update_updated_details or update_deduplicated_details %}open{% endif %}>
+          <details {% if review_reports or update_notice or update_warning or update_details or warning_details or update_mismatch_actions or update_added_details or update_updated_details or update_deduplicated_details %}open{% endif %}>
             <summary>Employee Update Review &amp; Actions</summary>
           {% if review_report_saved_at %}
           <p class="hint">Last saved review report: <strong>{{ review_report_saved_at }}</strong></p>
           {% endif %}
-          {% if update_notice %}
-          <div class="sync-report-card" style="margin-bottom: 12px;">
-            <div class="sync-report-section">
-              <h4>Employee Table Update Status</h4>
-              <p class="hint success-text" role="status">{{ update_notice }}</p>
-            </div>
-          </div>
-          {% endif %}
-          {% if update_warning %}
-          <p class="hint warning-text" role="status">{{ update_warning }}</p>
-          {% endif %}
-          {% if not update_notice and not update_warning and not update_details and not warning_details and not update_mismatch_actions and not update_added_details and not update_updated_details and not update_deduplicated_details %}
+          {% if not review_reports and not update_notice and not update_warning and not update_details and not warning_details and not update_mismatch_actions and not update_added_details and not update_updated_details and not update_deduplicated_details %}
           <p class="hint">After an employee table update, this card will show update reports, auto-corrections, mismatches, and action buttons if anything needs review.</p>
           {% endif %}
-          {% if update_added_details or update_updated_details or update_deduplicated_details %}
+          {% for report in review_reports %}
+          <div class="sync-report-card" style="margin-bottom: 14px;">
+            <div class="sync-report-section">
+              <h4>Report {{ loop.index }}</h4>
+              <p class="hint">Saved at <strong>{{ report.saved_at }}</strong></p>
+              {% if report.update_notice %}
+              <p class="hint success-text" role="status">{{ report.update_notice }}</p>
+              {% endif %}
+              {% if report.update_warning %}
+              <p class="hint warning-text" role="status">{{ report.update_warning }}</p>
+              {% endif %}
+            </div>
+          {% if report.update_added_details or report.update_updated_details or report.update_deduplicated_details %}
           <div class="sync-report-card log-toggle-card" style="margin-bottom: 12px;">
-            <details class="sync-report-section log-toggle-section" {% if (update_added_details|length or 0) <= 4 %}open{% endif %}>
+            <details class="sync-report-section log-toggle-section" {% if (report.update_added_details|length or 0) <= 4 and loop.first %}open{% endif %}>
               <summary><span class="sync-list-title">Inserted</span><span class="log-toggle-state" aria-hidden="true"></span></summary>
               <ul class="sync-report-list">
-                {% if update_added_details %}
-                  {% for item in update_added_details %}<li>{{ item }}</li>{% endfor %}
+                {% if report.update_added_details %}
+                  {% for item in report.update_added_details %}<li>{{ item }}</li>{% endfor %}
                 {% else %}
                   <li>No changes</li>
                 {% endif %}
               </ul>
             </details>
-            <details class="sync-report-section log-toggle-section" {% if (update_updated_details|length or 0) <= 4 %}open{% endif %}>
+            <details class="sync-report-section log-toggle-section" {% if (report.update_updated_details|length or 0) <= 4 and loop.first %}open{% endif %}>
               <summary><span class="sync-list-title">Updated</span><span class="log-toggle-state" aria-hidden="true"></span></summary>
               <ul class="sync-report-list">
-                {% if update_updated_details %}
-                  {% for item in update_updated_details %}<li>{{ item }}</li>{% endfor %}
+                {% if report.update_updated_details %}
+                  {% for item in report.update_updated_details %}<li>{{ item }}</li>{% endfor %}
                 {% else %}
                   <li>No changes</li>
                 {% endif %}
               </ul>
             </details>
-            <details class="sync-report-section log-toggle-section" {% if (update_deduplicated_details|length or 0) <= 4 %}open{% endif %}>
+            <details class="sync-report-section log-toggle-section" {% if (report.update_deduplicated_details|length or 0) <= 4 and loop.first %}open{% endif %}>
               <summary><span class="sync-list-title">Deduplicated</span><span class="log-toggle-state" aria-hidden="true"></span></summary>
               <ul class="sync-report-list">
-                {% if update_deduplicated_details %}
-                  {% for item in update_deduplicated_details %}<li>{{ item }}</li>{% endfor %}
+                {% if report.update_deduplicated_details %}
+                  {% for item in report.update_deduplicated_details %}<li>{{ item }}</li>{% endfor %}
                 {% else %}
                   <li>No changes</li>
                 {% endif %}
@@ -156,31 +157,31 @@
             </details>
           </div>
           {% endif %}
-          {% if update_details %}
-          <details class="sync-log-collapse" {% if (update_details|length or 0) <= 8 %}open{% endif %}>
+          {% if report.update_details %}
+          <details class="sync-log-collapse" {% if (report.update_details|length or 0) <= 8 and loop.first %}open{% endif %}>
             <summary><span class="sync-list-title hint success-text"><strong>Update report</strong></span><span class="log-toggle-state" aria-hidden="true"></span></summary>
             <ul class="sync-warning-list">
-              {% for item in update_details %}
+              {% for item in report.update_details %}
               <li>{{ item }}</li>
               {% endfor %}
             </ul>
           </details>
           {% endif %}
-          {% if warning_details %}
-          <details class="sync-log-collapse" {% if (warning_details|length or 0) <= 8 %}open{% endif %}>
+          {% if report.warning_details %}
+          <details class="sync-log-collapse" {% if (report.warning_details|length or 0) <= 8 and loop.first %}open{% endif %}>
             <summary><span class="sync-list-title hint warning-text"><strong>Mismatched / Auto-corrected records</strong></span><span class="log-toggle-state" aria-hidden="true"></span></summary>
             <ul class="sync-warning-list">
-              {% for item in warning_details %}
+              {% for item in report.warning_details %}
               <li>{{ item }}</li>
               {% endfor %}
             </ul>
           </details>
           {% endif %}
-          {% if update_mismatch_actions %}
-          <details class="conflict-group sync-log-collapse" {% if (update_mismatch_actions|length or 0) <= 2 %}open{% endif %}>
+          {% if report.update_mismatch_actions %}
+          <details class="conflict-group sync-log-collapse" {% if (report.update_mismatch_actions|length or 0) <= 2 and loop.first %}open{% endif %}>
             <summary><span class="sync-list-title hint warning-text"><strong>Take action on mismatches</strong></span><span class="log-toggle-state" aria-hidden="true"></span></summary>
             <div class="conflict-group-body">
-            {% for item in update_mismatch_actions %}
+            {% for item in report.update_mismatch_actions %}
             <div class="conflict-card">
               <p><strong>{{ item.reason }}</strong> - {{ item.row_hint }}</p>
               <div class="conflict-split">
@@ -235,6 +236,8 @@
             </div>
           </details>
           {% endif %}
+          </div>
+          {% endfor %}
           </details>
         </div>
 
