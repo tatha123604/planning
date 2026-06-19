@@ -6440,6 +6440,30 @@ def _emp_no_last5(value: object | None) -> str | None:
     return normalized[-5:] if len(normalized) >= 5 else normalized
 
 
+def _emp_no_match_key(value: object | None) -> str | None:
+    text = _clean_import_text(value)
+    if text is None:
+        return None
+    normalized = re.sub(r"[^A-Z0-9]", "", text.upper())
+    if not normalized:
+        return None
+    if len(normalized) > 1 and normalized.startswith("0"):
+        normalized = normalized[1:]
+    return normalized or None
+
+
+def _emp_no_matches(left: object | None, right: object | None) -> bool:
+    left_raw = _clean_import_text(left)
+    right_raw = _clean_import_text(right)
+    if left_raw is None or right_raw is None:
+        return False
+    if left_raw == right_raw:
+        return True
+    left_key = _emp_no_match_key(left_raw)
+    right_key = _emp_no_match_key(right_raw)
+    return left_key is not None and left_key == right_key
+
+
 def _find_employee_master_merge_candidate(
     employees: list[Employee],
     *,
@@ -6547,6 +6571,7 @@ def _import_employee_rows(
 
     existing_cli_rows = session.exec(select(Employee.cli, Employee.cli_id)).all()
     canonical_by_id, alias_map, id_by_name = _build_cli_name_maps(existing_cli_rows)
+    employees = session.exec(select(Employee)).all()
 
     added = 0
     updated = 0
@@ -6562,6 +6587,17 @@ def _import_employee_rows(
             idx = col_index["hrms"]
             if idx < len(row) and row[idx] not in (None, ""):
                 source_hrms_counts[str(row[idx]).strip()] += 1
+
+    def _find_pf_matches(value: str | None) -> list[Employee]:
+        if not value:
+            return []
+        exact_matches = [employee for employee in employees if _clean_import_text(employee.pf_no) == value]
+        if exact_matches:
+            return exact_matches
+        match_key = _emp_no_match_key(value)
+        if match_key is None:
+            return []
+        return [employee for employee in employees if _emp_no_match_key(employee.pf_no) == match_key]
 
     for row in data_rows:
         def get(col: str) -> object | None:
@@ -6625,7 +6661,7 @@ def _import_employee_rows(
                 warnings.append(f"{source_label} {row_hint}: skipped because HRMS {hrms} appears multiple times in the Google Sheet.")
             continue
 
-        pf_matches = session.exec(select(Employee).where(Employee.pf_no == pf_no)).all() if pf_no else []
+        pf_matches = _find_pf_matches(pf_no)
         hrms_matches = session.exec(select(Employee).where(Employee.hrms == hrms)).all() if hrms else []
         if len(pf_matches) > 1:
             if sync_stats is not None:
@@ -6807,31 +6843,31 @@ def _import_employee_rows(
                 alias_map=alias_map,
                 id_by_name=id_by_name,
             )
-            session.add(
-                Employee(
-                    name=str(name).strip(),
-                    role=role,
-                    hire_date=hire_date,
-                    retirement_date=retirement_date,
-                    promotion_role=promo_role,
-                    promotion_ready_date=promo_ready,
-                    category=category,
-                    pf_no=pf_no,
-                    hrms=hrms,
-                    crew_id=crew_id,
-                    cli_id=new_cli_id,
-                    dob=dob,
-                    doa=doa,
-                    do_report=do_report,
-                    status=status_val,
-                    working_at=working_at,
-                    gradation=str(get("gradation")).strip() if "gradation" in col_index and get("gradation") else None,
-                    cli=new_cli,
-                    pme_due=pme_due,
-                    technical_due=technical_due,
-                    transportation_due=transportation_due,
-                )
+            employee = Employee(
+                name=str(name).strip(),
+                role=role,
+                hire_date=hire_date,
+                retirement_date=retirement_date,
+                promotion_role=promo_role,
+                promotion_ready_date=promo_ready,
+                category=category,
+                pf_no=pf_no,
+                hrms=hrms,
+                crew_id=crew_id,
+                cli_id=new_cli_id,
+                dob=dob,
+                doa=doa,
+                do_report=do_report,
+                status=status_val,
+                working_at=working_at,
+                gradation=str(get("gradation")).strip() if "gradation" in col_index and get("gradation") else None,
+                cli=new_cli,
+                pme_due=pme_due,
+                technical_due=technical_due,
+                transportation_due=transportation_due,
             )
+            session.add(employee)
+            employees.append(employee)
             added += 1
             if sync_details is not None:
                 sync_details.append(f"Added {row_hint}: Designation {_format_sync_value(role)}; Working At {_format_sync_value(working_at)}")
@@ -8288,15 +8324,20 @@ def _upsert_employee_master_records(
     employees = session.exec(select(Employee)).all()
 
     by_pf: dict[str, list[Employee]] = {}
+    by_pf_match: dict[str, list[Employee]] = {}
     by_crew_id: dict[str, list[Employee]] = {}
 
     def rebuild_exact_indexes() -> None:
         by_pf.clear()
+        by_pf_match.clear()
         by_crew_id.clear()
         for employee in employees:
             pf_value = _clean_import_text(employee.pf_no)
             if pf_value:
                 by_pf.setdefault(pf_value, []).append(employee)
+                pf_match_value = _emp_no_match_key(pf_value)
+                if pf_match_value:
+                    by_pf_match.setdefault(pf_match_value, []).append(employee)
             crew_value = _clean_import_text(employee.crew_id)
             if crew_value:
                 by_crew_id.setdefault(crew_value, []).append(employee)
@@ -8316,6 +8357,8 @@ def _upsert_employee_master_records(
             continue
 
         pf_matches = by_pf.get(emp_no, [])
+        if not pf_matches:
+            pf_matches = by_pf_match.get(_emp_no_match_key(emp_no) or "", [])
         if len(pf_matches) > 1:
             warnings.append(f"{row_hint}: skipped because EMP NO {emp_no} matches multiple employees in the current database.")
             skipped += 1
@@ -8331,7 +8374,7 @@ def _upsert_employee_master_records(
                 continue
             if len(crew_matches) == 1:
                 existing = crew_matches[0]
-                if existing.pf_no and existing.pf_no != emp_no:
+                if existing.pf_no and not _emp_no_matches(existing.pf_no, emp_no):
                     warnings.append(
                         f"{row_hint}: skipped because EMP NO {emp_no} conflicts with existing employee EMP NO {existing.pf_no}."
                     )
@@ -8863,7 +8906,7 @@ def _apply_cli_biodata_records(
     by_emp_no: dict[str, Employee] = {}
     by_name_role: dict[tuple[str, str], list[Employee]] = {}
     for employee in employees:
-        emp_no_key = _clean_import_text(employee.pf_no)
+        emp_no_key = _emp_no_match_key(employee.pf_no)
         if emp_no_key:
             by_emp_no[emp_no_key] = employee
         name_key = _normalize_import_name(employee.name)
@@ -8883,7 +8926,7 @@ def _apply_cli_biodata_records(
         name = str(record["name"] or "")
         role = str(record["role"] or "")
         name_key = _normalize_import_name(name)
-        target = by_emp_no.get(emp_no)
+        target = by_emp_no.get(_emp_no_match_key(emp_no) or "")
         if target is None:
             matches = by_name_role.get((name_key, role), [])
             if len(matches) == 1:
@@ -9380,6 +9423,13 @@ async def upload_employees(
         existing = None
         if pf_no:
             existing = session.exec(select(Employee).where(Employee.pf_no == pf_no)).first()
+            if existing is None:
+                pf_key = _emp_no_match_key(pf_no)
+                if pf_key:
+                    employees = session.exec(select(Employee)).all()
+                    matches = [employee for employee in employees if _emp_no_match_key(employee.pf_no) == pf_key]
+                    if len(matches) == 1:
+                        existing = matches[0]
         if existing is None and hrms:
             existing = session.exec(select(Employee).where(Employee.hrms == hrms)).first()
         if existing is None:
