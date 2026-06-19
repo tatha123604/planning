@@ -133,6 +133,58 @@
         {% endif %}
       </section>
 
+      <section class="card" id="retired-cleanup-card">
+        <h2>Delete Retired Employees</h2>
+        {% if retired_cleanup_error %}
+        <p class="error-text" role="alert">{{ retired_cleanup_error }}</p>
+        {% endif %}
+        {% if retired_cleanup_notice %}
+        <p class="hint success-text" role="status">{{ retired_cleanup_notice }}</p>
+        {% endif %}
+        <p class="hint">Preview employees whose <code>retirement_date</code> is before today, then confirm deletion only if the list looks correct.</p>
+        <div class="actions">
+          <form method="post" action="/employees/retired-cleanup-preview" class="inline">
+            <button type="submit">Preview Retired Employees</button>
+          </form>
+        </div>
+        {% if retired_preview_rows %}
+        <div class="sync-report-card" style="margin-top: 14px;">
+          <div class="sync-report-section">
+            <h4>Preview</h4>
+            <p class="hint">{{ retired_preview_count }} employee(s) will be deleted.</p>
+            <div class="table-wrap">
+              <table class="employee-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>CREW ID</th>
+                    <th>Designation</th>
+                    <th>Retirement Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for e in retired_preview_rows %}
+                  <tr>
+                    <td>{{ e.name }}</td>
+                    <td>{{ e.crew_id or '' }}</td>
+                    <td>{{ e.role }}</td>
+                    <td>{{ e.retirement_date | dmy if e.retirement_date else '' }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            <form method="post" action="/employees/retired-cleanup-apply" class="inline sensitive-inline-form" data-password-gated-form data-password-gated-code="11111" onsubmit="return confirm('Delete all previewed retired employees now?');" style="margin-top: 12px;">
+              <label class="site-password-label compact-site-password">Action Code
+                <input class="site-password-input compact-site-password-input" type="password" name="action_password" autocomplete="current-password" required data-password-gated-input />
+              </label>
+              <button type="submit" class="danger" data-password-gated-button disabled>Delete Previewed Employees</button>
+            </form>
+          </div>
+        </div>
+        {% endif %}
+      </section>
+
       <section class="card collapsible" id="employees-card">
         <details {% if employees_open %}open{% endif %}>
           <summary>Employees</summary>

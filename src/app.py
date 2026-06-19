@@ -4443,6 +4443,15 @@ def _safe_return_to(value: str | None, fallback: str = "/employees") -> str:
     return target
 
 
+def _retired_employee_candidates(session: Session, *, today_value: date | None = None) -> list[Employee]:
+    today_value = today_value or date.today()
+    employees = session.exec(select(Employee).where(Employee.retirement_date.is_not(None))).all()
+    return sorted(
+        [employee for employee in employees if employee.retirement_date and employee.retirement_date < today_value],
+        key=lambda employee: (employee.retirement_date or date.min, role_sort_key(employee.role), employee.name),
+    )
+
+
 @app.get("/")
 def index(
     request: Request,
@@ -4525,6 +4534,9 @@ def employees_page(
     sync_notice: Optional[str] = None,
     sync_warning: Optional[str] = None,
     sync_error: Optional[str] = None,
+    retired_cleanup_notice: Optional[str] = None,
+    retired_cleanup_error: Optional[str] = None,
+    retired_preview: Optional[str] = None,
     session: Session = Depends(get_session),
 ):
     roster_filter_active = any([roster_name, roster_cli, roster_gradation])
@@ -4648,6 +4660,7 @@ def employees_page(
     next_url = ""
     employee_return_to = f"{request.url.path}{('?' + request.url.query) if request.url.query else ''}#employees-card"
     employee_return_to_query = urlparse.quote(employee_return_to, safe="/")
+    retired_preview_rows = _retired_employee_candidates(session) if retired_preview == "1" else []
 
     return templates.TemplateResponse(
         "employees.html",
@@ -4689,6 +4702,10 @@ def employees_page(
             "sync_backup_label": _latest_employee_sync_backup()[1],
             "google_sync_ready": _google_sheet_sync_ready(),
             "google_sync_range": ", ".join(GOOGLE_EMPLOYEE_STATION_TABS),
+            "retired_cleanup_notice": retired_cleanup_notice or "",
+            "retired_cleanup_error": retired_cleanup_error or "",
+            "retired_preview_rows": retired_preview_rows,
+            "retired_preview_count": len(retired_preview_rows),
         },
     )
 
@@ -4854,6 +4871,35 @@ def restore_employee_backup(
     shutil.copy2(backup_path, DB_PATH)
     notice = urlparse.quote(f"Backup restored: {backup_label}")
     return RedirectResponse(url=f"/employees?sync_notice={notice}#google-sync-card", status_code=303)
+
+
+@app.post("/employees/retired-cleanup-preview")
+def preview_retired_employee_cleanup():
+    return RedirectResponse(url="/employees?retired_preview=1#retired-cleanup-card", status_code=303)
+
+
+@app.post("/employees/retired-cleanup-apply")
+def apply_retired_employee_cleanup(
+    action_password: str = Form(...),
+    session: Session = Depends(get_session),
+):
+    try:
+        _validate_sensitive_action_password(action_password)
+        retired_rows = _retired_employee_candidates(session)
+        if not retired_rows:
+            notice = urlparse.quote("No retired employees found for deletion.")
+            return RedirectResponse(url=f"/employees?retired_cleanup_notice={notice}#retired-cleanup-card", status_code=303)
+        deleted_count = len(retired_rows)
+        for employee in retired_rows:
+            session.delete(employee)
+        session.commit()
+        notice = urlparse.quote(f"Deleted {deleted_count} employee(s) whose retirement date is before {date.today().isoformat()}.")
+        return RedirectResponse(url=f"/employees?retired_cleanup_notice={notice}#retired-cleanup-card", status_code=303)
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "Retired employee delete failed."
+        return RedirectResponse(url=f"/employees?retired_cleanup_error={urlparse.quote(detail)}#retired-cleanup-card", status_code=303)
+    except Exception as exc:
+        return RedirectResponse(url=f"/employees?retired_cleanup_error={urlparse.quote(str(exc))}#retired-cleanup-card", status_code=303)
 
 
 @app.get("/employees/{emp_id}")
