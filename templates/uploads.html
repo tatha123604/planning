@@ -105,6 +105,9 @@
         <div class="card collapsible" style="grid-column: 1 / -1;">
           <details {% if update_notice or update_warning or update_details or warning_details or update_mismatch_actions or update_added_details or update_updated_details or update_deduplicated_details %}open{% endif %}>
             <summary>Employee Update Review &amp; Actions</summary>
+          {% if review_report_saved_at %}
+          <p class="hint">Last saved review report: <strong>{{ review_report_saved_at }}</strong></p>
+          {% endif %}
           {% if update_notice %}
           <div class="sync-report-card" style="margin-bottom: 12px;">
             <div class="sync-report-section">

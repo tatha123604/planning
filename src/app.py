@@ -55,6 +55,7 @@ EMPLOYEE_SYNC_BACKUP_DIR = DB_PATH.parent / "employee_sync_backups"
 EMPLOYEE_MASTER_SOURCE_SNAPSHOT_FILE = DB_PATH.parent / "employee_master_source_snapshot.json"
 EMPLOYEE_MASTER_SERVICE_SNAPSHOT_FILE = DB_PATH.parent / "employee_master_service_snapshot.json"
 EMPLOYEE_MASTER_MISMATCH_ACTIONS_FILE = DB_PATH.parent / "employee_master_mismatch_actions.json"
+EMPLOYEE_MASTER_REVIEW_REPORT_FILE = DB_PATH.parent / "employee_master_review_report.json"
 LI_GRADING_METADATA_FILE = DB_PATH.parent / "li_grading_metadata.json"
 GOOGLE_SHEETS_READONLY_SCOPE = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 templates = Jinja2Templates(directory=str(BASE_PATH / "templates"))
@@ -4967,9 +4968,18 @@ def _uploads_context(
     warning_details: Optional[list[str]] = None,
     update_mismatch_actions: Optional[list[dict[str, object]]] = None,
 ) -> dict[str, object]:
+    saved_review_report = _load_employee_master_review_report()
     mismatch_actions = update_mismatch_actions
     if mismatch_actions is None:
-        mismatch_actions = _load_employee_master_mismatch_actions()
+        mismatch_actions = list(saved_review_report.get("update_mismatch_actions") or _load_employee_master_mismatch_actions())
+    if not update_notice:
+        update_notice = str(saved_review_report.get("update_notice") or "")
+    if not update_warning:
+        update_warning = str(saved_review_report.get("update_warning") or "")
+    if update_details is None:
+        update_details = list(saved_review_report.get("update_details") or [])
+    if warning_details is None:
+        warning_details = list(saved_review_report.get("warning_details") or [])
     service_snapshot_ready = EMPLOYEE_MASTER_SERVICE_SNAPSHOT_FILE.exists()
     service_snapshot_saved_at = (
         datetime.fromtimestamp(EMPLOYEE_MASTER_SERVICE_SNAPSHOT_FILE.stat().st_mtime).strftime("%d-%m-%Y %H:%M")
@@ -4994,9 +5004,10 @@ def _uploads_context(
         "update_mismatch_actions": mismatch_actions or [],
         "update_preview_ready": False,
         "update_preview_password": "",
-        "update_added_details": [],
-        "update_updated_details": [],
-        "update_deduplicated_details": [],
+        "update_added_details": list(saved_review_report.get("update_added_details") or []),
+        "update_updated_details": list(saved_review_report.get("update_updated_details") or []),
+        "update_deduplicated_details": list(saved_review_report.get("update_deduplicated_details") or []),
+        "review_report_saved_at": str(saved_review_report.get("saved_at") or ""),
         "cleanup_error": "",
         "cleanup_notice": "",
         "cleanup_summary": None,
@@ -7392,6 +7403,44 @@ def _remove_employee_master_mismatch_action(action_key: str) -> list[dict[str, o
     return remaining
 
 
+def _save_employee_master_review_report(
+    *,
+    update_notice: str = "",
+    update_warning: str = "",
+    update_details: Optional[list[str]] = None,
+    warning_details: Optional[list[str]] = None,
+    update_mismatch_actions: Optional[list[dict[str, object]]] = None,
+    update_added_details: Optional[list[str]] = None,
+    update_updated_details: Optional[list[str]] = None,
+    update_deduplicated_details: Optional[list[str]] = None,
+) -> None:
+    payload = {
+        "saved_at": datetime.now().strftime("%d-%m-%Y %H:%M"),
+        "update_notice": update_notice,
+        "update_warning": update_warning,
+        "update_details": list(update_details or []),
+        "warning_details": list(warning_details or []),
+        "update_mismatch_actions": list(update_mismatch_actions or []),
+        "update_added_details": list(update_added_details or []),
+        "update_updated_details": list(update_updated_details or []),
+        "update_deduplicated_details": list(update_deduplicated_details or []),
+    }
+    EMPLOYEE_MASTER_REVIEW_REPORT_FILE.write_text(
+        json.dumps(payload, ensure_ascii=True, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _load_employee_master_review_report() -> dict[str, object]:
+    if not EMPLOYEE_MASTER_REVIEW_REPORT_FILE.exists():
+        return {}
+    try:
+        raw = json.loads(EMPLOYEE_MASTER_REVIEW_REPORT_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return raw if isinstance(raw, dict) else {}
+
+
 def _build_duplicate_cleanup_plan(session: Session) -> tuple[list[dict[str, object]], list[dict[str, object]], dict[str, int]]:
     employees = session.exec(select(Employee)).all()
     plan: list[dict[str, object]] = []
@@ -8699,6 +8748,13 @@ async def upload_employee_master_sync(
         warning_text = ""
         if warnings:
             warning_text = f"Mismatch / auto-fixed records: {len(warnings)}"
+        _save_employee_master_review_report(
+            update_notice=notice,
+            update_warning=warning_text,
+            update_details=sync_details,
+            warning_details=warnings,
+            update_mismatch_actions=mismatch_actions,
+        )
 
         return _uploads_template_response(
             request,
@@ -8788,6 +8844,17 @@ async def upload_employee_master_mismatch_merge(
         session.commit()
         mismatch_actions = _remove_employee_master_mismatch_action(action_key)
         notice = "Mismatch merge complete: incoming row added alongside existing."
+        saved_report = _load_employee_master_review_report()
+        _save_employee_master_review_report(
+            update_notice=notice,
+            update_warning=str(saved_report.get("update_warning") or ""),
+            update_details=list(saved_report.get("update_details") or []),
+            warning_details=list(saved_report.get("warning_details") or []),
+            update_mismatch_actions=mismatch_actions,
+            update_added_details=list(saved_report.get("update_added_details") or []),
+            update_updated_details=list(saved_report.get("update_updated_details") or []),
+            update_deduplicated_details=list(saved_report.get("update_deduplicated_details") or []),
+        )
         return _uploads_template_response(request, update_notice=notice, update_mismatch_actions=mismatch_actions)
     except HTTPException as exc:
         detail = exc.detail if isinstance(exc.detail, str) else "Merge failed."
@@ -8821,6 +8888,17 @@ async def upload_employee_master_mismatch_delete(
         else:
             notice = "Delete complete: incoming row ignored, existing row kept."
         mismatch_actions = _remove_employee_master_mismatch_action(action_key)
+        saved_report = _load_employee_master_review_report()
+        _save_employee_master_review_report(
+            update_notice=notice,
+            update_warning=str(saved_report.get("update_warning") or ""),
+            update_details=list(saved_report.get("update_details") or []),
+            warning_details=list(saved_report.get("warning_details") or []),
+            update_mismatch_actions=mismatch_actions,
+            update_added_details=list(saved_report.get("update_added_details") or []),
+            update_updated_details=list(saved_report.get("update_updated_details") or []),
+            update_deduplicated_details=list(saved_report.get("update_deduplicated_details") or []),
+        )
         return _uploads_template_response(request, update_notice=notice, update_mismatch_actions=mismatch_actions)
     except HTTPException as exc:
         detail = exc.detail if isinstance(exc.detail, str) else "Delete failed."
