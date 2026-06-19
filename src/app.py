@@ -1712,6 +1712,24 @@ def build_cli_distribution(
         for bucket in ("A", "B", "C", "total", "total_staff"):
             existing[bucket] = int(existing.get(bucket) or 0) + int(counts.get(bucket) or 0)
 
+    # Also collapse rows by canonical CLI name so a zero-count reference row with CLI ID
+    # does not stay separate from a populated row that only has the same CLI name.
+    final_dist: dict[str, dict[str, int | str]] = {}
+    for _, counts in merged_dist.items():
+        cli_name = str(counts.get("cli") or "")
+        cli_id = str(counts.get("cli_id") or "")
+        merge_key = _cli_name_key(cli_name).lower() or cli_id.lower() or "unassigned"
+        existing = final_dist.get(merge_key)
+        if existing is None:
+            final_dist[merge_key] = dict(counts)
+            continue
+        if not existing.get("cli") and cli_name:
+            existing["cli"] = cli_name
+        if not existing.get("cli_id") and cli_id:
+            existing["cli_id"] = cli_id
+        for bucket in ("A", "B", "C", "total", "total_staff"):
+            existing[bucket] = int(existing.get(bucket) or 0) + int(counts.get(bucket) or 0)
+
     return [
         {
             "cli": counts["cli"],
@@ -1723,7 +1741,7 @@ def build_cli_distribution(
             "total_staff": counts["total_staff"],
         }
         for _, counts in sorted(
-            merged_dist.items(),
+            final_dist.items(),
             key=lambda item: (
                 str(item[1].get("cli") or "").lower(),
                 str(item[1].get("cli_id") or "").lower(),
