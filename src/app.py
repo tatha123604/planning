@@ -53,6 +53,7 @@ BASE_PATH = Path(__file__).resolve().parent.parent
 GOOGLE_EMPLOYEE_STATION_TABS = ["North", "South", "KOAA", "DDJ", "RHA", "NH", "BT"]
 EMPLOYEE_SYNC_BACKUP_DIR = DB_PATH.parent / "employee_sync_backups"
 EMPLOYEE_MASTER_SOURCE_SNAPSHOT_FILE = DB_PATH.parent / "employee_master_source_snapshot.json"
+EMPLOYEE_MASTER_SERVICE_SNAPSHOT_FILE = DB_PATH.parent / "employee_master_service_snapshot.json"
 EMPLOYEE_MASTER_MISMATCH_ACTIONS_FILE = DB_PATH.parent / "employee_master_mismatch_actions.json"
 LI_GRADING_METADATA_FILE = DB_PATH.parent / "li_grading_metadata.json"
 GOOGLE_SHEETS_READONLY_SCOPE = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
@@ -4969,6 +4970,18 @@ def _uploads_context(
     mismatch_actions = update_mismatch_actions
     if mismatch_actions is None:
         mismatch_actions = _load_employee_master_mismatch_actions()
+    service_snapshot_ready = EMPLOYEE_MASTER_SERVICE_SNAPSHOT_FILE.exists()
+    service_snapshot_saved_at = (
+        datetime.fromtimestamp(EMPLOYEE_MASTER_SERVICE_SNAPSHOT_FILE.stat().st_mtime).strftime("%d-%m-%Y %H:%M")
+        if service_snapshot_ready
+        else ""
+    )
+    source_snapshot_ready = EMPLOYEE_MASTER_SOURCE_SNAPSHOT_FILE.exists()
+    source_snapshot_saved_at = (
+        datetime.fromtimestamp(EMPLOYEE_MASTER_SOURCE_SNAPSHOT_FILE.stat().st_mtime).strftime("%d-%m-%Y %H:%M")
+        if source_snapshot_ready
+        else ""
+    )
     return {
         "request": request,
         "active_page": "uploads",
@@ -4990,8 +5003,10 @@ def _uploads_context(
         "cleanup_groups": [],
         "cleanup_details": [],
         "cleanup_saved_at": "",
-        "source_snapshot_ready": False,
-        "source_snapshot_saved_at": "",
+        "source_snapshot_ready": source_snapshot_ready,
+        "source_snapshot_saved_at": source_snapshot_saved_at,
+        "service_snapshot_ready": service_snapshot_ready,
+        "service_snapshot_saved_at": service_snapshot_saved_at,
     }
 
 
@@ -7264,6 +7279,79 @@ def _load_employee_master_source_snapshot() -> list[dict[str, object]]:
     return [item for item in raw if isinstance(item, dict)]
 
 
+def _save_employee_master_service_snapshot(
+    records: dict[str, dict[str, object]],
+    crew_to_emp: dict[str, str],
+) -> None:
+    payload: dict[str, object] = {
+        "records": [],
+        "crew_to_emp": dict(sorted(crew_to_emp.items())),
+    }
+    serialized_records: list[dict[str, object]] = []
+    for emp_no, record in sorted(records.items()):
+        serialized = _serialize_employee_payload(record)
+        serialized["row_hint"] = str(record.get("row_hint") or "")
+        serialized["present_fields"] = sorted(str(field) for field in set(record.get("present_fields") or set()))
+        serialized_records.append(serialized)
+    payload["records"] = serialized_records
+    EMPLOYEE_MASTER_SERVICE_SNAPSHOT_FILE.write_text(
+        json.dumps(payload, ensure_ascii=True, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _load_employee_master_service_snapshot() -> tuple[dict[str, dict[str, object]], dict[str, str]]:
+    if not EMPLOYEE_MASTER_SERVICE_SNAPSHOT_FILE.exists():
+        return {}, {}
+    try:
+        raw = json.loads(EMPLOYEE_MASTER_SERVICE_SNAPSHOT_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {}, {}
+    if not isinstance(raw, dict):
+        return {}, {}
+
+    records_raw = raw.get("records")
+    crew_to_emp_raw = raw.get("crew_to_emp")
+    if not isinstance(records_raw, list) or not isinstance(crew_to_emp_raw, dict):
+        return {}, {}
+
+    records: dict[str, dict[str, object]] = {}
+    for item in records_raw:
+        if not isinstance(item, dict):
+            continue
+        record = _deserialize_employee_payload(item)
+        emp_no = _clean_import_text(record.get("pf_no"))
+        if not emp_no:
+            continue
+        row_hint = str(item.get("row_hint") or record.get("name") or emp_no)
+        present_fields_raw = item.get("present_fields")
+        present_fields = {
+            str(field)
+            for field in present_fields_raw
+            if isinstance(present_fields_raw, list) and field not in (None, "")
+        }
+        record["row_hint"] = row_hint
+        record["present_fields"] = present_fields or {
+            "name",
+            "role",
+            "pf_no",
+            "crew_id",
+            "dob",
+            "hire_date",
+            "doa",
+            "retirement_date",
+            "promotion_ready_date",
+        }
+        records[emp_no] = record
+
+    crew_to_emp = {
+        _clean_import_text(crew_id) or "": _clean_import_text(emp_no) or ""
+        for crew_id, emp_no in crew_to_emp_raw.items()
+        if _clean_import_text(crew_id) and _clean_import_text(emp_no)
+    }
+    return records, crew_to_emp
+
+
 def _save_employee_master_mismatch_actions(actions: list[dict[str, object]]) -> None:
     EMPLOYEE_MASTER_MISMATCH_ACTIONS_FILE.write_text(
         json.dumps(actions, ensure_ascii=True, indent=2),
@@ -8560,26 +8648,37 @@ def _upsert_employee_master_records(
 @app.post("/uploads/employee-master-sync")
 async def upload_employee_master_sync(
     request: Request,
-    service_file: UploadFile = File(...),
+    service_file: Optional[UploadFile] = File(None),
     cms_file: UploadFile = File(...),
     action_password: str = Form(...),
     session: Session = Depends(get_session),
 ):
     try:
         _validate_sensitive_action_password(action_password)
-        service_name = service_file.filename or ""
+        service_name = service_file.filename if service_file is not None else ""
         cms_name = cms_file.filename or ""
-        if not service_name.lower().endswith((".xlsx", ".xlsm")):
-            raise HTTPException(status_code=400, detail="Service Particulars file must be an .xlsx workbook.")
         if not cms_name.lower().endswith((".csv", ".xlsx", ".xlsm")):
             raise HTTPException(status_code=400, detail="CMS other bio data file must be a .csv or .xlsx workbook.")
 
-        service_content = await service_file.read()
         cms_content = await cms_file.read()
         warnings: list[str] = []
         sync_details: list[str] = []
-
-        records, hrms_to_emp = _build_service_particular_records(service_content, warnings)
+        service_uploaded = bool(service_file is not None and service_name.strip())
+        if service_uploaded:
+            if not service_name.lower().endswith((".xlsx", ".xlsm")):
+                raise HTTPException(status_code=400, detail="Service Particulars file must be an .xlsx workbook.")
+            service_content = await service_file.read()
+            records, hrms_to_emp = _build_service_particular_records(service_content, warnings)
+            _save_employee_master_service_snapshot(records, hrms_to_emp)
+            sync_details.append("Loaded fresh Service Particulars reference from uploaded file.")
+        else:
+            records, hrms_to_emp = _load_employee_master_service_snapshot()
+            if not records:
+                raise HTTPException(
+                    status_code=400,
+                    detail="No saved Service Particulars reference found. Upload a Service Particulars file once first.",
+                )
+            sync_details.append("Loaded saved Service Particulars reference from previous upload.")
         _merge_cms_other_bio(records, hrms_to_emp, cms_content, warnings)
         _save_employee_master_source_snapshot(records)
         added, updated, unchanged, skipped, deduplicated, mismatch_actions = _upsert_employee_master_records(
@@ -8637,6 +8736,36 @@ def _create_employee_from_payload(payload: dict[str, object]) -> Employee:
         pme_due=values.get("pme_due"),
         status="ACTIVE",
     )
+
+
+@app.post("/uploads/employee-master-service-reference")
+async def upload_employee_master_service_reference(
+    request: Request,
+    service_file: UploadFile = File(...),
+    action_password: str = Form(...),
+):
+    try:
+        _validate_sensitive_action_password(action_password)
+        service_name = service_file.filename or ""
+        if not service_name.lower().endswith((".xlsx", ".xlsm")):
+            raise HTTPException(status_code=400, detail="Service Particulars file must be an .xlsx workbook.")
+        service_content = await service_file.read()
+        warnings: list[str] = []
+        records, crew_to_emp = _build_service_particular_records(service_content, warnings)
+        _save_employee_master_service_snapshot(records, crew_to_emp)
+        notice = f"Service Particulars reference saved: {len(records)} employee rows ready for later CMS uploads."
+        warning_text = f"Issues found while saving reference: {len(warnings)}" if warnings else ""
+        return _uploads_template_response(
+            request,
+            update_notice=notice,
+            update_warning=warning_text,
+            warning_details=warnings,
+        )
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "Service Particulars reference save failed."
+        return _uploads_template_response(request, update_error=detail, status_code=exc.status_code)
+    except Exception as exc:
+        return _uploads_template_response(request, update_error=str(exc), status_code=500)
 
 
 @app.post("/uploads/employee-master-mismatch-merge")
