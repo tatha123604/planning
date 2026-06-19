@@ -54,18 +54,7 @@
           {% if update_error %}
           <p class="error-text" role="alert">{{ update_error }}</p>
           {% endif %}
-          {% if update_notice %}
-          <div class="sync-report-card" style="margin-bottom: 12px;">
-            <div class="sync-report-section">
-              <h4>Employee Table Update Status</h4>
-              <p class="hint success-text" role="status">{{ update_notice }}</p>
-            </div>
-          </div>
-          {% endif %}
-          {% if update_warning %}
-          <p class="hint warning-text" role="status">{{ update_warning }}</p>
-          {% endif %}
-                    {% if update_preview_ready %}
+          {% if update_preview_ready %}
           <div class="sync-report-card" style="margin-bottom: 12px;">
             <div class="sync-report-section">
               <h4>Save these changes?</h4>
@@ -82,6 +71,53 @@
               </div>
             </div>
           </div>
+          {% endif %}
+          <p class="hint">
+            Saved Service Particulars reference:
+            <strong>{% if service_snapshot_ready %}Available{% else %}Not saved yet{% endif %}</strong>
+            {% if service_snapshot_saved_at %}<span> - saved on {{ service_snapshot_saved_at }}</span>{% endif %}
+          </p>
+          <form method="post" action="/uploads/employee-master-service-reference" enctype="multipart/form-data" class="inline sensitive-inline-form" data-password-gated-form data-password-gated-code="11111" style="margin-bottom: 12px;">
+            <label>Service Particulars Reference (.xlsx)
+              <input type="file" name="service_file" accept=".xlsx,.xlsm" required />
+            </label>
+            <label class="site-password-label compact-site-password">Action Code
+              <input class="site-password-input compact-site-password-input" type="password" name="action_password" autocomplete="current-password" required data-password-gated-input />
+            </label>
+            <button type="submit" data-password-gated-button disabled>Save Service Reference</button>
+          </form>
+          <form method="post" action="/uploads/employee-master-sync" enctype="multipart/form-data" class="inline sensitive-inline-form" data-password-gated-form data-password-gated-code="11111">
+            <label>CMS other bio data (.xlsx)
+              <input type="file" name="cms_file" accept=".csv,.xlsx,.xlsm" required />
+            </label>
+            <label class="site-password-label compact-site-password">Action Code
+              <input class="site-password-input compact-site-password-input" type="password" name="action_password" autocomplete="current-password" required data-password-gated-input />
+            </label>
+            <p class="hint">
+              Employee table update uses <code>EMP NO / Employee No</code> as the primary unique id and merges CMS bio data using <code>CREW ID</code>.
+              This form uses the last saved Service Particulars reference. Duplicate or mismatched rows are skipped and listed below this card.
+            </p>
+            <button type="submit" data-password-gated-button disabled>Update Employee Table</button>
+          </form>
+          </details>
+        </div>
+
+        <div class="card collapsible" style="grid-column: 1 / -1;">
+          <details {% if update_notice or update_warning or update_details or warning_details or update_mismatch_actions or update_added_details or update_updated_details or update_deduplicated_details %}open{% endif %}>
+            <summary>Employee Update Review &amp; Actions</summary>
+          {% if update_notice %}
+          <div class="sync-report-card" style="margin-bottom: 12px;">
+            <div class="sync-report-section">
+              <h4>Employee Table Update Status</h4>
+              <p class="hint success-text" role="status">{{ update_notice }}</p>
+            </div>
+          </div>
+          {% endif %}
+          {% if update_warning %}
+          <p class="hint warning-text" role="status">{{ update_warning }}</p>
+          {% endif %}
+          {% if not update_notice and not update_warning and not update_details and not warning_details and not update_mismatch_actions and not update_added_details and not update_updated_details and not update_deduplicated_details %}
+          <p class="hint">After an employee table update, this card will show update reports, auto-corrections, mismatches, and action buttons if anything needs review.</p>
           {% endif %}
           {% if update_added_details or update_updated_details or update_deduplicated_details %}
           <div class="sync-report-card log-toggle-card" style="margin-bottom: 12px;">
@@ -119,7 +155,7 @@
           {% endif %}
           {% if update_details %}
           <details class="sync-log-collapse" {% if (update_details|length or 0) <= 8 %}open{% endif %}>
-            <summary><span class="sync-list-title hint success-text"><strong>Last update records</strong></span><span class="log-toggle-state" aria-hidden="true"></span></summary>
+            <summary><span class="sync-list-title hint success-text"><strong>Update report</strong></span><span class="log-toggle-state" aria-hidden="true"></span></summary>
             <ul class="sync-warning-list">
               {% for item in update_details %}
               <li>{{ item }}</li>
@@ -129,7 +165,7 @@
           {% endif %}
           {% if warning_details %}
           <details class="sync-log-collapse" {% if (warning_details|length or 0) <= 8 %}open{% endif %}>
-            <summary><span class="sync-list-title hint warning-text"><strong>Mismatch / Auto-fixed records</strong></span><span class="log-toggle-state" aria-hidden="true"></span></summary>
+            <summary><span class="sync-list-title hint warning-text"><strong>Mismatched / Auto-corrected records</strong></span><span class="log-toggle-state" aria-hidden="true"></span></summary>
             <ul class="sync-warning-list">
               {% for item in warning_details %}
               <li>{{ item }}</li>
@@ -139,7 +175,7 @@
           {% endif %}
           {% if update_mismatch_actions %}
           <details class="conflict-group sync-log-collapse" {% if (update_mismatch_actions|length or 0) <= 2 %}open{% endif %}>
-            <summary><span class="sync-list-title hint warning-text"><strong>Mismatch actions</strong></span><span class="log-toggle-state" aria-hidden="true"></span></summary>
+            <summary><span class="sync-list-title hint warning-text"><strong>Take action on mismatches</strong></span><span class="log-toggle-state" aria-hidden="true"></span></summary>
             <div class="conflict-group-body">
             {% for item in update_mismatch_actions %}
             <div class="conflict-card">
@@ -196,33 +232,6 @@
             </div>
           </details>
           {% endif %}
-          <p class="hint">
-            Saved Service Particulars reference:
-            <strong>{% if service_snapshot_ready %}Available{% else %}Not saved yet{% endif %}</strong>
-            {% if service_snapshot_saved_at %}<span> - saved on {{ service_snapshot_saved_at }}</span>{% endif %}
-          </p>
-          <form method="post" action="/uploads/employee-master-service-reference" enctype="multipart/form-data" class="inline sensitive-inline-form" data-password-gated-form data-password-gated-code="11111" style="margin-bottom: 12px;">
-            <label>Service Particulars Reference (.xlsx)
-              <input type="file" name="service_file" accept=".xlsx,.xlsm" required />
-            </label>
-            <label class="site-password-label compact-site-password">Action Code
-              <input class="site-password-input compact-site-password-input" type="password" name="action_password" autocomplete="current-password" required data-password-gated-input />
-            </label>
-            <button type="submit" data-password-gated-button disabled>Save Service Reference</button>
-          </form>
-          <form method="post" action="/uploads/employee-master-sync" enctype="multipart/form-data" class="inline sensitive-inline-form" data-password-gated-form data-password-gated-code="11111">
-            <label>CMS other bio data (.xlsx)
-              <input type="file" name="cms_file" accept=".csv,.xlsx,.xlsm" required />
-            </label>
-            <label class="site-password-label compact-site-password">Action Code
-              <input class="site-password-input compact-site-password-input" type="password" name="action_password" autocomplete="current-password" required data-password-gated-input />
-            </label>
-            <p class="hint">
-              Employee table update uses <code>EMP NO / Employee No</code> as the primary unique id and merges CMS bio data using <code>CREW ID</code>.
-              This form uses the last saved Service Particulars reference. Duplicate or mismatched rows are skipped and listed below this card.
-            </p>
-            <button type="submit" data-password-gated-button disabled>Update Employee Table</button>
-          </form>
           </details>
         </div>
 
