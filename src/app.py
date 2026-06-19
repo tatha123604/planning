@@ -1695,6 +1695,23 @@ def build_cli_distribution(
                 "total_staff": 0,
             }
 
+    # Collapse rows that share the same canonical CLI name when some rows are missing CLI ID.
+    merged_dist: dict[str, dict[str, int | str]] = {}
+    for _, counts in dist.items():
+        cli_name = str(counts.get("cli") or "")
+        cli_id = str(counts.get("cli_id") or "")
+        merge_key = cli_id.lower() or _cli_name_key(cli_name).lower() or "unassigned"
+        existing = merged_dist.get(merge_key)
+        if existing is None:
+            merged_dist[merge_key] = dict(counts)
+            continue
+        if not existing.get("cli") and cli_name:
+            existing["cli"] = cli_name
+        if not existing.get("cli_id") and cli_id:
+            existing["cli_id"] = cli_id
+        for bucket in ("A", "B", "C", "total", "total_staff"):
+            existing[bucket] = int(existing.get(bucket) or 0) + int(counts.get(bucket) or 0)
+
     return [
         {
             "cli": counts["cli"],
@@ -1706,7 +1723,7 @@ def build_cli_distribution(
             "total_staff": counts["total_staff"],
         }
         for _, counts in sorted(
-            dist.items(),
+            merged_dist.items(),
             key=lambda item: (
                 str(item[1].get("cli") or "").lower(),
                 str(item[1].get("cli_id") or "").lower(),
