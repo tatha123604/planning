@@ -51,6 +51,7 @@ from processor import build_sheet2_df, build_summary_df
 BASE_PATH = Path(__file__).resolve().parent.parent
 GOOGLE_EMPLOYEE_STATION_TABS = ["North", "South", "KOAA", "DDJ", "RHA", "NH", "BT"]
 EMPLOYEE_SYNC_BACKUP_DIR = DB_PATH.parent / "employee_sync_backups"
+EMPLOYEE_MASTER_SOURCE_SNAPSHOT_FILE = DB_PATH.parent / "employee_master_source_snapshot.json"
 LI_GRADING_METADATA_FILE = DB_PATH.parent / "li_grading_metadata.json"
 GOOGLE_SHEETS_READONLY_SCOPE = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 templates = Jinja2Templates(directory=str(BASE_PATH / "templates"))
@@ -4950,13 +4951,68 @@ def delete_employee(
 
 @app.get("/uploads")
 def uploads_page(request: Request):
+    return templates.TemplateResponse("uploads.html", _uploads_context(request))
+
+
+def _uploads_context(
+    request: Request,
+    *,
+    update_error: str = "",
+    update_notice: str = "",
+    update_warning: str = "",
+    update_details: Optional[list[str]] = None,
+    warning_details: Optional[list[str]] = None,
+    update_mismatch_actions: Optional[list[dict[str, object]]] = None,
+) -> dict[str, object]:
+    return {
+        "request": request,
+        "active_page": "uploads",
+        "role_order": ROLE_ORDER,
+        "update_error": update_error,
+        "update_notice": update_notice,
+        "update_warning": update_warning,
+        "update_details": update_details or [],
+        "warning_details": warning_details or [],
+        "update_mismatch_actions": update_mismatch_actions or [],
+        "update_preview_ready": False,
+        "update_preview_password": "",
+        "update_added_details": [],
+        "update_updated_details": [],
+        "update_deduplicated_details": [],
+        "cleanup_error": "",
+        "cleanup_notice": "",
+        "cleanup_summary": None,
+        "cleanup_groups": [],
+        "cleanup_details": [],
+        "cleanup_saved_at": "",
+        "source_snapshot_ready": False,
+        "source_snapshot_saved_at": "",
+    }
+
+
+def _uploads_template_response(
+    request: Request,
+    *,
+    status_code: int = 200,
+    update_error: str = "",
+    update_notice: str = "",
+    update_warning: str = "",
+    update_details: Optional[list[str]] = None,
+    warning_details: Optional[list[str]] = None,
+    update_mismatch_actions: Optional[list[dict[str, object]]] = None,
+):
     return templates.TemplateResponse(
         "uploads.html",
-        {
-            "request": request,
-            "active_page": "uploads",
-            "role_order": ROLE_ORDER,
-        },
+        _uploads_context(
+            request,
+            update_error=update_error,
+            update_notice=update_notice,
+            update_warning=update_warning,
+            update_details=update_details,
+            warning_details=warning_details,
+            update_mismatch_actions=update_mismatch_actions,
+        ),
+        status_code=status_code,
     )
 
 
@@ -6356,8 +6412,10 @@ def _google_sync_change_label(changed_labels: list[str]) -> str:
     return "Auto-corrected"
 
 
-def _clean_import_text(value: object | None) -> str | None:
+def _clean_import_text(value: object | None, *, blank_na: bool = False) -> str | None:
     text = str(value or "").strip()
+    if blank_na and text.upper() in {"NA", "N/A"}:
+        return None
     return text or None
 
 
@@ -6370,6 +6428,59 @@ def _normalize_import_name(value: object | None) -> str | None:
     text = re.sub(r"\b(I|II|III|IV|V|VI|VII|VIII|IX|X)\b", " ", text)
     text = re.sub(r"[^A-Z0-9]+", " ", text)
     return " ".join(text.split()) or None
+
+
+def _emp_no_last5(value: object | None) -> str | None:
+    text = _clean_import_text(value)
+    if text is None:
+        return None
+    normalized = re.sub(r"[^A-Z0-9]", "", text.upper())
+    if not normalized:
+        return None
+    return normalized[-5:] if len(normalized) >= 5 else normalized
+
+
+def _find_employee_master_merge_candidate(
+    employees: list[Employee],
+    *,
+    emp_no: str | None,
+    name: str | None,
+    role: str | None,
+    dob: date | None,
+) -> Employee | None:
+    target_name = _normalize_import_name(name)
+    target_last5 = _emp_no_last5(emp_no)
+    target_role = normalize_role(role) if role else None
+
+    if target_name and dob:
+        candidates = [
+            employee
+            for employee in employees
+            if _normalize_import_name(employee.name) == target_name and employee.dob == dob
+        ]
+        if len(candidates) == 1:
+            candidate = candidates[0]
+            candidate_pf = _clean_import_text(candidate.pf_no)
+            if candidate_pf is None or emp_no is None:
+                return candidate
+            if target_last5 and _emp_no_last5(candidate_pf) == target_last5:
+                return candidate
+            return None
+
+    if target_name and target_role:
+        candidates = [
+            employee
+            for employee in employees
+            if _normalize_import_name(employee.name) == target_name
+            and normalize_role(employee.role) == target_role
+        ]
+        if len(candidates) == 1:
+            candidate = candidates[0]
+            candidate_pf = _clean_import_text(candidate.pf_no)
+            if candidate_pf and target_last5 and _emp_no_last5(candidate_pf) == target_last5:
+                return candidate
+
+    return None
 
 
 def _import_employee_rows(
@@ -7861,7 +7972,23 @@ def _build_service_particular_records(
     if not rows:
         raise HTTPException(status_code=400, detail="Service Particulars workbook is empty.")
 
-    header_row = next((row for row in rows if any(cell not in (None, "", " ") for cell in row)), None)
+    header_row = next(
+        (
+            row for row in rows
+            if {
+                "crewname",
+                "crewdesg",
+                "crewid",
+                "empno",
+                "birthdate",
+                "appointdate",
+                "retirementdate",
+            }.issubset({_employee_norm(cell) for cell in row if cell not in (None, "", " ")})
+        ),
+        None,
+    )
+    if header_row is None:
+        header_row = next((row for row in rows if any(cell not in (None, "", " ") for cell in row)), None)
     if header_row is None:
         raise HTTPException(status_code=400, detail="Service Particulars workbook has no header row.")
 
@@ -7966,17 +8093,47 @@ def _merge_cms_other_bio(
     content: bytes,
     warnings: list[str],
 ) -> None:
-    text = _decode_uploaded_text(content)
-    reader = csv.DictReader(StringIO(text))
-    if not reader.fieldnames:
-        raise HTTPException(status_code=400, detail="CMS other bio data file has no header row.")
+    row_dicts: list[dict[str, object]] = []
+    normalized_header: dict[str, str] = {}
 
-    normalized_header = {_employee_norm(name): name for name in reader.fieldnames if name}
+    try:
+        wb = load_workbook(filename=BytesIO(content), data_only=True)
+        ws = wb.active
+        rows = list(ws.iter_rows(values_only=True))
+        header_row = next(
+            (row for row in rows if "crewid" in {_employee_norm(cell) for cell in row if cell not in (None, "")}),
+            None,
+        )
+        if header_row is not None:
+            headers = [_clean_import_text(cell) or "" for cell in header_row]
+            normalized_header = {_employee_norm(name): name for name in headers if name}
+            for row in rows[rows.index(header_row) + 1 :]:
+                if not any(cell not in (None, "", " ") for cell in row):
+                    continue
+                row_dicts.append(
+                    {
+                        headers[idx]: row[idx] if idx < len(row) else None
+                        for idx in range(len(headers))
+                        if headers[idx]
+                    }
+                )
+    except Exception:
+        row_dicts = []
+        normalized_header = {}
+
+    if not row_dicts:
+        text = _decode_uploaded_text(content)
+        reader = csv.DictReader(StringIO(text))
+        if not reader.fieldnames:
+            raise HTTPException(status_code=400, detail="CMS other bio data file has no header row.")
+        normalized_header = {_employee_norm(name): name for name in reader.fieldnames if name}
+        row_dicts = list(reader)
+
     if "crewid" not in normalized_header:
         raise HTTPException(status_code=400, detail="CMS other bio data is missing column: CREWID")
 
     seen_hrms: set[str] = set()
-    for row in reader:
+    for row in row_dicts:
         hrms_key = normalized_header["crewid"]
         hrms = _clean_import_text(row.get(hrms_key))
         row_hint = _clean_import_text(row.get(normalized_header.get("crewname", hrms_key))) or hrms or "Unknown row"
@@ -8324,8 +8481,8 @@ async def upload_employee_master_sync(
         cms_name = cms_file.filename or ""
         if not service_name.lower().endswith((".xlsx", ".xlsm")):
             raise HTTPException(status_code=400, detail="Service Particulars file must be an .xlsx workbook.")
-        if not cms_name.lower().endswith(".csv"):
-            raise HTTPException(status_code=400, detail="CMS other bio data file must be a .csv file.")
+        if not cms_name.lower().endswith((".csv", ".xlsx", ".xlsm")):
+            raise HTTPException(status_code=400, detail="CMS other bio data file must be a .csv or .xlsx workbook.")
 
         service_content = await service_file.read()
         cms_content = await cms_file.read()
@@ -8353,30 +8510,19 @@ async def upload_employee_master_sync(
         if warnings:
             warning_text = f"Mismatch / auto-fixed records: {len(warnings)}"
 
-        return templates.TemplateResponse(
-            "uploads.html",
-            _uploads_context(
-                request,
-                update_notice=notice,
-                update_warning=warning_text,
-                update_details=sync_details,
-                warning_details=warnings,
-                update_mismatch_actions=mismatch_actions,
-            ),
+        return _uploads_template_response(
+            request,
+            update_notice=notice,
+            update_warning=warning_text,
+            update_details=sync_details,
+            warning_details=warnings,
+            update_mismatch_actions=mismatch_actions,
         )
     except HTTPException as exc:
         detail = exc.detail if isinstance(exc.detail, str) else "Employee table update failed."
-        return templates.TemplateResponse(
-            "uploads.html",
-            _uploads_context(request, update_error=detail),
-            status_code=exc.status_code,
-        )
+        return _uploads_template_response(request, update_error=detail, status_code=exc.status_code)
     except Exception as exc:
-        return templates.TemplateResponse(
-            "uploads.html",
-            _uploads_context(request, update_error=str(exc)),
-            status_code=500,
-        )
+        return _uploads_template_response(request, update_error=str(exc), status_code=500)
 
 
 def _create_employee_from_payload(payload: dict[str, object]) -> Employee:
@@ -8420,23 +8566,12 @@ async def upload_employee_master_mismatch_merge(
         session.add(employee)
         session.commit()
         notice = "Mismatch merge complete: incoming row added alongside existing."
-        return templates.TemplateResponse(
-            "uploads.html",
-            _uploads_context(request, update_notice=notice),
-        )
+        return _uploads_template_response(request, update_notice=notice)
     except HTTPException as exc:
         detail = exc.detail if isinstance(exc.detail, str) else "Merge failed."
-        return templates.TemplateResponse(
-            "uploads.html",
-            _uploads_context(request, update_error=detail),
-            status_code=exc.status_code,
-        )
+        return _uploads_template_response(request, update_error=detail, status_code=exc.status_code)
     except Exception as exc:
-        return templates.TemplateResponse(
-            "uploads.html",
-            _uploads_context(request, update_error=str(exc)),
-            status_code=500,
-        )
+        return _uploads_template_response(request, update_error=str(exc), status_code=500)
 
 
 @app.post("/uploads/employee-master-mismatch-delete")
@@ -8462,23 +8597,12 @@ async def upload_employee_master_mismatch_delete(
             notice = "Delete complete: existing row removed, incoming row kept."
         else:
             notice = "Delete complete: incoming row ignored, existing row kept."
-        return templates.TemplateResponse(
-            "uploads.html",
-            _uploads_context(request, update_notice=notice),
-        )
+        return _uploads_template_response(request, update_notice=notice)
     except HTTPException as exc:
         detail = exc.detail if isinstance(exc.detail, str) else "Delete failed."
-        return templates.TemplateResponse(
-            "uploads.html",
-            _uploads_context(request, update_error=detail),
-            status_code=exc.status_code,
-        )
+        return _uploads_template_response(request, update_error=detail, status_code=exc.status_code)
     except Exception as exc:
-        return templates.TemplateResponse(
-            "uploads.html",
-            _uploads_context(request, update_error=str(exc)),
-            status_code=500,
-        )
+        return _uploads_template_response(request, update_error=str(exc), status_code=500)
 
 
 def _normalize_li_grading_header(value: object | None) -> str:
