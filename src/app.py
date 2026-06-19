@@ -7259,13 +7259,13 @@ def _review_group_key(reason: str, keep_id: int | None, review_ids: list[int]) -
 
 def _serialize_employee_master_snapshot(records: dict[str, dict[str, object]]) -> list[dict[str, object]]:
     payload: list[dict[str, object]] = []
-    for emp_no, record in sorted(records.items()):
+    for _, record in sorted(records.items()):
         payload.append(
             {
                 "row_hint": str(record.get("row_hint") or ""),
                 "name": _clean_import_text(record.get("name")) or "",
                 "role": _clean_import_text(record.get("role")) or "",
-                "pf_no": emp_no,
+                "pf_no": _clean_import_text(record.get("pf_no")) or "",
                 "crew_id": _clean_import_text(record.get("crew_id")) or "",
                 "dob": record.get("dob").isoformat() if isinstance(record.get("dob"), date) else "",
                 "category": _clean_import_text(record.get("category"), blank_na=True) or "",
@@ -7302,8 +7302,9 @@ def _save_employee_master_service_snapshot(
         "crew_to_emp": dict(sorted(crew_to_emp.items())),
     }
     serialized_records: list[dict[str, object]] = []
-    for emp_no, record in sorted(records.items()):
+    for record_key, record in sorted(records.items()):
         serialized = _serialize_employee_payload(record)
+        serialized["record_key"] = record_key
         serialized["row_hint"] = str(record.get("row_hint") or "")
         serialized["present_fields"] = sorted(str(field) for field in set(record.get("present_fields") or set()))
         serialized_records.append(serialized)
@@ -7335,7 +7336,9 @@ def _load_employee_master_service_snapshot() -> tuple[dict[str, dict[str, object
             continue
         record = _deserialize_employee_payload(item)
         emp_no = _clean_import_text(record.get("pf_no"))
-        if not emp_no:
+        crew_id = _clean_import_text(record.get("crew_id"))
+        record_key = str(item.get("record_key") or "").strip() or emp_no or (f"crew:{crew_id}" if crew_id else "")
+        if not record_key:
             continue
         row_hint = str(item.get("row_hint") or record.get("name") or emp_no)
         present_fields_raw = item.get("present_fields")
@@ -7356,7 +7359,7 @@ def _load_employee_master_service_snapshot() -> tuple[dict[str, dict[str, object
             "retirement_date",
             "promotion_ready_date",
         }
-        records[emp_no] = record
+        records[record_key] = record
 
     crew_to_emp = {
         _clean_import_text(crew_id) or "": _clean_import_text(emp_no) or ""
@@ -8259,10 +8262,10 @@ def _build_service_particular_records(
         role_raw = _clean_import_text(row[header["crewdesg"]])
         row_hint = name or crew_id or emp_no or "Unknown row"
 
-        if not emp_no:
-            warnings.append(f"Service Particulars {row_hint}: skipped because EMP NO is blank.")
+        if not emp_no and not crew_id:
+            warnings.append(f"Service Particulars {row_hint}: skipped because EMP NO and CREW ID are both blank.")
             continue
-        if emp_no in records:
+        if emp_no and any(_clean_import_text(item.get("pf_no")) == emp_no for item in records.values()):
             duplicate_emp.add(emp_no)
             continue
         if crew_id and crew_id in crew_to_emp:
@@ -8285,7 +8288,8 @@ def _build_service_particular_records(
             warnings.append(f"Service Particulars {row_hint}: skipped because name, designation, or appoint date is missing.")
             continue
 
-        records[emp_no] = {
+        record_key = emp_no or f"crew:{crew_id}"
+        records[record_key] = {
             "row_hint": row_hint,
             "name": name,
             "role": role,
@@ -8309,15 +8313,17 @@ def _build_service_particular_records(
             },
         }
         if crew_id:
-            crew_to_emp[crew_id] = emp_no
+            crew_to_emp[crew_id] = record_key
 
     for emp_no in sorted(duplicate_emp):
         warnings.append(f"Service Particulars duplicate EMP NO skipped: {emp_no}")
-        records.pop(emp_no, None)
+        duplicate_keys = [key for key, value in records.items() if _clean_import_text(value.get("pf_no")) == emp_no]
+        for key in duplicate_keys:
+            records.pop(key, None)
     for crew_id in sorted(duplicate_crew):
-        emp_no = crew_to_emp.get(crew_id)
-        if emp_no:
-            records.pop(emp_no, None)
+        record_key = crew_to_emp.get(crew_id)
+        if record_key:
+            records.pop(record_key, None)
         warnings.append(f"Service Particulars duplicate CREW ID skipped: {crew_id}")
 
     if not records:
@@ -8548,8 +8554,9 @@ def _upsert_employee_master_records(
 
     rebuild_exact_indexes()
 
-    for emp_no, record in records.items():
-        row_hint = str(record.get("row_hint") or record.get("name") or emp_no)
+    for record_key, record in records.items():
+        emp_no = _clean_import_text(record.get("pf_no"))
+        row_hint = str(record.get("row_hint") or record.get("name") or emp_no or record_key)
         name = _clean_import_text(record.get("name"))
         role = _clean_import_text(record.get("role"))
         hire_date = record.get("hire_date")
@@ -8560,10 +8567,12 @@ def _upsert_employee_master_records(
             skipped += 1
             continue
 
-        pf_matches = by_pf.get(emp_no, [])
-        if not pf_matches:
-            pf_matches = by_pf_match.get(_emp_no_match_key(emp_no) or "", [])
-        if len(pf_matches) > 1:
+        pf_matches: list[Employee] = []
+        if emp_no:
+            pf_matches = by_pf.get(emp_no, [])
+            if not pf_matches:
+                pf_matches = by_pf_match.get(_emp_no_match_key(emp_no) or "", [])
+        if emp_no and len(pf_matches) > 1:
             warnings.append(f"{row_hint}: skipped because EMP NO {emp_no} matches multiple employees in the current database.")
             skipped += 1
             continue
@@ -8578,7 +8587,7 @@ def _upsert_employee_master_records(
                 continue
             if len(crew_matches) == 1:
                 existing = crew_matches[0]
-                if existing.pf_no and not _emp_no_matches(existing.pf_no, emp_no):
+                if emp_no and existing.pf_no and not _emp_no_matches(existing.pf_no, emp_no):
                     warnings.append(
                         f"{row_hint}: skipped because EMP NO {emp_no} conflicts with existing employee EMP NO {existing.pf_no}."
                     )
