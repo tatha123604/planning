@@ -4,6 +4,7 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import csv
 from datetime import date, datetime, timedelta, timezone
+import hashlib
 import math
 from io import BytesIO
 import json
@@ -52,6 +53,7 @@ BASE_PATH = Path(__file__).resolve().parent.parent
 GOOGLE_EMPLOYEE_STATION_TABS = ["North", "South", "KOAA", "DDJ", "RHA", "NH", "BT"]
 EMPLOYEE_SYNC_BACKUP_DIR = DB_PATH.parent / "employee_sync_backups"
 EMPLOYEE_MASTER_SOURCE_SNAPSHOT_FILE = DB_PATH.parent / "employee_master_source_snapshot.json"
+EMPLOYEE_MASTER_MISMATCH_ACTIONS_FILE = DB_PATH.parent / "employee_master_mismatch_actions.json"
 LI_GRADING_METADATA_FILE = DB_PATH.parent / "li_grading_metadata.json"
 GOOGLE_SHEETS_READONLY_SCOPE = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 templates = Jinja2Templates(directory=str(BASE_PATH / "templates"))
@@ -4964,6 +4966,9 @@ def _uploads_context(
     warning_details: Optional[list[str]] = None,
     update_mismatch_actions: Optional[list[dict[str, object]]] = None,
 ) -> dict[str, object]:
+    mismatch_actions = update_mismatch_actions
+    if mismatch_actions is None:
+        mismatch_actions = _load_employee_master_mismatch_actions()
     return {
         "request": request,
         "active_page": "uploads",
@@ -4973,7 +4978,7 @@ def _uploads_context(
         "update_warning": update_warning,
         "update_details": update_details or [],
         "warning_details": warning_details or [],
-        "update_mismatch_actions": update_mismatch_actions or [],
+        "update_mismatch_actions": mismatch_actions or [],
         "update_preview_ready": False,
         "update_preview_password": "",
         "update_added_details": [],
@@ -7259,6 +7264,46 @@ def _load_employee_master_source_snapshot() -> list[dict[str, object]]:
     return [item for item in raw if isinstance(item, dict)]
 
 
+def _save_employee_master_mismatch_actions(actions: list[dict[str, object]]) -> None:
+    EMPLOYEE_MASTER_MISMATCH_ACTIONS_FILE.write_text(
+        json.dumps(actions, ensure_ascii=True, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _load_employee_master_mismatch_actions() -> list[dict[str, object]]:
+    if not EMPLOYEE_MASTER_MISMATCH_ACTIONS_FILE.exists():
+        return []
+    try:
+        raw = json.loads(EMPLOYEE_MASTER_MISMATCH_ACTIONS_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    if not isinstance(raw, list):
+        return []
+    actions: list[dict[str, object]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        normalized = dict(item)
+        action_key = str(normalized.get("action_key") or "").strip()
+        if not action_key:
+            existing_id = normalized.get("existing_id")
+            incoming_json = str(normalized.get("incoming_json") or "")
+            normalized["action_key"] = f"{existing_id}:{hashlib.sha256(incoming_json.encode('utf-8')).hexdigest()}"
+        actions.append(normalized)
+    return actions
+
+
+def _remove_employee_master_mismatch_action(action_key: str) -> list[dict[str, object]]:
+    remaining = [
+        item
+        for item in _load_employee_master_mismatch_actions()
+        if str(item.get("action_key") or "") != action_key
+    ]
+    _save_employee_master_mismatch_actions(remaining)
+    return remaining
+
+
 def _build_duplicate_cleanup_plan(session: Session) -> tuple[list[dict[str, object]], list[dict[str, object]], dict[str, int]]:
     employees = session.exec(select(Employee)).all()
     plan: list[dict[str, object]] = []
@@ -8292,10 +8337,12 @@ def _build_mismatch_action(
     incoming_values: dict[str, object],
 ) -> dict[str, object]:
     incoming_payload = _serialize_employee_payload(incoming_values)
+    incoming_json = json.dumps(incoming_payload, default=str)
     return {
         "reason": reason,
         "row_hint": row_hint,
         "existing_id": existing.id,
+        "action_key": f"{existing.id}:{hashlib.sha256(incoming_json.encode('utf-8')).hexdigest()}",
         "existing": {
             "name": existing.name,
             "role": existing.role,
@@ -8305,7 +8352,7 @@ def _build_mismatch_action(
             "working_at": existing.working_at or "",
         },
         "incoming": incoming_payload,
-        "incoming_json": json.dumps(incoming_payload, default=str),
+        "incoming_json": incoming_json,
     }
 
 
@@ -8541,6 +8588,7 @@ async def upload_employee_master_sync(
             warnings,
             sync_details,
         )
+        _save_employee_master_mismatch_actions(mismatch_actions)
 
         if added == 0 and updated == 0 and skipped == 0 and deduplicated == 0:
             notice = "No change found"
@@ -8596,6 +8644,7 @@ async def upload_employee_master_mismatch_merge(
     request: Request,
     existing_id: int = Form(...),
     incoming_payload: str = Form(...),
+    action_key: str = Form(...),
     action_password: str = Form(...),
     session: Session = Depends(get_session),
 ):
@@ -8608,8 +8657,9 @@ async def upload_employee_master_mismatch_merge(
         employee = _create_employee_from_payload(incoming_data)
         session.add(employee)
         session.commit()
+        mismatch_actions = _remove_employee_master_mismatch_action(action_key)
         notice = "Mismatch merge complete: incoming row added alongside existing."
-        return _uploads_template_response(request, update_notice=notice)
+        return _uploads_template_response(request, update_notice=notice, update_mismatch_actions=mismatch_actions)
     except HTTPException as exc:
         detail = exc.detail if isinstance(exc.detail, str) else "Merge failed."
         return _uploads_template_response(request, update_error=detail, status_code=exc.status_code)
@@ -8622,6 +8672,7 @@ async def upload_employee_master_mismatch_delete(
     request: Request,
     existing_id: int = Form(...),
     incoming_payload: str = Form(...),
+    action_key: str = Form(...),
     delete_target: str = Form(...),
     action_password: str = Form(...),
     session: Session = Depends(get_session),
@@ -8640,7 +8691,8 @@ async def upload_employee_master_mismatch_delete(
             notice = "Delete complete: existing row removed, incoming row kept."
         else:
             notice = "Delete complete: incoming row ignored, existing row kept."
-        return _uploads_template_response(request, update_notice=notice)
+        mismatch_actions = _remove_employee_master_mismatch_action(action_key)
+        return _uploads_template_response(request, update_notice=notice, update_mismatch_actions=mismatch_actions)
     except HTTPException as exc:
         detail = exc.detail if isinstance(exc.detail, str) else "Delete failed."
         return _uploads_template_response(request, update_error=detail, status_code=exc.status_code)
