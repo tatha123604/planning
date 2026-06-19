@@ -7455,6 +7455,20 @@ def _remove_employee_master_mismatch_action(action_key: str) -> list[dict[str, o
     return remaining
 
 
+def _split_employee_update_details(details: list[str]) -> tuple[list[str], list[str], list[str]]:
+    added_details: list[str] = []
+    updated_details: list[str] = []
+    deduplicated_details: list[str] = []
+    for item in details:
+        if item.startswith("Added "):
+            added_details.append(item)
+        elif item.startswith("Updated "):
+            updated_details.append(item)
+        elif item.startswith("Deduplicated "):
+            deduplicated_details.append(item)
+    return added_details, updated_details, deduplicated_details
+
+
 def _save_employee_master_review_report(
     *,
     update_notice: str = "",
@@ -8842,12 +8856,16 @@ async def upload_employee_master_sync(
         warning_text = ""
         if warnings:
             warning_text = f"Mismatch / auto-fixed records: {len(warnings)}"
+        added_details, updated_details, deduplicated_details = _split_employee_update_details(sync_details)
         _save_employee_master_review_report(
             update_notice=notice,
             update_warning=warning_text,
             update_details=sync_details,
             warning_details=warnings,
             update_mismatch_actions=mismatch_actions,
+            update_added_details=added_details,
+            update_updated_details=updated_details,
+            update_deduplicated_details=deduplicated_details,
             append_history=True,
         )
 
