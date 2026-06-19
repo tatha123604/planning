@@ -116,6 +116,13 @@
             <div class="sync-report-section">
               <h4>Report {{ loop.index }}</h4>
               <p class="hint">Saved at <strong>{{ report.saved_at }}</strong></p>
+              <form method="post" action="/uploads/employee-master-review-delete" class="inline sensitive-inline-form" data-password-gated-form data-password-gated-code="11111" onsubmit="return confirm('Delete this saved review report?');" style="margin-bottom: 10px;">
+                <input type="hidden" name="report_index" value="{{ loop.index0 }}" />
+                <label>Action Code
+                  <input type="password" name="action_password" autocomplete="current-password" required data-password-gated-input />
+                </label>
+                <button type="submit" class="danger" data-password-gated-button disabled>Delete This Report</button>
+              </form>
               {% if report.update_notice %}
               <p class="hint success-text" role="status">{{ report.update_notice }}</p>
               {% endif %}

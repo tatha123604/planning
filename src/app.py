@@ -7464,6 +7464,25 @@ def _load_employee_master_review_report() -> dict[str, object]:
     return raw
 
 
+def _delete_employee_master_review_report_at(index: int) -> dict[str, object]:
+    saved = _load_employee_master_review_report()
+    history = list(saved.get("history") or [])
+    if index < 0 or index >= len(history):
+        raise HTTPException(status_code=404, detail="Review report not found.")
+    del history[index]
+    if not history:
+        if EMPLOYEE_MASTER_REVIEW_REPORT_FILE.exists():
+            EMPLOYEE_MASTER_REVIEW_REPORT_FILE.unlink()
+        return {}
+    latest = dict(history[0])
+    latest["history"] = history[:25]
+    EMPLOYEE_MASTER_REVIEW_REPORT_FILE.write_text(
+        json.dumps(latest, ensure_ascii=True, indent=2),
+        encoding="utf-8",
+    )
+    return latest
+
+
 def _build_duplicate_cleanup_plan(session: Session) -> tuple[list[dict[str, object]], list[dict[str, object]], dict[str, int]]:
     employees = session.exec(select(Employee)).all()
     plan: list[dict[str, object]] = []
@@ -8932,6 +8951,27 @@ async def upload_employee_master_mismatch_delete(
         return _uploads_template_response(request, update_notice=notice, update_mismatch_actions=mismatch_actions)
     except HTTPException as exc:
         detail = exc.detail if isinstance(exc.detail, str) else "Delete failed."
+        return _uploads_template_response(request, update_error=detail, status_code=exc.status_code)
+    except Exception as exc:
+        return _uploads_template_response(request, update_error=str(exc), status_code=500)
+
+
+@app.post("/uploads/employee-master-review-delete")
+async def upload_employee_master_review_delete(
+    request: Request,
+    report_index: int = Form(...),
+    action_password: str = Form(...),
+):
+    try:
+        _validate_sensitive_action_password(action_password)
+        updated = _delete_employee_master_review_report_at(report_index)
+        history = list(updated.get("history") or [])
+        notice = "Review report deleted."
+        if not history:
+            notice = "Review report deleted. No saved reports remaining."
+        return templates.TemplateResponse("uploads.html", _uploads_context(request, update_notice=notice), status_code=200)
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "Review report delete failed."
         return _uploads_template_response(request, update_error=detail, status_code=exc.status_code)
     except Exception as exc:
         return _uploads_template_response(request, update_error=str(exc), status_code=500)
