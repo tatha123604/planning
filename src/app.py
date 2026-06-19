@@ -57,6 +57,7 @@ EMPLOYEE_MASTER_SOURCE_SNAPSHOT_FILE = DB_PATH.parent / "employee_master_source_
 EMPLOYEE_MASTER_SERVICE_SNAPSHOT_FILE = DB_PATH.parent / "employee_master_service_snapshot.json"
 EMPLOYEE_MASTER_MISMATCH_ACTIONS_FILE = DB_PATH.parent / "employee_master_mismatch_actions.json"
 EMPLOYEE_MASTER_REVIEW_REPORT_FILE = DB_PATH.parent / "employee_master_review_report.json"
+CLI_NOMINATION_MISMATCH_ACTIONS_FILE = DB_PATH.parent / "cli_nomination_mismatch_actions.json"
 LI_GRADING_METADATA_FILE = DB_PATH.parent / "li_grading_metadata.json"
 GOOGLE_SHEETS_READONLY_SCOPE = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 templates = Jinja2Templates(directory=str(BASE_PATH / "templates"))
@@ -5234,6 +5235,7 @@ def _cli_page_context(
     grading_update_warning: str = "",
     grading_update_details: list[str] | None = None,
     grading_warning_details: list[str] | None = None,
+    nomination_mismatch_actions: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
     init_db()
     employees = [employee for employee in session.exec(select(Employee)).all() if not _is_hidden_employee_role(employee.role)]
@@ -5307,6 +5309,8 @@ def _cli_page_context(
         grad_lower = roster_gradation.lower()
         cli_roster = [e for e in cli_roster if e.gradation and grad_lower in e.gradation.lower()]
     cli_roster = sorted(cli_roster, key=lambda e: ((e.cli or "").strip().lower(), role_sort_key(e.role), e.name))
+    if nomination_mismatch_actions is None:
+        nomination_mismatch_actions = _load_cli_nomination_mismatch_actions()
 
     return {
         "request": request,
@@ -5333,6 +5337,7 @@ def _cli_page_context(
         "grading_update_warning": grading_update_warning,
         "grading_update_details": grading_update_details or [],
         "grading_warning_details": grading_warning_details or [],
+        "nomination_mismatch_actions": nomination_mismatch_actions or [],
         "grading_source_name": grading_meta.get("filename", ""),
         "grading_report_date": grading_report_date.strftime("%d-%m-%Y") if grading_report_date else "",
         "grading_saved_at": grading_saved_at,
@@ -7451,6 +7456,46 @@ def _load_employee_master_mismatch_actions() -> list[dict[str, object]]:
     return actions
 
 
+def _save_cli_nomination_mismatch_actions(actions: list[dict[str, object]]) -> None:
+    CLI_NOMINATION_MISMATCH_ACTIONS_FILE.write_text(
+        json.dumps(actions, ensure_ascii=True, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _load_cli_nomination_mismatch_actions() -> list[dict[str, object]]:
+    if not CLI_NOMINATION_MISMATCH_ACTIONS_FILE.exists():
+        return []
+    try:
+        raw = json.loads(CLI_NOMINATION_MISMATCH_ACTIONS_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    if not isinstance(raw, list):
+        return []
+    actions: list[dict[str, object]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        normalized = dict(item)
+        action_key = str(normalized.get("action_key") or "").strip()
+        if not action_key:
+            existing_id = normalized.get("existing_id")
+            incoming_json = str(normalized.get("incoming_json") or "")
+            normalized["action_key"] = f"{existing_id}:{hashlib.sha256(incoming_json.encode('utf-8')).hexdigest()}"
+        actions.append(normalized)
+    return actions
+
+
+def _remove_cli_nomination_mismatch_action(action_key: str) -> list[dict[str, object]]:
+    remaining = [
+        item
+        for item in _load_cli_nomination_mismatch_actions()
+        if str(item.get("action_key") or "") != action_key
+    ]
+    _save_cli_nomination_mismatch_actions(remaining)
+    return remaining
+
+
 def _remove_employee_master_mismatch_action(action_key: str) -> list[dict[str, object]]:
     remaining = [
         item
@@ -9293,6 +9338,262 @@ def _parse_cli_biodata_workbook(content: bytes) -> tuple[list[dict[str, object]]
     return records, warnings
 
 
+def _parse_cli_nomination_workbook(content: bytes) -> tuple[list[dict[str, object]], list[str]]:
+    rows = _load_cli_upload_rows(content)
+    if not rows:
+        raise HTTPException(status_code=400, detail="CLI nomination workbook is empty.")
+
+    header_row_index: int | None = None
+    crew_idx: int | None = None
+    name_idx: int | None = None
+    hrms_idx: int | None = None
+    cli_name_idx: int | None = None
+
+    for idx, row in enumerate(rows):
+        normalized = [_normalize_li_grading_header(cell) for cell in row]
+        if {"CREWID", "CREWNAME", "HRMSID", "CLINAME"}.issubset(set(normalized)):
+            header_row_index = idx
+            crew_idx = normalized.index("CREWID")
+            name_idx = normalized.index("CREWNAME")
+            hrms_idx = normalized.index("HRMSID")
+            cli_name_idx = normalized.index("CLINAME")
+            break
+
+    if header_row_index is None or None in {crew_idx, name_idx, hrms_idx, cli_name_idx}:
+        raise HTTPException(
+            status_code=400,
+            detail="Could not find the CLI nomination columns. Required columns: CREWID, CREW NAME, HRMS ID, CLI Name.",
+        )
+
+    warnings: list[str] = []
+    records: list[dict[str, object]] = []
+
+    for row_number, row in enumerate(rows[header_row_index + 1 :], start=header_row_index + 2):
+        def get(column_index: int | None) -> object | None:
+            if column_index is None or column_index >= len(row):
+                return None
+            return row[column_index]
+
+        crew_id = _clean_import_text(get(crew_idx))
+        name = _clean_import_text(get(name_idx))
+        hrms = _clean_import_text(get(hrms_idx))
+        cli_name = _clean_import_text(get(cli_name_idx))
+
+        if not any([crew_id, name, hrms, cli_name]):
+            continue
+
+        row_hint = name or crew_id or hrms or f"row {row_number}"
+        if not cli_name:
+            warnings.append(f"CLI nomination {row_hint}: skipped because CLI Name is blank.")
+            continue
+        if not crew_id and not hrms and not name:
+            warnings.append(f"CLI nomination {row_hint}: skipped because CREW ID, HRMS ID, and CREW NAME are blank.")
+            continue
+
+        records.append(
+            {
+                "crew_id": crew_id,
+                "name": name,
+                "hrms": hrms,
+                "cli_name": cli_name,
+                "row_hint": row_hint,
+            }
+        )
+
+    if not records:
+        raise HTTPException(status_code=400, detail="CLI nomination workbook did not produce any usable rows.")
+    return records, warnings
+
+
+def _build_cli_nomination_mismatch_action(
+    *,
+    reason: str,
+    row_hint: str,
+    existing: Employee,
+    incoming_values: dict[str, object],
+) -> dict[str, object]:
+    incoming_json = json.dumps(incoming_values, default=str)
+    return {
+        "reason": reason,
+        "row_hint": row_hint,
+        "existing_id": existing.id,
+        "action_key": f"{existing.id}:{hashlib.sha256(incoming_json.encode('utf-8')).hexdigest()}",
+        "existing": {
+            "name": existing.name,
+            "role": existing.role,
+            "crew_id": existing.crew_id,
+            "hrms": existing.hrms,
+            "cli": existing.cli,
+        },
+        "incoming": incoming_values,
+        "incoming_json": incoming_json,
+    }
+
+
+def _apply_cli_nomination_records(
+    session: Session,
+    records: list[dict[str, object]],
+    warnings: list[str],
+    source_filename: str = "",
+) -> tuple[str, str, list[str], list[str], list[dict[str, object]]]:
+    employees = session.exec(select(Employee)).all()
+    canonical_by_id, alias_map, id_by_name = _build_cli_name_maps((employee.cli, employee.cli_id) for employee in employees)
+
+    by_crew: dict[str, list[Employee]] = {}
+    by_hrms: dict[str, list[Employee]] = {}
+    by_name: dict[str, list[Employee]] = {}
+    for employee in employees:
+        crew_key = _clean_import_text(employee.crew_id)
+        hrms_key = _clean_import_text(employee.hrms)
+        name_key = _normalize_import_name(employee.name)
+        if crew_key:
+            by_crew.setdefault(crew_key.upper(), []).append(employee)
+        if hrms_key:
+            by_hrms.setdefault(hrms_key.upper(), []).append(employee)
+        if name_key:
+            by_name.setdefault(name_key, []).append(employee)
+
+    updated = 0
+    unchanged = 0
+    skipped = 0
+    details: list[str] = []
+    mismatch_actions: list[dict[str, object]] = []
+    touched_ids: set[int] = set()
+
+    for record in records:
+        row_hint = str(record.get("row_hint") or "")
+        crew_key = (_clean_import_text(record.get("crew_id")) or "").upper()
+        hrms_key = (_clean_import_text(record.get("hrms")) or "").upper()
+        name_key = _normalize_import_name(record.get("name"))
+        cli_name, cli_id = _canonicalize_cli_name(record.get("cli_name"), None, canonical_by_id=canonical_by_id, alias_map=alias_map, id_by_name=id_by_name)
+
+        crew_matches = by_crew.get(crew_key, []) if crew_key else []
+        hrms_matches = by_hrms.get(hrms_key, []) if hrms_key else []
+        if crew_key and len(crew_matches) > 1:
+            warnings.append(f"CLI nomination {row_hint}: skipped because CREW ID {crew_key} matched multiple employees.")
+            skipped += 1
+            continue
+        if hrms_key and len(hrms_matches) > 1:
+            warnings.append(f"CLI nomination {row_hint}: skipped because HRMS ID {hrms_key} matched multiple employees.")
+            skipped += 1
+            continue
+
+        crew_target = crew_matches[0] if len(crew_matches) == 1 else None
+        hrms_target = hrms_matches[0] if len(hrms_matches) == 1 else None
+        target: Employee | None = None
+
+        if crew_target and hrms_target and crew_target.id != hrms_target.id:
+            mismatch_actions.append(
+                _build_cli_nomination_mismatch_action(
+                    reason="CREW ID and HRMS ID point to different employees",
+                    row_hint=row_hint,
+                    existing=crew_target,
+                    incoming_values={
+                        "name": _clean_import_text(record.get("name")),
+                        "crew_id": _clean_import_text(record.get("crew_id")),
+                        "hrms": _clean_import_text(record.get("hrms")),
+                        "cli": cli_name,
+                        "cli_id": cli_id,
+                    },
+                )
+            )
+            skipped += 1
+            continue
+
+        target = crew_target or hrms_target
+        if target is None and name_key:
+            name_matches = by_name.get(name_key, [])
+            if len(name_matches) == 1:
+                target = name_matches[0]
+            elif len(name_matches) > 1:
+                warnings.append(f"CLI nomination {row_hint}: skipped because CREW NAME matched multiple employees.")
+                skipped += 1
+                continue
+
+        if target is None:
+            warnings.append(f"CLI nomination {row_hint}: no matching employee row found.")
+            skipped += 1
+            continue
+
+        if target.id is not None and target.id in touched_ids:
+            warnings.append(f"CLI nomination {row_hint}: skipped because that employee already received a nomination update from another row in this workbook.")
+            skipped += 1
+            continue
+
+        incoming_crew = _clean_import_text(record.get("crew_id"))
+        incoming_hrms = _clean_import_text(record.get("hrms"))
+        if incoming_crew and target.crew_id and _clean_import_text(target.crew_id) != incoming_crew and crew_target is None:
+            mismatch_actions.append(
+                _build_cli_nomination_mismatch_action(
+                    reason="CREW ID conflicts with existing employee row",
+                    row_hint=row_hint,
+                    existing=target,
+                    incoming_values={
+                        "name": _clean_import_text(record.get("name")),
+                        "crew_id": incoming_crew,
+                        "hrms": incoming_hrms,
+                        "cli": cli_name,
+                        "cli_id": cli_id,
+                    },
+                )
+            )
+            skipped += 1
+            continue
+        if incoming_hrms and target.hrms and _clean_import_text(target.hrms) != incoming_hrms and hrms_target is None:
+            mismatch_actions.append(
+                _build_cli_nomination_mismatch_action(
+                    reason="HRMS ID conflicts with existing employee row",
+                    row_hint=row_hint,
+                    existing=target,
+                    incoming_values={
+                        "name": _clean_import_text(record.get("name")),
+                        "crew_id": incoming_crew,
+                        "hrms": incoming_hrms,
+                        "cli": cli_name,
+                        "cli_id": cli_id,
+                    },
+                )
+            )
+            skipped += 1
+            continue
+
+        changes: list[str] = []
+        if not target.crew_id and incoming_crew:
+            changes.append(f"CREW ID: {_format_sync_value(target.crew_id)} -> {_format_sync_value(incoming_crew)}")
+            target.crew_id = incoming_crew
+        if not target.hrms and incoming_hrms:
+            changes.append(f"HRMS ID: {_format_sync_value(target.hrms)} -> {_format_sync_value(incoming_hrms)}")
+            target.hrms = incoming_hrms
+        old_cli, old_cli_id = _canonicalize_cli_name(target.cli, target.cli_id, canonical_by_id=canonical_by_id, alias_map=alias_map, id_by_name=id_by_name)
+        if old_cli != cli_name:
+            changes.append(f"CLI: {_format_sync_value(old_cli)} -> {_format_sync_value(cli_name)}")
+        if old_cli_id != cli_id:
+            changes.append(f"CLI ID: {_format_sync_value(old_cli_id)} -> {_format_sync_value(cli_id)}")
+        target.cli, target.cli_id = _canonicalize_cli_name(cli_name, cli_id, canonical_by_id=canonical_by_id, alias_map=alias_map, id_by_name=id_by_name)
+
+        if changes:
+            updated += 1
+            details.append(f"Updated {target.name} ({target.crew_id or target.hrms or target.id}): " + "; ".join(changes))
+        else:
+            unchanged += 1
+        if target.id is not None:
+            touched_ids.add(target.id)
+
+    session.commit()
+    _normalize_employee_cli_names(session)
+    _save_cli_nomination_mismatch_actions(mismatch_actions)
+    notice_parts = []
+    if updated:
+        notice_parts.append(f"{updated} updated")
+    if skipped:
+        notice_parts.append(f"{skipped} skipped")
+    if not notice_parts:
+        notice_parts.append("No change found")
+    notice = "CLI nomination import complete: " + ", ".join(notice_parts) + "."
+    warning_message = f"Mismatch / auto-fixed records: {len(warnings)}" if warnings else ""
+    return notice, warning_message, details, warnings, mismatch_actions
+
+
 def _apply_cli_biodata_records(
     session: Session,
     records: list[dict[str, object]],
@@ -9423,20 +9724,56 @@ def _apply_cli_biodata_records(
 @app.post("/upload-li-grading")
 async def upload_li_grading(
     request: Request,
-    file: UploadFile = File(...),
+    file: Optional[UploadFile] = File(None),
     bio_data_file: Optional[UploadFile] = File(None),
+    cli_nomination_file: Optional[UploadFile] = File(None),
     action_password: str = Form(...),
     session: Session = Depends(get_session),
 ):
     try:
         init_db()
         _validate_sensitive_action_password(action_password)
-        filename = file.filename or ""
-        if not filename.lower().endswith((".xlsx", ".xlsm")):
-            raise HTTPException(status_code=400, detail="Upload the CLI Grading .xlsx workbook.")
+        filename = file.filename if file is not None else ""
+        if not (file and filename) and not (cli_nomination_file and cli_nomination_file.filename):
+            raise HTTPException(status_code=400, detail="Upload a CLI Grading/CLITI Biodata file or a CLI nomination file.")
 
-        content = await file.read()
-        upload_kind = _detect_cli_upload_kind(_load_cli_upload_rows(content))
+        content = b""
+        upload_kind = "unknown"
+        if file and filename:
+            if not filename.lower().endswith((".xlsx", ".xlsm")):
+                raise HTTPException(status_code=400, detail="Upload the CLI Grading .xlsx workbook.")
+            content = await file.read()
+            upload_kind = _detect_cli_upload_kind(_load_cli_upload_rows(content))
+        nomination_notice = ""
+        nomination_warning = ""
+        nomination_details: list[str] = []
+        nomination_warnings: list[str] = []
+        nomination_actions: list[dict[str, object]] = []
+        if cli_nomination_file and cli_nomination_file.filename:
+            nomination_name = cli_nomination_file.filename or ""
+            if not nomination_name.lower().endswith((".xlsx", ".xlsm")):
+                raise HTTPException(status_code=400, detail="Upload the CLI nomination file as .xlsx.")
+            nomination_content = await cli_nomination_file.read()
+            nomination_records, nomination_warnings = _parse_cli_nomination_workbook(nomination_content)
+            nomination_notice, nomination_warning, nomination_details, nomination_warnings, nomination_actions = _apply_cli_nomination_records(
+                session,
+                nomination_records,
+                nomination_warnings,
+                nomination_name,
+            )
+        if upload_kind == "unknown" and nomination_notice:
+            return templates.TemplateResponse(
+                "cli.html",
+                _cli_page_context(
+                    request,
+                    session,
+                    grading_update_notice=nomination_notice,
+                    grading_update_warning=nomination_warning,
+                    grading_update_details=nomination_details,
+                    grading_warning_details=nomination_warnings,
+                    nomination_mismatch_actions=nomination_actions,
+                ),
+            )
         if upload_kind == "cli_matrix":
             report_date = infer_report_date(filename) or date.today()
             summary_df = build_summary_df(content)
@@ -9459,6 +9796,12 @@ async def upload_li_grading(
                 notice_parts.append(bio_notice)
                 if bio_warning:
                     warning_bits.append(bio_warning)
+            if nomination_notice:
+                notice_parts.append(nomination_notice)
+            details.extend(nomination_details)
+            warnings.extend(nomination_warnings)
+            if nomination_warning:
+                warning_bits.append(nomination_warning)
             _save_li_grading_metadata(filename)
             return templates.TemplateResponse(
                 "cli.html",
@@ -9469,6 +9812,7 @@ async def upload_li_grading(
                     grading_update_warning=" ".join(warning_bits),
                     grading_update_details=details,
                     grading_warning_details=warnings,
+                    nomination_mismatch_actions=nomination_actions,
                 ),
             )
 
@@ -9476,15 +9820,26 @@ async def upload_li_grading(
             records, warnings = _parse_cli_biodata_workbook(content)
             _save_li_grading_metadata(filename)
             notice, warning_message, details, warnings = _apply_cli_biodata_records(session, records, warnings, filename)
+            notice_parts = [notice]
+            warning_bits = [warning_message] if warning_message else []
+            details = list(details)
+            warnings = list(warnings)
+            if nomination_notice:
+                notice_parts.append(nomination_notice)
+            details.extend(nomination_details)
+            warnings.extend(nomination_warnings)
+            if nomination_warning:
+                warning_bits.append(nomination_warning)
             return templates.TemplateResponse(
                 "cli.html",
                 _cli_page_context(
                     request,
                     session,
-                    grading_update_notice=notice,
-                    grading_update_warning=warning_message,
+                    grading_update_notice=" ".join(bit for bit in notice_parts if bit),
+                    grading_update_warning=" ".join(bit for bit in warning_bits if bit),
                     grading_update_details=details,
                     grading_warning_details=warnings,
+                    nomination_mismatch_actions=nomination_actions,
                 ),
             )
 
@@ -9626,15 +9981,24 @@ async def upload_li_grading(
                 notice_parts.append("No change found")
             notice = "CLI grading update complete: " + ", ".join(notice_parts) + "."
         warning_message = f"Mismatch / auto-fixed records: {len(warnings)}" if warnings else ""
+        notice_parts = [notice]
+        warning_bits = [warning_message] if warning_message else []
+        if nomination_notice:
+            notice_parts.append(nomination_notice)
+        details.extend(nomination_details)
+        warnings.extend(nomination_warnings)
+        if nomination_warning:
+            warning_bits.append(nomination_warning)
         return templates.TemplateResponse(
             "cli.html",
             _cli_page_context(
                 request,
                 session,
-                grading_update_notice=notice,
-                grading_update_warning=warning_message,
+                grading_update_notice=" ".join(bit for bit in notice_parts if bit),
+                grading_update_warning=" ".join(bit for bit in warning_bits if bit),
                 grading_update_details=details,
                 grading_warning_details=warnings,
+                nomination_mismatch_actions=nomination_actions,
             ),
         )
     except HTTPException as exc:
@@ -9648,6 +10012,89 @@ async def upload_li_grading(
             ),
             status_code=exc.status_code,
         )
+
+
+@app.post("/cli/nomination-mismatch-apply")
+async def apply_cli_nomination_mismatch(
+    request: Request,
+    existing_id: int = Form(...),
+    incoming_payload: str = Form(...),
+    action_key: str = Form(...),
+    action_password: str = Form(...),
+    session: Session = Depends(get_session),
+):
+    try:
+        _validate_sensitive_action_password(action_password)
+        payload = json.loads(incoming_payload)
+        employee = session.get(Employee, existing_id)
+        if employee is None:
+            raise HTTPException(status_code=404, detail="Existing employee row not found.")
+        incoming_crew = _clean_import_text(payload.get("crew_id"))
+        incoming_hrms = _clean_import_text(payload.get("hrms"))
+        incoming_cli = _clean_import_text(payload.get("cli"))
+        incoming_cli_id = _clean_import_text(payload.get("cli_id"))
+        changes: list[str] = []
+        if incoming_crew and _clean_import_text(employee.crew_id) != incoming_crew:
+            changes.append(f"CREW ID: {_format_sync_value(employee.crew_id)} -> {_format_sync_value(incoming_crew)}")
+            employee.crew_id = incoming_crew
+        if incoming_hrms and _clean_import_text(employee.hrms) != incoming_hrms:
+            changes.append(f"HRMS ID: {_format_sync_value(employee.hrms)} -> {_format_sync_value(incoming_hrms)}")
+            employee.hrms = incoming_hrms
+        old_cli, old_cli_id = _canonicalize_cli_name(employee.cli, employee.cli_id)
+        new_cli, new_cli_id = _canonicalize_cli_name(incoming_cli, incoming_cli_id)
+        if old_cli != new_cli:
+            changes.append(f"CLI: {_format_sync_value(old_cli)} -> {_format_sync_value(new_cli)}")
+        if old_cli_id != new_cli_id:
+            changes.append(f"CLI ID: {_format_sync_value(old_cli_id)} -> {_format_sync_value(new_cli_id)}")
+        employee.cli, employee.cli_id = _canonicalize_cli_name(new_cli, new_cli_id)
+        session.add(employee)
+        session.commit()
+        _normalize_employee_cli_names(session)
+        nomination_actions = _remove_cli_nomination_mismatch_action(action_key)
+        notice = "CLI nomination mismatch applied to existing employee."
+        details = [f"Updated {employee.name} ({employee.crew_id or employee.hrms or employee.id}): " + "; ".join(changes)] if changes else []
+        return templates.TemplateResponse(
+            "cli.html",
+            _cli_page_context(
+                request,
+                session,
+                grading_update_notice=notice,
+                grading_update_details=details,
+                nomination_mismatch_actions=nomination_actions,
+            ),
+        )
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "CLI nomination mismatch apply failed."
+        return templates.TemplateResponse("cli.html", _cli_page_context(request, session, grading_update_error=detail), status_code=exc.status_code)
+    except Exception as exc:
+        return templates.TemplateResponse("cli.html", _cli_page_context(request, session, grading_update_error=str(exc)), status_code=500)
+
+
+@app.post("/cli/nomination-mismatch-ignore")
+async def ignore_cli_nomination_mismatch(
+    request: Request,
+    action_key: str = Form(...),
+    action_password: str = Form(...),
+    session: Session = Depends(get_session),
+):
+    try:
+        _validate_sensitive_action_password(action_password)
+        nomination_actions = _remove_cli_nomination_mismatch_action(action_key)
+        return templates.TemplateResponse(
+            "cli.html",
+            _cli_page_context(
+                request,
+                session,
+                grading_update_notice="CLI nomination mismatch dismissed.",
+                nomination_mismatch_actions=nomination_actions,
+            ),
+        )
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "CLI nomination mismatch dismiss failed."
+        return templates.TemplateResponse("cli.html", _cli_page_context(request, session, grading_update_error=detail), status_code=exc.status_code)
+    except Exception as exc:
+        return templates.TemplateResponse("cli.html", _cli_page_context(request, session, grading_update_error=str(exc)), status_code=500)
+
 @app.post("/upload")
 async def upload_employees(
     file: UploadFile = File(...),

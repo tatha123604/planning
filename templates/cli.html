@@ -94,17 +94,69 @@
         {% endif %}
         <form method="post" action="/upload-li-grading" enctype="multipart/form-data" class="inline sensitive-inline-form" data-password-gated-form data-password-gated-code="11111">
           <label>Excel file
-            <input type="file" name="file" accept=".xlsx,.xlsm" required />
+            <input type="file" name="file" accept=".xlsx,.xlsm" />
           </label>
           <label>CLI bio data (.xlsx)
-            <input type="file" name="bio_data_file" accept=".xlsx,.xlsm" required />
+            <input type="file" name="bio_data_file" accept=".xlsx,.xlsm" />
+          </label>
+          <label>CLI nomination (.xlsx)
+            <input type="file" name="cli_nomination_file" accept=".xlsx,.xlsm" />
           </label>
           <label class="site-password-label compact-site-password">Action Code
             <input class="site-password-input compact-site-password-input" type="password" name="action_password" autocomplete="current-password" required data-password-gated-input />
           </label>
           <button type="submit" data-password-gated-button disabled>Gradation Update</button>
         </form>
-        <p class="hint">Smart upload supports both flows. If you upload a standard CLI Grading workbook, it updates gradation and due date using <code>CREW ID</code>, <code>NAME</code>, <code>DESIG.</code>, <code>CURRENT GRADE</code>, and <code>DUE DATE</code>. It also accepts the CMS crew grading layout with <code>LI ID</code>, <code>CREW ID</code>, <code>CREW NAME</code>, <code>GRADE</code>, and <code>GRADING DATE</code> in the first field. If you upload a <code>CLI Matrix</code> file in the first field and <code>CLITI Biodata</code> in the second field, the matrix snapshot is saved for the CLI Matrix page and the biodata rows refresh the CLI roster master. You can also upload only a <code>CLITI Biodata</code> file in the first field when you just want to refresh CLI master data.</p>
+        <p class="hint">Smart upload supports both flows. If you upload a standard CLI Grading workbook, it updates gradation and due date using <code>CREW ID</code>, <code>NAME</code>, <code>DESIG.</code>, <code>CURRENT GRADE</code>, and <code>DUE DATE</code>. It also accepts the CMS crew grading layout with <code>LI ID</code>, <code>CREW ID</code>, <code>CREW NAME</code>, <code>GRADE</code>, and <code>GRADING DATE</code> in the first field. If you upload a <code>CLI Matrix</code> file in the first field and <code>CLITI Biodata</code> in the second field, the matrix snapshot is saved for the CLI Matrix page and the biodata rows refresh the CLI roster master. You can also upload only a <code>CLITI Biodata</code> file in the first field when you just want to refresh CLI master data. Optional <code>CLI nomination</code> upload matches <code>CREW ID</code>, <code>HRMS ID</code>, and <code>CLI Name</code> against the main employee table and shows mismatch actions when identifiers conflict.</p>
+        {% if nomination_mismatch_actions %}
+        <details class="conflict-group sync-log-collapse" {% if (nomination_mismatch_actions|length or 0) <= 2 %}open{% endif %} style="margin-top: 12px;">
+          <summary><span class="sync-list-title hint warning-text"><strong>CLI nomination mismatch actions</strong></span><span class="log-toggle-state" aria-hidden="true"></span></summary>
+          <div class="conflict-group-body">
+          {% for item in nomination_mismatch_actions %}
+          <div class="conflict-card">
+            <p><strong>{{ item.reason }}</strong> - {{ item.row_hint }}</p>
+            <div class="conflict-split">
+              <div>
+                <p class="hint">Existing employee</p>
+                <div class="conflict-meta">
+                  <div>Name: {{ item.existing.name }}</div>
+                  <div>Designation: {{ item.existing.role }}</div>
+                  <div>CREW ID: {{ item.existing.crew_id }}</div>
+                  <div>HRMS ID: {{ item.existing.hrms }}</div>
+                  <div>CLI: {{ item.existing.cli }}</div>
+                </div>
+              </div>
+              <div>
+                <p class="hint">Incoming nomination</p>
+                <div class="conflict-meta">
+                  <div>Name: {{ item.incoming.name }}</div>
+                  <div>CREW ID: {{ item.incoming.crew_id }}</div>
+                  <div>HRMS ID: {{ item.incoming.hrms }}</div>
+                  <div>CLI: {{ item.incoming.cli }}</div>
+                </div>
+              </div>
+            </div>
+            <form method="post" action="/cli/nomination-mismatch-apply" class="inline sensitive-inline-form" data-password-gated-form data-password-gated-code="11111" onsubmit="return confirm('Apply incoming nomination values to this employee row?');">
+              <input type="hidden" name="existing_id" value="{{ item.existing_id }}" />
+              <input type="hidden" name="action_key" value="{{ item.action_key }}" />
+              <input type="hidden" name="incoming_payload" value='{{ item.incoming_json | e }}' />
+              <label>Action Code
+                <input type="password" name="action_password" autocomplete="current-password" required data-password-gated-input />
+              </label>
+              <button type="submit" data-password-gated-button disabled>Apply Incoming Values</button>
+            </form>
+            <form method="post" action="/cli/nomination-mismatch-ignore" class="inline" onsubmit="return confirm('Ignore this nomination mismatch?');">
+              <input type="hidden" name="action_key" value="{{ item.action_key }}" />
+              <label>Action Code
+                <input type="password" name="action_password" autocomplete="current-password" required />
+              </label>
+              <button type="submit" class="danger">Ignore</button>
+            </form>
+          </div>
+          {% endfor %}
+          </div>
+        </details>
+        {% endif %}
       </section>
 
       <section class="card collapsible" id="cli-bio-reference">
