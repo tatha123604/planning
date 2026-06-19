@@ -206,9 +206,7 @@
             <button type="submit" data-password-gated-button disabled>Save Service Reference</button>
           </form>
           <form method="post" action="/uploads/employee-master-sync" enctype="multipart/form-data" class="inline sensitive-inline-form" data-password-gated-form data-password-gated-code="11111">
-            <label>Service Particulars (.xlsx, optional)
-              <input type="file" name="service_file" accept=".xlsx,.xlsm" />
-            </label>
+            <input type="hidden" name="service_file" value="" />
             <label>CMS other bio data (.xlsx)
               <input type="file" name="cms_file" accept=".csv,.xlsx,.xlsm" required />
             </label>
@@ -217,7 +215,7 @@
             </label>
             <p class="hint">
               Employee table update uses <code>EMP NO / Employee No</code> as the primary unique id and merges CMS bio data using <code>CREW ID</code>.
-              You can leave Service Particulars blank here to reuse the last saved reference. Duplicate or mismatched rows are skipped and listed below this card.
+              This form uses the last saved Service Particulars reference. Duplicate or mismatched rows are skipped and listed below this card.
             </p>
             <button type="submit" data-password-gated-button disabled>Update Employee Table</button>
           </form>
