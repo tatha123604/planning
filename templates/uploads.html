@@ -55,7 +55,12 @@
           <p class="error-text" role="alert">{{ update_error }}</p>
           {% endif %}
           {% if update_notice %}
-          <p class="hint success-text" role="status">{{ update_notice }}</p>
+          <div class="sync-report-card" style="margin-bottom: 12px;">
+            <div class="sync-report-section">
+              <h4>Employee Table Update Status</h4>
+              <p class="hint success-text" role="status">{{ update_notice }}</p>
+            </div>
+          </div>
           {% endif %}
           {% if update_warning %}
           <p class="hint warning-text" role="status">{{ update_warning }}</p>
