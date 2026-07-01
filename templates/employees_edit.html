@@ -72,8 +72,20 @@
             <label>HRMS ID <input name="hrms" value="{{ employee.hrms or '' }}" /></label>
             <label>CREW ID <input name="crew_id" value="{{ employee.crew_id or '' }}" /></label>
             <label>Gradation <input name="gradation" value="{{ employee.gradation or '' }}" /></label>
-            <label>CLI <input name="cli" value="{{ employee.cli or '' }}" /></label>
-            <label>CLI ID <input name="cli_id" value="{{ employee.cli_id or '' }}" /></label>
+            <label>CLI Dropdown
+              <select id="cli-select">
+                <option value="">Select CLI</option>
+                {% for row in cli_choices %}
+                <option
+                  value="{{ row.name }}"
+                  data-cli-id="{{ row.cli_id }}"
+                  {% if row.name == (employee.cli or '') and row.cli_id == (employee.cli_id or '') %}selected{% endif %}
+                >{{ row.label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>CLI Name <input id="cli-name-input" name="cli" value="{{ employee.cli or '' }}" /></label>
+            <label>CLI ID <input id="cli-id-input" name="cli_id" value="{{ employee.cli_id or '' }}" /></label>
             <label>Date of birth <input type="date" name="dob" value="{{ employee.dob or '' }}" /></label>
             <label>APPOINT DATE <input type="date" name="doa" value="{{ employee.doa or '' }}" /></label>
             <label>Date of report <input type="date" name="do_report" value="{{ employee.do_report or '' }}" /></label>
@@ -107,6 +119,20 @@
       });
       document.body.classList.remove('nav-hidden');
 
+    })();
+
+    (() => {
+      const cliSelect = document.getElementById('cli-select');
+      const cliNameInput = document.getElementById('cli-name-input');
+      const cliIdInput = document.getElementById('cli-id-input');
+      if (!cliSelect || !cliNameInput || !cliIdInput) return;
+
+      cliSelect.addEventListener('change', () => {
+        const selected = cliSelect.options[cliSelect.selectedIndex];
+        if (!selected || !selected.value) return;
+        cliNameInput.value = selected.value || '';
+        cliIdInput.value = selected.dataset.cliId || '';
+      });
     })();
   </script>
   <script src="/static/sidebar-toggle.js"></script>

@@ -565,6 +565,32 @@ def _employee_cli_key(employee: Employee) -> str:
     return (cli_id or "").lower() or _cli_name_key(cli_name).lower()
 
 
+def _cli_choice_rows(session: Session) -> list[dict[str, str]]:
+    rows = session.exec(select(Employee.cli, Employee.cli_id).distinct()).all()
+    canonical_by_id, alias_map, id_by_name = _build_cli_name_maps(rows)
+    unique: dict[str, dict[str, str]] = {}
+    for cli_name, cli_id in rows:
+        name_text, id_text = _canonicalize_cli_name(
+            cli_name,
+            cli_id,
+            canonical_by_id=canonical_by_id,
+            alias_map=alias_map,
+            id_by_name=id_by_name,
+        )
+        label = format_cli_label(name_text, id_text).strip()
+        if not label:
+            continue
+        key = (id_text or "").lower() or _cli_name_key(name_text).lower()
+        if not key or key in unique:
+            continue
+        unique[key] = {
+            "label": label,
+            "name": name_text or "",
+            "cli_id": id_text or "",
+        }
+    return sorted(unique.values(), key=lambda item: item["label"].lower())
+
+
 def filter_hire_by(value, days: int = 30):
     if not value:
         return None
@@ -4993,6 +5019,7 @@ def edit_employee_page(emp_id: int, request: Request, session: Session = Depends
             "request": request,
             "employee": employee,
             "role_order": ROLE_ORDER,
+            "cli_choices": _cli_choice_rows(session),
             "active_page": "employees",
             "return_to": return_to,
         },
