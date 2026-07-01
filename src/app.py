@@ -6742,6 +6742,7 @@ def _import_employee_rows(
     existing_cli_rows = session.exec(select(Employee.cli, Employee.cli_id)).all()
     canonical_by_id, alias_map, id_by_name = _build_cli_name_maps(existing_cli_rows)
     employees = session.exec(select(Employee)).all()
+    prefer_existing_over_incoming = source_label.strip().lower().startswith("google sheet")
 
     added = 0
     updated = 0
@@ -6768,6 +6769,15 @@ def _import_employee_rows(
         if match_key is None:
             return []
         return [employee for employee in employees if _emp_no_match_key(employee.pf_no) == match_key]
+
+    def _prefer_target(existing_value: object, incoming_value: object, has_column: bool) -> object:
+        if not has_column:
+            return existing_value
+        if not prefer_existing_over_incoming:
+            return incoming_value
+        if _employee_has_value(existing_value):
+            return existing_value
+        return incoming_value
 
     for row in data_rows:
         def get(col: str) -> object | None:
@@ -6910,21 +6920,24 @@ def _import_employee_rows(
             raise HTTPException(status_code=400, detail=f"hire_date missing in {source_label} and could not be derived.")
 
         if existing:
-            retirement_target = retirement_date if has_col("retirement_date") else existing.retirement_date
-            promo_role_target = promo_role if has_col("promotion_role") else existing.promotion_role
-            promo_ready_target = promo_ready if has_col("promotion_ready_date") else existing.promotion_ready_date
-            category_target = category if has_col("category") else existing.category
-            pf_no_target = pf_no if has_col("pf_no") else existing.pf_no
-            hrms_target = hrms if has_col("hrms") else existing.hrms
-            crew_id_target = crew_id if has_col("crew_id") else existing.crew_id
-            raw_cli_id = str(get("cli_id")).strip() if has_col("cli_id") and get("cli_id") else (None if has_col("cli_id") else existing.cli_id)
-            dob_target = dob if has_col("dob") else existing.dob
-            doa_target = doa if has_col("doa") else existing.doa
-            do_report_target = do_report if has_col("do_report") else existing.do_report
-            status_target = status_val if has_col("status") else existing.status
-            working_at_target = working_at if (has_col("working_at") or working_at_override is not None) else existing.working_at
-            new_gradation = str(get("gradation")).strip() if has_col("gradation") and get("gradation") else (None if has_col("gradation") else existing.gradation)
-            raw_cli = str(get("cli")).strip() if has_col("cli") and get("cli") else (None if has_col("cli") else existing.cli)
+            retirement_target = _prefer_target(existing.retirement_date, retirement_date, has_col("retirement_date"))
+            promo_role_target = _prefer_target(existing.promotion_role, promo_role, has_col("promotion_role"))
+            promo_ready_target = _prefer_target(existing.promotion_ready_date, promo_ready, has_col("promotion_ready_date"))
+            category_target = _prefer_target(existing.category, category, has_col("category"))
+            pf_no_target = _prefer_target(existing.pf_no, pf_no, has_col("pf_no"))
+            hrms_target = _prefer_target(existing.hrms, hrms, has_col("hrms"))
+            crew_id_target = _prefer_target(existing.crew_id, crew_id, has_col("crew_id"))
+            incoming_cli_id = str(get("cli_id")).strip() if has_col("cli_id") and get("cli_id") else None
+            raw_cli_id = _prefer_target(existing.cli_id, incoming_cli_id, has_col("cli_id"))
+            dob_target = _prefer_target(existing.dob, dob, has_col("dob"))
+            doa_target = _prefer_target(existing.doa, doa, has_col("doa"))
+            do_report_target = _prefer_target(existing.do_report, do_report, has_col("do_report"))
+            status_target = _prefer_target(existing.status, status_val, has_col("status"))
+            working_at_target = _prefer_target(existing.working_at, working_at, has_col("working_at") or working_at_override is not None)
+            incoming_gradation = str(get("gradation")).strip() if has_col("gradation") and get("gradation") else None
+            new_gradation = _prefer_target(existing.gradation, incoming_gradation, has_col("gradation"))
+            incoming_cli = str(get("cli")).strip() if has_col("cli") and get("cli") else None
+            raw_cli = _prefer_target(existing.cli, incoming_cli, has_col("cli"))
             existing_cli_clean, existing_cli_id_clean = _canonicalize_cli_name(
                 existing.cli,
                 existing.cli_id,
@@ -6941,13 +6954,13 @@ def _import_employee_rows(
             )
             if _cli_names_equivalent(existing_cli_clean, new_cli) and existing_cli_clean:
                 new_cli = existing_cli_clean
-            pme_due_target = pme_due if has_col("pme_due") else existing.pme_due
-            technical_due_target = technical_due if has_col("technical_due") else existing.technical_due
-            transportation_due_target = transportation_due if has_col("transportation_due") else existing.transportation_due
+            pme_due_target = _prefer_target(existing.pme_due, pme_due, has_col("pme_due"))
+            technical_due_target = _prefer_target(existing.technical_due, technical_due, has_col("technical_due"))
+            transportation_due_target = _prefer_target(existing.transportation_due, transportation_due, has_col("transportation_due"))
             field_updates = [
-                ("Name", existing.name, str(name).strip()),
-                ("Designation", existing.role, role),
-                ("APPOINT DATE", existing.hire_date, hire_date),
+                ("Name", existing.name, _prefer_target(existing.name, str(name).strip(), has_col("name"))),
+                ("Designation", existing.role, _prefer_target(existing.role, role, has_col("role"))),
+                ("APPOINT DATE", existing.hire_date, _prefer_target(existing.hire_date, hire_date, has_col("hire_date") or has_col("doa") or has_col("dob") or has_col("retirement_date"))),
                 ("Retirement Date", existing.retirement_date, retirement_target),
                 ("Promotion Designation", existing.promotion_role, promo_role_target),
                 ("Promotion Ready Date", existing.promotion_ready_date, promo_ready_target),
@@ -6978,9 +6991,9 @@ def _import_employee_rows(
             ]
             change_kind = _google_sync_change_label([label for label, _, _ in changed_field_entries])
 
-            existing.name = str(name).strip()
-            existing.role = role
-            existing.hire_date = hire_date
+            existing.name = _prefer_target(existing.name, str(name).strip(), has_col("name"))
+            existing.role = _prefer_target(existing.role, role, has_col("role"))
+            existing.hire_date = _prefer_target(existing.hire_date, hire_date, has_col("hire_date") or has_col("doa") or has_col("dob") or has_col("retirement_date"))
             existing.retirement_date = retirement_target
             existing.promotion_role = promo_role_target
             existing.promotion_ready_date = promo_ready_target
