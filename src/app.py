@@ -6600,6 +6600,55 @@ def _normalize_import_name(value: object | None) -> str | None:
     return " ".join(text.split()) or None
 
 
+_NAME_TOKEN_EQUIVALENTS: dict[str, set[str]] = {
+    "KR": {"KUMAR"},
+    "KR.": {"KUMAR"},
+    "KUMAR": {"KR"},
+}
+
+
+def _names_almost_same(left: object | None, right: object | None) -> bool:
+    left_name = _normalize_import_name(left)
+    right_name = _normalize_import_name(right)
+    if not left_name or not right_name:
+        return False
+    if left_name == right_name:
+        return True
+    left_tokens = left_name.split()
+    right_tokens = right_name.split()
+    if not left_tokens or not right_tokens:
+        return False
+    if left_tokens[-1] != right_tokens[-1]:
+        return False
+    shorter, longer = (left_tokens, right_tokens) if len(left_tokens) <= len(right_tokens) else (right_tokens, left_tokens)
+    if len(longer) - len(shorter) > 1:
+        return False
+    i = 0
+    j = 0
+    while i < len(shorter) and j < len(longer):
+        short_token = shorter[i]
+        long_token = longer[j]
+        if short_token == long_token:
+            i += 1
+            j += 1
+            continue
+        equivalent = _NAME_TOKEN_EQUIVALENTS.get(short_token, set())
+        if long_token in equivalent:
+            i += 1
+            j += 1
+            continue
+        if len(short_token) == 1 and long_token.startswith(short_token):
+            i += 1
+            j += 1
+            continue
+        if len(long_token) == 1 and short_token.startswith(long_token):
+            i += 1
+            j += 1
+            continue
+        return False
+    return i == len(shorter) and j == len(longer)
+
+
 def _emp_no_last5(value: object | None) -> str | None:
     text = _clean_import_text(value)
     if text is None:
@@ -6890,7 +6939,7 @@ def _import_employee_rows(
                     role_candidates = session.exec(select(Employee).where(Employee.role == role)).all()
                     fallback_candidates = []
                     for candidate in role_candidates:
-                        if _normalize_import_name(candidate.name) != normalized_name:
+                        if not _names_almost_same(candidate.name, name):
                             continue
                         working_at_compatible = not working_at or not candidate.working_at or candidate.working_at == working_at
                         dob_compatible = dob is None or candidate.dob is None or candidate.dob == dob
@@ -7356,7 +7405,7 @@ def _employees_match_smart_merge(left: Employee, right: Employee) -> bool:
         return False
     left_name = _normalize_import_name(left.name)
     right_name = _normalize_import_name(right.name)
-    if not left_name or left_name != right_name:
+    if not left_name or not right_name or not _names_almost_same(left.name, right.name):
         return False
     left_role = normalize_role(left.role) if left.role else None
     right_role = normalize_role(right.role) if right.role else None
@@ -8484,7 +8533,7 @@ def _cleanup_employee_master_duplicates_for_record(
             register_duplicate(employee, "Same DOB + EMP NO last 5")
             continue
 
-        if target_name and dob and candidate_name == target_name and employee.dob == dob:
+        if target_name and dob and candidate_name and _names_almost_same(employee.name, name) and employee.dob == dob:
             if same_working_at and (
                 candidate_pf is None or emp_no is None or (target_last5 and candidate_last5 == target_last5)
             ):
@@ -8497,7 +8546,7 @@ def _cleanup_employee_master_duplicates_for_record(
         if not same_working_at:
             continue
 
-        if target_name and target_role and candidate_name == target_name and normalize_role(employee.role) == target_role:
+        if target_name and target_role and candidate_name and _names_almost_same(employee.name, name) and normalize_role(employee.role) == target_role:
             if candidate_pf and target_last5 and candidate_last5 == target_last5:
                 register_duplicate(employee, "Same Name + Designation")
                 continue
