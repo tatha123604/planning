@@ -6645,6 +6645,14 @@ def _names_almost_same(left: object | None, right: object | None) -> bool:
             i += 1
             j += 1
             continue
+        if i + 1 < len(shorter) and (short_token + shorter[i + 1]) == long_token:
+            i += 2
+            j += 1
+            continue
+        if j + 1 < len(longer) and short_token == (long_token + longer[j + 1]):
+            i += 1
+            j += 2
+            continue
         return False
     return i == len(shorter) and j == len(longer)
 
