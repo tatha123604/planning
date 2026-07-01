@@ -6623,6 +6623,9 @@ _NAME_TOKEN_EQUIVALENTS: dict[str, set[str]] = {
     "KR": {"KUMAR"},
     "KR.": {"KUMAR"},
     "KUMAR": {"KR"},
+    "CH": {"CHANDRA"},
+    "CH.": {"CHANDRA"},
+    "CHANDRA": {"CH"},
 }
 
 
