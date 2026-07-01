@@ -92,22 +92,38 @@
           {% endfor %}
         </ul>
         {% endif %}
-        <form method="post" action="/upload-li-grading" enctype="multipart/form-data" class="inline sensitive-inline-form" data-password-gated-form data-password-gated-code="11111">
-          <label>CLI Matrix (.xlsx)
-            <input type="file" name="file" accept=".xlsx,.xlsm" />
-          </label>
-          <label>CLI bio data (.xlsx)
-            <input type="file" name="bio_data_file" accept=".xlsx,.xlsm" />
-          </label>
-          <label>CLI nomination (.xlsx)
-            <input type="file" name="cli_nomination_file" accept=".xlsx,.xlsm" />
-          </label>
-          <label class="site-password-label compact-site-password">Action Code
-            <input class="site-password-input compact-site-password-input" type="password" name="action_password" autocomplete="current-password" required data-password-gated-input />
-          </label>
-          <button type="submit" data-password-gated-button disabled>Gradation Update</button>
+        <form method="post" action="/upload-li-grading" enctype="multipart/form-data" class="sensitive-inline-form" data-password-gated-form data-password-gated-code="11111">
+          <div style="display:grid; gap:14px;">
+            <div>
+              <p><strong>Step 1. Upload CLI Matrix and store latest value</strong></p>
+              <p class="hint">Same logic as before. Use this field for CLI Matrix / CLI Grading workbook.</p>
+              <label>CLI Matrix (.xlsx)
+                <input type="file" name="file" accept=".xlsx,.xlsm" />
+              </label>
+            </div>
+            <div>
+              <p><strong>Step 2. Upload CLI Bio Data and store latest value</strong></p>
+              <p class="hint">This refreshes the <strong>CLI Bio Reference</strong> table and keeps the latest biodata reference.</p>
+              <label>CLI Bio Data (.xlsx)
+                <input type="file" name="bio_data_file" accept=".xlsx,.xlsm" />
+              </label>
+            </div>
+            <div>
+              <p><strong>Step 3. Upload CLI Nomination sheet-wise</strong></p>
+              <p class="hint">Same logic as before. This file updates employee CLI mapping and keeps mismatch actions.</p>
+              <label>CLI Nomination (.xlsx)
+                <input type="file" name="cli_nomination_file" accept=".xlsx,.xlsm" />
+              </label>
+            </div>
+            <div class="inline">
+              <label class="site-password-label compact-site-password">Action Code
+                <input class="site-password-input compact-site-password-input" type="password" name="action_password" autocomplete="current-password" required data-password-gated-input />
+              </label>
+              <button type="submit" data-password-gated-button disabled>Run Upload Steps</button>
+            </div>
+          </div>
         </form>
-        <p class="hint">Upload <code>CLI Bio Data</code> only to refresh <strong>CLI Bio Reference</strong> table. Smart upload supports both flows. If you upload a standard CLI Grading workbook, it updates gradation and due date using <code>CREW ID</code>, <code>NAME</code>, <code>DESIG.</code>, <code>CURRENT GRADE</code>, and <code>DUE DATE</code>. It also accepts the CMS crew grading layout with <code>LI ID</code>, <code>CREW ID</code>, <code>CREW NAME</code>, <code>GRADE</code>, and <code>GRADING DATE</code> in the first field. If you upload a <code>CLI Matrix</code> file in the first field and <code>CLITI Biodata</code> in the second field, the matrix snapshot is saved for the CLI Matrix page and the biodata rows refresh the CLI bio reference master only. You can also upload only a <code>CLITI Biodata</code> file in the first field when you just want to refresh CLI reference data. Optional <code>CLI nomination</code> upload matches <code>CREW ID</code>, <code>HRMS ID</code>, and <code>CLI Name</code> against the main employee table and shows mismatch actions when identifiers conflict.</p>
+        <p class="hint">You can upload one step only, two steps together, or all three together. Backend logic stays the same; this layout is only to make the upload flow easier to understand.</p>
         {% if nomination_mismatch_actions %}
         <details class="conflict-group sync-log-collapse" {% if (nomination_mismatch_actions|length or 0) <= 2 %}open{% endif %} style="margin-top: 12px;">
           <summary><span class="sync-list-title hint warning-text"><strong>CLI nomination mismatch actions</strong></span><span class="log-toggle-state" aria-hidden="true"></span></summary>
