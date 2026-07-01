@@ -182,6 +182,13 @@
             </form>
           </div>
         </div>
+        {% elif request.query_params.get('retired_preview') == '1' %}
+        <div class="sync-report-card" style="margin-top: 14px;">
+          <div class="sync-report-section">
+            <h4>Preview</h4>
+            <p class="hint">NO EMPLOYEE FOUND IN CURRENT LIST ON DATE</p>
+          </div>
+        </div>
         {% endif %}
       </section>
 
