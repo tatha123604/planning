@@ -7338,6 +7338,51 @@ def _one_working_at_blank(first: object | None, second: object | None) -> bool:
     return (not first_key and bool(second_key)) or (bool(first_key) and not second_key)
 
 
+def _employees_match_smart_merge(left: Employee, right: Employee) -> bool:
+    if left is right:
+        return False
+    left_name = _normalize_import_name(left.name)
+    right_name = _normalize_import_name(right.name)
+    if not left_name or left_name != right_name:
+        return False
+    left_role = normalize_role(left.role) if left.role else None
+    right_role = normalize_role(right.role) if right.role else None
+    if not left_role or left_role != right_role:
+        return False
+    if not left.dob or not right.dob or left.dob != right.dob:
+        return False
+    if left.retirement_date != right.retirement_date:
+        return False
+
+    left_cli_name, left_cli_id = _canonicalize_cli_name(left.cli, left.cli_id)
+    right_cli_name, right_cli_id = _canonicalize_cli_name(right.cli, right.cli_id)
+    if (left_cli_id or right_cli_id) and left_cli_id != right_cli_id:
+        return False
+    if (left_cli_name or right_cli_name) and not _cli_names_equivalent(left_cli_name, right_cli_name):
+        return False
+
+    left_pf = _emp_no_last5(left.pf_no)
+    right_pf = _emp_no_last5(right.pf_no)
+    if left_pf and right_pf and left_pf != right_pf:
+        return False
+
+    left_crew = _clean_import_text(left.crew_id)
+    right_crew = _clean_import_text(right.crew_id)
+    if left_crew and right_crew and left_crew != right_crew:
+        return False
+
+    left_hrms = _clean_import_text(left.hrms)
+    right_hrms = _clean_import_text(right.hrms)
+    if left_hrms and right_hrms and left_hrms != right_hrms:
+        return False
+
+    has_complementary_identifier = (
+        (bool(left_crew) != bool(right_crew))
+        or (bool(left_hrms) != bool(right_hrms))
+    )
+    return has_complementary_identifier
+
+
 def _cleanup_row_payload(employee: Employee) -> dict[str, object]:
     return {
         "id": employee.id,
@@ -7744,6 +7789,30 @@ def _build_duplicate_cleanup_plan(session: Session) -> tuple[list[dict[str, obje
             continue
         register_plan("Same Name + DOB", rows)
 
+    smart_merge_groups: dict[tuple[str, str, str, str, str], list[Employee]] = {}
+    for employee in employees:
+        if employee.id is not None and employee.id in used_ids:
+            continue
+        name_key = _normalize_import_name(employee.name)
+        role_key = normalize_role(employee.role) if employee.role else None
+        dob_key = employee.dob.isoformat() if employee.dob else None
+        retirement_key = employee.retirement_date.isoformat() if employee.retirement_date else ""
+        cli_name, cli_id = _canonicalize_cli_name(employee.cli, employee.cli_id)
+        cli_key = (cli_id or "").upper() or _cli_name_key(cli_name).upper()
+        if not name_key or not role_key or not dob_key:
+            continue
+        smart_merge_groups.setdefault((name_key, role_key, dob_key, retirement_key, cli_key), []).append(employee)
+
+    for rows in smart_merge_groups.values():
+        if len(rows) < 2:
+            continue
+        matching_rows = [rows[0]]
+        for employee in rows[1:]:
+            if all(_employees_match_smart_merge(employee, existing) for existing in matching_rows):
+                matching_rows.append(employee)
+        if len(matching_rows) > 1:
+            register_plan("Smart merge: same Name + Designation + DOB + Retirement + CLI with complementary IDs", matching_rows)
+
     by_name_crew: dict[tuple[str, str], list[Employee]] = {}
     for employee in employees:
         if employee.id is not None and employee.id in used_ids:
@@ -7870,20 +7939,24 @@ def _apply_duplicate_cleanup_plan(
     details: list[str],
 ) -> int:
     merge_fields = (
+        "name",
         "role",
         "hire_date",
         "retirement_date",
         "promotion_role",
         "promotion_ready_date",
         "category",
+        "pf_no",
         "hrms",
         "crew_id",
+        "dob",
         "doa",
         "do_report",
         "status",
         "working_at",
         "gradation",
         "cli",
+        "cli_id",
         "pme_due",
         "technical_due",
         "transportation_due",
@@ -7934,20 +8007,24 @@ def _merge_conflict_rows(
     keeper = ordered[0]
     removed = 0
     merge_fields = (
+        "name",
         "role",
         "hire_date",
         "retirement_date",
         "promotion_role",
         "promotion_ready_date",
         "category",
+        "pf_no",
         "hrms",
         "crew_id",
+        "dob",
         "doa",
         "do_report",
         "status",
         "working_at",
         "gradation",
         "cli",
+        "cli_id",
         "pme_due",
         "technical_due",
         "transportation_due",
@@ -8371,6 +8448,15 @@ def _cleanup_employee_master_duplicates_for_record(
     )
 
     duplicates: list[tuple[Employee, str]] = []
+    duplicate_ids: set[int] = set()
+
+    def register_duplicate(candidate: Employee, reason: str) -> None:
+        candidate_id = candidate.id or 0
+        if candidate_id in duplicate_ids:
+            return
+        duplicate_ids.add(candidate_id)
+        duplicates.append((candidate, reason))
+
     for employee in list(employees):
         if employee is target:
             continue
@@ -8382,17 +8468,17 @@ def _cleanup_employee_master_duplicates_for_record(
         candidate_last5 = _emp_no_last5(candidate_pf)
 
         if dob and target_last5 and employee.dob == dob and candidate_last5 == target_last5:
-            duplicates.append((employee, "Same DOB + EMP NO last 5"))
+            register_duplicate(employee, "Same DOB + EMP NO last 5")
             continue
 
         if target_name and dob and candidate_name == target_name and employee.dob == dob:
             if same_working_at and (
                 candidate_pf is None or emp_no is None or (target_last5 and candidate_last5 == target_last5)
             ):
-                duplicates.append((employee, "Same Name + DOB"))
+                register_duplicate(employee, "Same Name + DOB")
                 continue
             if blank_vs_value_working_at and target_last5 and candidate_pf and candidate_last5 == target_last5:
-                duplicates.append((employee, "Same Name + DOB and one Working At is blank"))
+                register_duplicate(employee, "Same Name + DOB and one Working At is blank")
                 continue
 
         if not same_working_at:
@@ -8400,7 +8486,11 @@ def _cleanup_employee_master_duplicates_for_record(
 
         if target_name and target_role and candidate_name == target_name and normalize_role(employee.role) == target_role:
             if candidate_pf and target_last5 and candidate_last5 == target_last5:
-                duplicates.append((employee, "Same Name + Designation"))
+                register_duplicate(employee, "Same Name + Designation")
+                continue
+
+        if _employees_match_smart_merge(target, employee):
+            register_duplicate(employee, "Smart merge: same Name + Designation + DOB + Retirement + CLI with complementary IDs")
 
     for duplicate, reason in duplicates:
         for field_name in merge_fields:
@@ -9590,6 +9680,16 @@ def _apply_cli_nomination_records(
         crew_target = crew_matches[0] if len(crew_matches) == 1 else None
         hrms_target = hrms_matches[0] if len(hrms_matches) == 1 else None
         target: Employee | None = None
+
+        if (
+            crew_target
+            and hrms_target
+            and crew_target.id != hrms_target.id
+            and not _clean_import_text(crew_target.hrms)
+            and name_key
+            and _normalize_import_name(crew_target.name) == name_key
+        ):
+            hrms_target = None
 
         if crew_target and hrms_target and crew_target.id != hrms_target.id:
             mismatch_actions.append(
