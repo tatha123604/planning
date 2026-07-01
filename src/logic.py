@@ -44,6 +44,10 @@ def normalize_role(role: str | None) -> str | None:
     return canonical.get(upper, role_clean)
 
 
+def is_employee_active(employee: Employee, as_of: date) -> bool:
+    return employee.retirement_date is None or employee.retirement_date > as_of
+
+
 def is_superior(current_role: str | None, target_role: str | None) -> bool:
     if not current_role or not target_role:
         return False
@@ -52,8 +56,16 @@ def is_superior(current_role: str | None, target_role: str | None) -> bool:
 
 def fetch_active_employees(session: Session, as_of: date) -> List[Employee]:
     employees = session.exec(select(Employee)).all()
-    # Treat missing retirement_date as active/unknown
-    return [e for e in employees if (e.retirement_date is None) or (e.retirement_date > as_of)]
+    return [e for e in employees if is_employee_active(e, as_of)]
+
+
+def purge_retired_employees(session: Session, as_of: date) -> int:
+    retired = [e for e in session.exec(select(Employee)).all() if not is_employee_active(e, as_of)]
+    for employee in retired:
+        session.delete(employee)
+    if retired:
+        session.commit()
+    return len(retired)
 
 
 def apply_promotions(employees: Iterable[Employee], as_of: date) -> List[Employee]:

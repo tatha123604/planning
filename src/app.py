@@ -42,6 +42,7 @@ from .logic import (
     load_requirements_map,
     project_retirements,
     project_retirements_window,
+    purge_retired_employees,
     role_sort_key,
     normalize_role,
 )
@@ -1749,7 +1750,6 @@ def build_cli_distribution(
         )
     ]
 
-
 def build_working_location_summary(
     employees: list[Employee],
 ) -> tuple[list[str], list[dict[str, object]]]:
@@ -1786,6 +1786,10 @@ def build_working_location_summary(
             }
         )
     return role_headers, working_summary
+
+
+def _sync_retired_employees(session: Session, as_of: date | None = None) -> int:
+    return purge_retired_employees(session, as_of or date.today())
 
 
 def _utc_now() -> datetime:
@@ -4505,6 +4509,7 @@ def index(
 ):
     plan_date = _parse_as_of(request, as_of)
     today = date.today()
+    _sync_retired_employees(session, today)
     horizon_days = 0
     horizon_months = 0
     lead_time_days = 0
@@ -4582,12 +4587,14 @@ def employees_page(
     retired_preview: Optional[str] = None,
     session: Session = Depends(get_session),
 ):
+    today = date.today()
+    _sync_retired_employees(session, today)
     roster_filter_active = any([roster_name, roster_cli, roster_gradation])
     employees_open = not roster_filter_active
     roster_open = roster_filter_active
 
-    employees_all: list[Employee] = []
-    raw_working = {value for value in session.exec(select(Employee.working_at).distinct()) if value}
+    employees_all = fetch_active_employees(session, today)
+    raw_working = {e.working_at for e in employees_all if e.working_at}
     working_opts_filtered = {wa for wa in raw_working if wa.upper().startswith("CC(")}
     working_opts = sorted(working_opts_filtered if working_opts_filtered else raw_working)
     cli_opts_map: dict[str, str] = {}
@@ -4947,6 +4954,7 @@ def apply_retired_employee_cleanup(
 
 @app.get("/employees/{emp_id}")
 def edit_employee_page(emp_id: int, request: Request, session: Session = Depends(get_session)):
+    _sync_retired_employees(session, date.today())
     employee = session.get(Employee, emp_id)
     if not employee:
         raise HTTPException(status_code=404, detail="Employee not found")
@@ -5002,9 +5010,15 @@ def update_employee(
     if not employee:
         raise HTTPException(status_code=404, detail="Employee not found")
 
+    retirement_value = to_date(retirement_date)
+    if retirement_value and retirement_value <= date.today():
+        session.delete(employee)
+        session.commit()
+        return RedirectResponse("/employees", status_code=303)
+
     employee.name = name.strip()
     employee.role = role.strip()
-    employee.retirement_date = to_date(retirement_date)
+    employee.retirement_date = retirement_value
     employee.promotion_role = promotion_role.strip() if promotion_role else None
     employee.promotion_ready_date = to_date(promotion_ready_date)
     employee.category = category.strip() if category else None
@@ -5149,6 +5163,7 @@ def requirements_page(
 ):
     plan_date = _parse_as_of(request, as_of)
     today = date.today()
+    _sync_retired_employees(session, today)
     horizon_days = 0
     horizon_months = 0
     lead_time_days = 0
@@ -5204,12 +5219,14 @@ def reports_page(
     unassigned_role: Optional[str] = None,
     session: Session = Depends(get_session),
 ):
+    today = date.today()
+    _sync_retired_employees(session, today)
     start = _parse_date_cookie(request, "reports_start_date", start_date)
     end = _parse_date_cookie(request, "reports_end_date", end_date)
     if end < start:
         start, end = end, start
     horizon_months = 0
-    employees = session.exec(select(Employee)).all()
+    employees = fetch_active_employees(session, today)
     cli_distribution = build_cli_distribution(employees)
     role_headers, working_summary = build_working_location_summary(employees)
     retirements: dict[str, int] = {}
@@ -6119,7 +6136,9 @@ def ssts_pf_analysis_status(task_id: str):
 
 @app.get("/reports/cli-distribution.xlsx")
 def download_cli_distribution(session: Session = Depends(get_session)):
-    employees = session.exec(select(Employee)).all()
+    today = date.today()
+    _sync_retired_employees(session, today)
+    employees = fetch_active_employees(session, today)
     cli_distribution = build_cli_distribution(employees)
 
     wb = Workbook()
@@ -6296,14 +6315,23 @@ def add_employee(
     def to_int(val: Optional[str]) -> Optional[int]:
         return int(val) if val not in (None, "", "None") else None
 
+    today = date.today()
+    _sync_retired_employees(session, today)
     role_norm = role.strip()
+    retirement_value = to_date(retirement_date)
     existing = session.exec(
         select(Employee).where(Employee.name == name.strip(), Employee.role == role_norm)
     ).first()
 
+    if retirement_value and retirement_value <= today:
+        if existing:
+            session.delete(existing)
+            session.commit()
+        return RedirectResponse("/employees", status_code=303)
+
     if existing:
         existing.hire_date = to_date(hire_date)
-        existing.retirement_date = to_date(retirement_date)
+        existing.retirement_date = retirement_value
         existing.promotion_role = promotion_role.strip() if promotion_role else None
         existing.promotion_ready_date = to_date(promotion_ready_date)
         existing.category = category.strip() if category else None
@@ -6325,7 +6353,7 @@ def add_employee(
             name=name.strip(),
             role=role_norm,
             hire_date=to_date(hire_date),
-            retirement_date=to_date(retirement_date),
+            retirement_date=retirement_value,
         promotion_role=promotion_role.strip() if promotion_role else None,
         promotion_ready_date=to_date(promotion_ready_date),
         category=category.strip() if category else None,
@@ -6356,6 +6384,7 @@ def api_plan(
     session: Session = Depends(get_session),
 ):
     plan_date = date.fromisoformat(as_of) if as_of else date.today()
+    _sync_retired_employees(session, plan_date)
     employees = fetch_active_employees(session, plan_date)
     employees = apply_promotions(employees, plan_date)
     requirements_map = load_requirements_map(session)
@@ -10136,6 +10165,8 @@ async def upload_employees(
     file: UploadFile = File(...),
     session: Session = Depends(get_session),
 ):
+    today = date.today()
+    _sync_retired_employees(session, today)
     filename = file.filename or ""
     if not filename.lower().endswith((".xlsx", ".xlsm")):
         raise HTTPException(
@@ -10250,6 +10281,7 @@ async def upload_employees(
         raise HTTPException(status_code=400, detail=f"Missing columns: {', '.join(sorted(missing_required))}")
     added = 0
     updated = 0
+    removed = 0
     def derive_hire_date(dob_val: date | None, retirement_val: date | None) -> date | None:
         if dob_val:
             try:
@@ -10318,6 +10350,11 @@ async def upload_employees(
             existing = session.exec(
                 select(Employee).where(Employee.name == str(name).strip(), Employee.role == role)
             ).first()
+        if retirement_date <= today:
+            if existing:
+                session.delete(existing)
+                removed += 1
+            continue
         if existing:
             existing.hire_date = hire_date
             existing.retirement_date = retirement_date
@@ -10364,7 +10401,7 @@ async def upload_employees(
             added += 1
 
     session.commit()
-    if added == 0 and updated == 0:
+    if added == 0 and updated == 0 and removed == 0:
         raise HTTPException(status_code=400, detail="No rows imported. Check the sheet data or headers.")
     return RedirectResponse("/", status_code=303)
 
@@ -10374,6 +10411,7 @@ async def upload_seniority(
     file: UploadFile = File(...),
     session: Session = Depends(get_session),
 ):
+    _sync_retired_employees(session, date.today())
     filename = file.filename or ""
     if not filename.lower().endswith((".xlsx", ".xlsm")):
         raise HTTPException(status_code=400, detail="Upload an .xlsx file with columns: name, role, seniority_rank (or seniority). Optional: promotion_role, promotion_ready_date.")
