@@ -132,8 +132,8 @@
         </form>
         <p class="hint">You can upload one step only, two steps together, or all three together. Backend logic stays the same; this layout is only to make the upload flow easier to understand.</p>
         {% if nomination_mismatch_actions %}
-        <details class="conflict-group sync-log-collapse" {% if (nomination_mismatch_actions|length or 0) <= 2 %}open{% endif %} style="margin-top: 12px;">
-          <summary><span class="sync-list-title hint warning-text"><strong>CLI nomination mismatch actions</strong></span><span class="log-toggle-state" aria-hidden="true"></span></summary>
+        <details class="conflict-group sync-log-collapse" open style="margin-top: 12px;">
+          <summary><span class="sync-list-title hint warning-text"><strong>CLI nomination mismatch actions</strong> <span style="display:inline-flex; min-width:22px; height:22px; align-items:center; justify-content:center; margin-left:8px; padding:0 8px; border-radius:999px; background:rgba(255, 170, 70, 0.18); border:1px solid rgba(255, 170, 70, 0.45); color:#ffd08a; font-size:12px;">{{ nomination_mismatch_actions|length }}</span></span><span class="log-toggle-state" aria-hidden="true"></span></summary>
           <div class="conflict-group-body">
           <form method="post" action="/cli/nomination-mismatch-ignore-all" class="inline" onsubmit="return confirm('Ignore all CLI nomination mismatches?');" style="margin-bottom: 12px;">
             <button type="submit" class="danger">Ignore All</button>
