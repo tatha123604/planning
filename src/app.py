@@ -304,24 +304,30 @@ def _save_cli_bio_reference_rows(
     records: list[dict[str, object]],
     source_filename: str,
 ) -> None:
-    unique_rows: dict[str, str] = {}
+    unique_rows: dict[str, dict[str, str]] = {}
     for record in records:
         cli_id = str(record.get("cli_id") or "").strip()
         cli_name = str(record.get("cli_name") or record.get("name") or "").strip()
+        mobile_no = str(record.get("mobile_no") or record.get("mobile") or record.get("phone") or "").strip()
         if not cli_id or not cli_name:
             continue
-        unique_rows[cli_id] = cli_name
+        unique_rows[cli_id] = {"cli_name": cli_name, "mobile_no": mobile_no}
 
     session.execute(text("DELETE FROM cli_bio_reference;"))
-    for cli_id, cli_name in sorted(unique_rows.items()):
+    for cli_id, row in sorted(unique_rows.items()):
         session.execute(
             text(
                 """
-                INSERT INTO cli_bio_reference (cli_id, cli_name, gradation, source_file, updated_at)
-                VALUES (:cli_id, :cli_name, '0', :source_file, CURRENT_TIMESTAMP)
+                INSERT INTO cli_bio_reference (cli_id, cli_name, mobile_no, gradation, source_file, updated_at)
+                VALUES (:cli_id, :cli_name, :mobile_no, '0', :source_file, CURRENT_TIMESTAMP)
                 """
             ),
-            {"cli_id": cli_id, "cli_name": cli_name, "source_file": source_filename},
+            {
+                "cli_id": cli_id,
+                "cli_name": row["cli_name"],
+                "mobile_no": row["mobile_no"] or None,
+                "source_file": source_filename,
+            },
         )
 
 
@@ -329,7 +335,7 @@ def _load_cli_bio_reference_rows(session: Session) -> list[dict[str, str]]:
     rows = session.exec(
         text(
             """
-            SELECT cli_id, cli_name, gradation, source_file
+            SELECT cli_id, cli_name, COALESCE(mobile_no, ''), gradation, source_file
             FROM cli_bio_reference
             ORDER BY cli_name, cli_id
             """
@@ -339,8 +345,9 @@ def _load_cli_bio_reference_rows(session: Session) -> list[dict[str, str]]:
         {
             "cli_id": str(row[0] or ""),
             "cli_name": str(row[1] or ""),
-            "gradation": str(row[2] or "0"),
-            "source_file": str(row[3] or ""),
+            "mobile_no": str(row[2] or ""),
+            "gradation": str(row[3] or "0"),
+            "source_file": str(row[4] or ""),
         }
         for row in rows
     ]
@@ -9309,6 +9316,7 @@ def _parse_cli_biodata_workbook(content: bytes) -> tuple[list[dict[str, object]]
     name_idx: int | None = None
     emp_no_idx: int | None = None
     role_idx: int | None = None
+    mobile_idx: int | None = None
     dob_idx: int | None = None
     doa_idx: int | None = None
     dop_idx: int | None = None
@@ -9325,6 +9333,14 @@ def _parse_cli_biodata_workbook(content: bytes) -> tuple[list[dict[str, object]]
         cli_id_idx = normalized.index("CLIID")
         name_idx = normalized.index("NAME")
         emp_no_idx = normalized.index("EMPNO")
+        mobile_idx = next(
+            (
+                i
+                for i, value in enumerate(normalized)
+                if value in {"MOBILE", "MOBILENO", "MOBILENUMBER", "MOB", "PHONE", "PHONENO", "CONTACTNO"}
+            ),
+            None,
+        )
         dob_idx = next((i for i, value in enumerate(normalized) if value in {"DOB", "DOBSTAR"}), None)
         doa_idx = next((i for i, value in enumerate(normalized) if value in {"DOA", "DOASTAR"}), None)
         dop_idx = next((i for i, value in enumerate(normalized) if value in {"DOP", "DOPSTAR"}), None)
@@ -9350,6 +9366,7 @@ def _parse_cli_biodata_workbook(content: bytes) -> tuple[list[dict[str, object]]
         name = _clean_import_text(get(name_idx))
         emp_no = _clean_import_text(get(emp_no_idx))
         role_raw = _clean_import_text(get(role_idx))
+        mobile_no = _clean_import_text(get(mobile_idx))
         hq = _clean_import_text(get(hq_idx))
 
         if not any([cli_id, name, emp_no, role_raw, hq]):
@@ -9389,6 +9406,7 @@ def _parse_cli_biodata_workbook(content: bytes) -> tuple[list[dict[str, object]]
                 "emp_no": emp_no,
                 "name": name,
                 "role": normalize_role(role_raw) or role_raw,
+                "mobile_no": mobile_no,
                 "dob": dob,
                 "doa": doa,
                 "do_report": dop,

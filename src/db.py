@@ -52,12 +52,17 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS cli_bio_reference (
                 cli_id TEXT PRIMARY KEY,
                 cli_name TEXT NOT NULL,
+                mobile_no TEXT,
                 gradation TEXT NOT NULL DEFAULT '0',
                 source_file TEXT,
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
             """
         ))
+        bio_cols = conn.execute(text("PRAGMA table_info(cli_bio_reference);")).fetchall()
+        bio_names = {c[1] for c in bio_cols}
+        if "mobile_no" not in bio_names:
+            conn.execute(text("ALTER TABLE cli_bio_reference ADD COLUMN mobile_no TEXT;"))
         conn.execute(text(
             """
             UPDATE employee

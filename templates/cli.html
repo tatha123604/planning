@@ -167,11 +167,12 @@
             <table class="paged">
               <thead>
                 <tr class="table-report-date">
-                  <th colspan="2">Total rows: {{ cli_bio_reference_rows|length if cli_bio_reference_rows else 0 }}</th>
+                  <th colspan="3">Total rows: {{ cli_bio_reference_rows|length if cli_bio_reference_rows else 0 }}</th>
                 </tr>
                 <tr>
                   <th>CLI ID</th>
                   <th>CLI Name</th>
+                  <th>Mobile No.</th>
                 </tr>
               </thead>
               <tbody>
@@ -179,11 +180,12 @@
                 <tr>
                   <td>{{ row.cli_id }}</td>
                   <td>{{ row.cli_name }}</td>
+                  <td>{{ row.mobile_no or '' }}</td>
                 </tr>
                 {% endfor %}
                 {% if not cli_bio_reference_rows %}
                 <tr>
-                  <td colspan="2" class="empty-state">No CLI bio reference rows saved yet.</td>
+                  <td colspan="3" class="empty-state">No CLI bio reference rows saved yet.</td>
                 </tr>
                 {% endif %}
               </tbody>

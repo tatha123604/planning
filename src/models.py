@@ -147,6 +147,7 @@ class CliBioReference(SQLModel, table=True):
     __tablename__ = "cli_bio_reference"
     cli_id: str = Field(primary_key=True)
     cli_name: str
+    mobile_no: str | None = None
     gradation: str = Field(default="0")
     source_file: str | None = None
     updated_at: datetime = Field(default_factory=datetime.utcnow)
