@@ -9701,121 +9701,13 @@ def _apply_cli_biodata_records(
 ) -> tuple[str, str, list[str], list[str]]:
     init_db()
     _refresh_cli_bio_reference_from_records(session, records, source_filename)
-    employees = session.exec(select(Employee)).all()
-    by_emp_no: dict[str, Employee] = {}
-    by_name_role: dict[tuple[str, str], list[Employee]] = {}
-    for employee in employees:
-        emp_no_key = _emp_no_match_key(employee.pf_no)
-        if emp_no_key:
-            by_emp_no[emp_no_key] = employee
-        name_key = _normalize_import_name(employee.name)
-        role_key = normalize_role(employee.role) or employee.role
-        if name_key and role_key:
-            by_name_role.setdefault((name_key, role_key), []).append(employee)
-
-    added = 0
-    updated = 0
-    skipped = 0
-    unchanged = 0
     details: list[str] = []
-
-    for record in records:
-        row_hint = str(record["row_hint"])
-        emp_no = str(record["emp_no"] or "")
-        name = str(record["name"] or "")
-        role = str(record["role"] or "")
-        name_key = _normalize_import_name(name)
-        target = by_emp_no.get(_emp_no_match_key(emp_no) or "")
-        if target is None:
-            matches = by_name_role.get((name_key, role), [])
-            if len(matches) == 1:
-                target = matches[0]
-            elif len(matches) > 1:
-                warnings.append(f"CLITI Biodata {row_hint}: skipped because NAME + DESIG matched multiple rows.")
-                skipped += 1
-                continue
-
-        cli_name, cli_id = _canonicalize_cli_name(record.get("cli_name"), record.get("cli_id"))
-        hire_date = record.get("hire_date")
-        if not isinstance(hire_date, date):
-            warnings.append(f"CLITI Biodata {row_hint}: skipped because hire date is missing.")
-            skipped += 1
-            continue
-
-        if target is None:
-            employee = Employee(
-                name=name,
-                role=role,
-                hire_date=hire_date,
-                retirement_date=None,
-                pf_no=emp_no or None,
-                dob=record.get("dob"),
-                doa=record.get("doa"),
-                do_report=record.get("do_report"),
-                status="ACTIVE",
-                working_at=str(record.get("working_at") or "") or None,
-                cli=cli_name,
-                cli_id=cli_id,
-            )
-            session.add(employee)
-            added += 1
-            details.append(f"Added {name} ({emp_no}): CLI {_format_sync_value(cli_name)}; CLI ID {_format_sync_value(cli_id)}")
-            continue
-
-        changes: list[str] = []
-        old_cli, old_cli_id = _canonicalize_cli_name(target.cli, target.cli_id)
-        new_working_at = str(record.get("working_at") or "") or None
-        if target.name != name:
-            changes.append(f"Name: {_format_sync_value(target.name)} -> {_format_sync_value(name)}")
-            target.name = name
-        if normalize_role(target.role) != role:
-            changes.append(f"Designation: {_format_sync_value(target.role)} -> {_format_sync_value(role)}")
-            target.role = role
-        if target.pf_no != emp_no:
-            changes.append(f"EMP NO: {_format_sync_value(target.pf_no)} -> {_format_sync_value(emp_no)}")
-            target.pf_no = emp_no
-        if target.dob != record.get("dob"):
-            changes.append(f"DOB: {_format_sync_value(target.dob)} -> {_format_sync_value(record.get('dob'))}")
-            target.dob = record.get("dob")
-        if target.doa != record.get("doa"):
-            changes.append(f"DOA: {_format_sync_value(target.doa)} -> {_format_sync_value(record.get('doa'))}")
-            target.doa = record.get("doa")
-        if target.do_report != record.get("do_report"):
-            changes.append(f"DOP: {_format_sync_value(target.do_report)} -> {_format_sync_value(record.get('do_report'))}")
-            target.do_report = record.get("do_report")
-        if target.hire_date != hire_date:
-            changes.append(f"Hire Date: {_format_sync_value(target.hire_date)} -> {_format_sync_value(hire_date)}")
-            target.hire_date = hire_date
-        if target.working_at != new_working_at:
-            changes.append(f"HQ: {_format_sync_value(target.working_at)} -> {_format_sync_value(new_working_at)}")
-            target.working_at = new_working_at
-        if old_cli != cli_name:
-            changes.append(f"CLI: {_format_sync_value(old_cli)} -> {_format_sync_value(cli_name)}")
-        if old_cli_id != cli_id:
-            changes.append(f"CLI ID: {_format_sync_value(old_cli_id)} -> {_format_sync_value(cli_id)}")
-        target.cli, target.cli_id = _canonicalize_cli_name(cli_name, cli_id)
-        if (target.status or "").strip().upper() != "ACTIVE":
-            changes.append(f"Status: {_format_sync_value(target.status)} -> ACTIVE")
-            target.status = "ACTIVE"
-
-        if changes:
-            updated += 1
-            details.append(f"Updated {target.name} ({target.pf_no or target.id}): " + "; ".join(changes))
-        else:
-            unchanged += 1
-
     session.commit()
-    _normalize_employee_cli_names(session)
-    notice_parts = []
-    if added:
-        notice_parts.append(f"{added} added")
-    if updated:
-        notice_parts.append(f"{updated} updated")
-    if skipped:
-        notice_parts.append(f"{skipped} skipped")
-    if not notice_parts:
-        notice_parts.append("No change found")
-    notice = "CLITI Biodata import complete: " + ", ".join(notice_parts) + "."
+    unique_count = len({str(record.get("cli_id") or "").strip() for record in records if str(record.get("cli_id") or "").strip()})
+    if source_filename:
+        details.append(f"CLI Bio Reference refreshed from {source_filename}.")
+    details.append(f"Saved {unique_count} CLI bio reference rows.")
+    notice = f"CLITI Biodata import complete: CLI Bio Reference refreshed with {unique_count} rows."
     warning_message = f"Mismatch / auto-fixed records: {len(warnings)}" if warnings else ""
     return notice, warning_message, details, warnings
 
