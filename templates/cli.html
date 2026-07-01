@@ -135,6 +135,9 @@
         <details class="conflict-group sync-log-collapse" {% if (nomination_mismatch_actions|length or 0) <= 2 %}open{% endif %} style="margin-top: 12px;">
           <summary><span class="sync-list-title hint warning-text"><strong>CLI nomination mismatch actions</strong></span><span class="log-toggle-state" aria-hidden="true"></span></summary>
           <div class="conflict-group-body">
+          <form method="post" action="/cli/nomination-mismatch-ignore-all" class="inline" onsubmit="return confirm('Ignore all CLI nomination mismatches?');" style="margin-bottom: 12px;">
+            <button type="submit" class="danger">Ignore All</button>
+          </form>
           {% for item in nomination_mismatch_actions %}
           <div class="conflict-card">
             <p><strong>{{ item.reason }}</strong> - {{ item.row_hint }}</p>
@@ -170,9 +173,6 @@
             </form>
             <form method="post" action="/cli/nomination-mismatch-ignore" class="inline" onsubmit="return confirm('Ignore this nomination mismatch?');">
               <input type="hidden" name="action_key" value="{{ item.action_key }}" />
-              <label>Action Code
-                <input type="password" name="action_password" autocomplete="current-password" required />
-              </label>
               <button type="submit" class="danger">Ignore</button>
             </form>
           </div>

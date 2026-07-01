@@ -7575,6 +7575,11 @@ def _remove_cli_nomination_mismatch_action(action_key: str) -> list[dict[str, ob
     return remaining
 
 
+def _clear_cli_nomination_mismatch_actions() -> list[dict[str, object]]:
+    _save_cli_nomination_mismatch_actions([])
+    return []
+
+
 def _remove_employee_master_mismatch_action(action_key: str) -> list[dict[str, object]]:
     remaining = [
         item
@@ -10106,11 +10111,9 @@ async def apply_cli_nomination_mismatch(
 async def ignore_cli_nomination_mismatch(
     request: Request,
     action_key: str = Form(...),
-    action_password: str = Form(...),
     session: Session = Depends(get_session),
 ):
     try:
-        _validate_sensitive_action_password(action_password)
         nomination_actions = _remove_cli_nomination_mismatch_action(action_key)
         return templates.TemplateResponse(
             "cli.html",
@@ -10118,6 +10121,29 @@ async def ignore_cli_nomination_mismatch(
                 request,
                 session,
                 grading_update_notice="CLI nomination mismatch dismissed.",
+                nomination_mismatch_actions=nomination_actions,
+            ),
+        )
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "CLI nomination mismatch dismiss failed."
+        return templates.TemplateResponse("cli.html", _cli_page_context(request, session, grading_update_error=detail), status_code=exc.status_code)
+    except Exception as exc:
+        return templates.TemplateResponse("cli.html", _cli_page_context(request, session, grading_update_error=str(exc)), status_code=500)
+
+
+@app.post("/cli/nomination-mismatch-ignore-all")
+async def ignore_all_cli_nomination_mismatches(
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    try:
+        nomination_actions = _clear_cli_nomination_mismatch_actions()
+        return templates.TemplateResponse(
+            "cli.html",
+            _cli_page_context(
+                request,
+                session,
+                grading_update_notice="All CLI nomination mismatches dismissed.",
                 nomination_mismatch_actions=nomination_actions,
             ),
         )
