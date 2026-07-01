@@ -104,6 +104,13 @@
             <div>
               <p><strong>Step 2. Upload CLI Bio Data and store latest value</strong></p>
               <p class="hint">This refreshes the <strong>CLI Bio Reference</strong> table and keeps the latest biodata reference.</p>
+              {% if latest_cli_bio_source or latest_cli_bio_saved_at %}
+              <p class="hint">
+                Latest bio data source:
+                {% if latest_cli_bio_source %}<strong>{{ latest_cli_bio_source }}</strong>{% endif %}
+                {% if latest_cli_bio_saved_at %}<span> - updated on {{ latest_cli_bio_saved_at }}</span>{% endif %}
+              </p>
+              {% endif %}
               <label>CLI Bio Data (.xlsx)
                 <input type="file" name="bio_data_file" accept=".xlsx,.xlsm" />
               </label>

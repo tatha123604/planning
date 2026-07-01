@@ -335,7 +335,7 @@ def _load_cli_bio_reference_rows(session: Session) -> list[dict[str, str]]:
     rows = session.exec(
         text(
             """
-            SELECT cli_id, cli_name, COALESCE(mobile_no, ''), gradation, source_file
+            SELECT cli_id, cli_name, COALESCE(mobile_no, ''), gradation, source_file, updated_at
             FROM cli_bio_reference
             ORDER BY cli_name, cli_id
             """
@@ -348,6 +348,7 @@ def _load_cli_bio_reference_rows(session: Session) -> list[dict[str, str]]:
             "mobile_no": str(row[2] or ""),
             "gradation": str(row[3] or "0"),
             "source_file": str(row[4] or ""),
+            "updated_at": str(row[5] or ""),
         }
         for row in rows
     ]
@@ -5311,6 +5312,8 @@ def _cli_page_context(
         except ValueError:
             grading_saved_at = saved_at_raw
     cli_bio_reference_rows = _load_cli_bio_reference_rows(session)
+    latest_cli_bio_source = str(next((row.get("source_file") for row in cli_bio_reference_rows if row.get("source_file")), "") or "")
+    latest_cli_bio_saved_at = str(next((row.get("updated_at") for row in cli_bio_reference_rows if row.get("updated_at")), "") or "")
     cli_opts = sorted(
         {
             str(row.get("cli_name") or "").strip()
@@ -5383,6 +5386,8 @@ def _cli_page_context(
         "cli_distribution_totals": {"A": 0, "B": 0, "C": 0, "total": 0},
         "cli_distribution_detail_label": roster_cli or "",
         "cli_bio_reference_rows": cli_bio_reference_rows,
+        "latest_cli_bio_source": latest_cli_bio_source,
+        "latest_cli_bio_saved_at": latest_cli_bio_saved_at,
         "cli_roster": cli_roster,
         "cli_opts": cli_opts,
         "role_opts": role_opts,
