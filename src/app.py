@@ -5298,7 +5298,9 @@ def _cli_page_context(
     nomination_mismatch_actions: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
     init_db()
-    employees = [employee for employee in session.exec(select(Employee)).all() if not _is_hidden_employee_role(employee.role)]
+    today = date.today()
+    _sync_retired_employees(session, today)
+    employees = [employee for employee in fetch_active_employees(session, today) if not _is_hidden_employee_role(employee.role)]
     grading_meta = _load_li_grading_metadata()
     grading_report_date = coerce_report_date(grading_meta.get("report_date"))
     saved_at_raw = grading_meta.get("saved_at", "")
