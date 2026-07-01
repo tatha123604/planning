@@ -7887,7 +7887,7 @@ def _build_duplicate_cleanup_plan(session: Session) -> tuple[list[dict[str, obje
         dob_key = employee.dob.isoformat() if employee.dob else None
         retirement_key = employee.retirement_date.isoformat() if employee.retirement_date else ""
         cli_name, cli_id = _canonicalize_cli_name(employee.cli, employee.cli_id)
-        cli_key = (cli_id or "").upper() or _cli_name_key(cli_name).upper()
+        cli_key = _cli_name_key(cli_name).upper() or (cli_id or "").upper()
         if not name_key or not role_key or not dob_key:
             continue
         smart_merge_groups.setdefault((name_key, role_key, dob_key, retirement_key, cli_key), []).append(employee)
@@ -7901,6 +7901,33 @@ def _build_duplicate_cleanup_plan(session: Session) -> tuple[list[dict[str, obje
                 matching_rows.append(employee)
         if len(matching_rows) > 1:
             register_plan("Smart merge: same Name + Designation + DOB + Retirement + CLI with complementary IDs", matching_rows)
+
+    remaining_employees = [
+        employee
+        for employee in employees
+        if employee.id is None or employee.id not in used_ids
+    ]
+    for employee in remaining_employees:
+        if employee.id is not None and employee.id in used_ids:
+            continue
+        smart_group = [employee]
+        for candidate in remaining_employees:
+            if candidate is employee:
+                continue
+            if candidate.id is not None and candidate.id in used_ids:
+                continue
+            if all(_employees_match_smart_merge(candidate, existing) for existing in smart_group):
+                smart_group.append(candidate)
+        unique_group = []
+        seen_group_ids: set[int] = set()
+        for item in smart_group:
+            item_id = item.id or 0
+            if item_id in seen_group_ids:
+                continue
+            seen_group_ids.add(item_id)
+            unique_group.append(item)
+        if len(unique_group) > 1:
+            register_plan("Smart merge: pairwise same Name + Designation + DOB + Retirement + CLI", unique_group)
 
     by_name_crew: dict[tuple[str, str], list[Employee]] = {}
     for employee in employees:
