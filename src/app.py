@@ -9337,7 +9337,21 @@ def _parse_cli_biodata_workbook(content: bytes) -> tuple[list[dict[str, object]]
             (
                 i
                 for i, value in enumerate(normalized)
-                if value in {"MOBILE", "MOBILENO", "MOBILENUMBER", "MOB", "PHONE", "PHONENO", "CONTACTNO"}
+                if value in {
+                    "MOBILE",
+                    "MOBILENO",
+                    "MOBILENUMBER",
+                    "MOBNO",
+                    "MOBILENUM",
+                    "MOB",
+                    "PHONE",
+                    "PHONENO",
+                    "PHONENUMBER",
+                    "CONTACTNO",
+                    "CONTACTNUMBER",
+                    "CELLNO",
+                    "WHATSAPPNO",
+                }
             ),
             None,
         )
@@ -9817,8 +9831,12 @@ async def upload_li_grading(
         init_db()
         _validate_sensitive_action_password(action_password)
         filename = file.filename if file is not None else ""
-        if not (file and filename) and not (cli_nomination_file and cli_nomination_file.filename):
-            raise HTTPException(status_code=400, detail="Upload a CLI Grading/CLITI Biodata file or a CLI nomination file.")
+        if (
+            not (file and filename)
+            and not (bio_data_file and bio_data_file.filename)
+            and not (cli_nomination_file and cli_nomination_file.filename)
+        ):
+            raise HTTPException(status_code=400, detail="Upload a CLI Grading workbook, CLITI Biodata file, or a CLI nomination file.")
 
         content = b""
         upload_kind = "unknown"
@@ -9854,6 +9872,38 @@ async def upload_li_grading(
                     grading_update_warning=nomination_warning,
                     grading_update_details=nomination_details,
                     grading_warning_details=nomination_warnings,
+                    nomination_mismatch_actions=nomination_actions,
+                ),
+            )
+        if upload_kind == "unknown" and bio_data_file and bio_data_file.filename and not filename:
+            bio_name = bio_data_file.filename or ""
+            if not bio_name.lower().endswith((".xlsx", ".xlsm")):
+                raise HTTPException(status_code=400, detail="Upload the CLITI Biodata file as .xlsx.")
+            bio_content = await bio_data_file.read()
+            bio_kind = _detect_cli_upload_kind(_load_cli_upload_rows(bio_content))
+            if bio_kind != "cli_biodata":
+                raise HTTPException(status_code=400, detail="The uploaded file is not recognized as CLITI Biodata.")
+            bio_records, warnings = _parse_cli_biodata_workbook(bio_content)
+            notice, warning_message, details, warnings = _apply_cli_biodata_records(session, bio_records, warnings, bio_name)
+            notice_parts = [notice]
+            warning_bits = [warning_message] if warning_message else []
+            details = list(details)
+            warnings = list(warnings)
+            if nomination_notice:
+                notice_parts.append(nomination_notice)
+            details.extend(nomination_details)
+            warnings.extend(nomination_warnings)
+            if nomination_warning:
+                warning_bits.append(nomination_warning)
+            return templates.TemplateResponse(
+                "cli.html",
+                _cli_page_context(
+                    request,
+                    session,
+                    grading_update_notice=" ".join(notice_parts),
+                    grading_update_warning=" ".join(bit for bit in warning_bits if bit),
+                    grading_update_details=details,
+                    grading_warning_details=warnings,
                     nomination_mismatch_actions=nomination_actions,
                 ),
             )
