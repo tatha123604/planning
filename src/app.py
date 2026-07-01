@@ -1802,6 +1802,19 @@ def _sync_retired_employees(session: Session, as_of: date | None = None) -> int:
     return purge_retired_employees(session, as_of or date.today())
 
 
+def _sync_employee_duplicates(session: Session) -> int:
+    plan, _, _ = _build_combined_cleanup_view(session)
+    mergeable_plan = [
+        item
+        for item in plan
+        if isinstance(item.get("keep"), dict) and item.get("keep") and list(item.get("remove") or [])
+    ]
+    if not mergeable_plan:
+        return 0
+    details: list[str] = []
+    return _apply_duplicate_cleanup_plan(session, mergeable_plan, details)
+
+
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -4520,6 +4533,7 @@ def index(
     plan_date = _parse_as_of(request, as_of)
     today = date.today()
     _sync_retired_employees(session, today)
+    _sync_employee_duplicates(session)
     horizon_days = 0
     horizon_months = 0
     lead_time_days = 0
@@ -4599,6 +4613,7 @@ def employees_page(
 ):
     today = date.today()
     _sync_retired_employees(session, today)
+    _sync_employee_duplicates(session)
     roster_filter_active = any([roster_name, roster_cli, roster_gradation])
     employees_open = not roster_filter_active
     roster_open = roster_filter_active
@@ -5231,6 +5246,7 @@ def reports_page(
 ):
     today = date.today()
     _sync_retired_employees(session, today)
+    _sync_employee_duplicates(session)
     start = _parse_date_cookie(request, "reports_start_date", start_date)
     end = _parse_date_cookie(request, "reports_end_date", end_date)
     if end < start:
@@ -5303,6 +5319,7 @@ def _cli_page_context(
     init_db()
     today = date.today()
     _sync_retired_employees(session, today)
+    _sync_employee_duplicates(session)
     employees = [employee for employee in fetch_active_employees(session, today) if not _is_hidden_employee_role(employee.role)]
     grading_meta = _load_li_grading_metadata()
     grading_report_date = coerce_report_date(grading_meta.get("report_date"))
