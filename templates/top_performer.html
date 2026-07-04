@@ -446,6 +446,14 @@
         return response.blob();
       };
 
+      const withTimeout = (promise, timeoutMs, message) =>
+        Promise.race([
+          promise,
+          new Promise((_, reject) => {
+            window.setTimeout(() => reject(new Error(message)), timeoutMs);
+          }),
+        ]);
+
       const exportPoster = async (button) => {
         const targetId = button.dataset.exportTarget || '';
         const format = button.dataset.exportFormat || 'jpeg';
@@ -463,66 +471,77 @@
           const waitForImages = async (root) => {
             const images = Array.from(root.querySelectorAll('img'));
             await Promise.all(images.map((img) => {
-              if (img.complete && img.naturalWidth > 0) return Promise.resolve();
-              return new Promise((resolve) => {
-                img.addEventListener('load', resolve, { once: true });
-                img.addEventListener('error', resolve, { once: true });
-              });
+              if (img.complete) {
+                return Promise.resolve();
+              }
+              return withTimeout(
+                new Promise((resolve) => {
+                  const finish = () => resolve();
+                  img.addEventListener('load', finish, { once: true });
+                  img.addEventListener('error', finish, { once: true });
+                }),
+                4000,
+                'Timed out while waiting for poster images.'
+              ).catch(() => undefined);
             }));
           };
           await waitForImages(target);
           if (document.fonts && document.fonts.ready) {
-            await document.fonts.ready;
+            await withTimeout(document.fonts.ready, 4000, 'Timed out while waiting for fonts.');
           }
           const exportWidth = target.scrollWidth;
           const exportHeight = target.scrollHeight;
           target.classList.add('export-capture');
-          const canvas = await html2canvas(target, {
-            backgroundColor: '#10245d',
-            scale: 3,
-            useCORS: true,
-            width: exportWidth,
-            height: exportHeight,
-            windowWidth: exportWidth,
-            windowHeight: exportHeight,
-            onclone: (clonedDoc) => {
-              const clonedTarget = clonedDoc.getElementById(targetId);
-              if (!clonedTarget) return;
-              clonedTarget.classList.add('export-capture');
-              clonedTarget.style.width = `${exportWidth}px`;
-              clonedTarget.style.height = `${exportHeight}px`;
-              const style = clonedDoc.createElement('style');
-              style.textContent = `
-                .top-performer-poster.export-capture,
-                .comparison-performer-poster.export-capture {
-                  color: #f6e8a7 !important;
-                  -webkit-print-color-adjust: exact !important;
-                  print-color-adjust: exact !important;
-                }
-                .top-performer-poster.export-capture .top-performer-poster-head h3,
-                .comparison-performer-poster.export-capture .top-performer-poster-head h3 {
-                  color: #ffd86b !important;
-                }
-                .top-performer-poster.export-capture .top-performer-poster-head p,
-                .comparison-performer-poster.export-capture .top-performer-poster-head p {
-                  color: #eef4ff !important;
-                }
-                .top-performer-poster.export-capture .top-performer-copy strong,
-                .comparison-performer-poster.export-capture .top-performer-copy strong {
-                  color: #ffe179 !important;
-                }
-                .top-performer-poster.export-capture .top-performer-copy span,
-                .comparison-performer-poster.export-capture .top-performer-copy span,
-                .top-performer-poster.export-capture .top-performer-rankline,
-                .comparison-performer-poster.export-capture .top-performer-rankline,
-                .top-performer-poster.export-capture .top-performer-poster-foot,
-                .comparison-performer-poster.export-capture .top-performer-poster-foot {
-                  color: #ecf2ff !important;
-                }
-              `;
-              clonedDoc.head.appendChild(style);
-            },
-          });
+          const canvas = await withTimeout(
+            html2canvas(target, {
+              backgroundColor: '#10245d',
+              scale: 3,
+              useCORS: true,
+              width: exportWidth,
+              height: exportHeight,
+              windowWidth: exportWidth,
+              windowHeight: exportHeight,
+              onclone: (clonedDoc) => {
+                const clonedTarget = clonedDoc.getElementById(targetId);
+                if (!clonedTarget) return;
+                clonedTarget.classList.add('export-capture');
+                clonedTarget.style.width = `${exportWidth}px`;
+                clonedTarget.style.height = `${exportHeight}px`;
+                const style = clonedDoc.createElement('style');
+                style.textContent = `
+                  .top-performer-poster.export-capture,
+                  .comparison-performer-poster.export-capture {
+                    color: #f6e8a7 !important;
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
+                  }
+                  .top-performer-poster.export-capture .top-performer-poster-head h3,
+                  .comparison-performer-poster.export-capture .top-performer-poster-head h3 {
+                    color: #ffd86b !important;
+                  }
+                  .top-performer-poster.export-capture .top-performer-poster-head p,
+                  .comparison-performer-poster.export-capture .top-performer-poster-head p {
+                    color: #eef4ff !important;
+                  }
+                  .top-performer-poster.export-capture .top-performer-copy strong,
+                  .comparison-performer-poster.export-capture .top-performer-copy strong {
+                    color: #ffe179 !important;
+                  }
+                  .top-performer-poster.export-capture .top-performer-copy span,
+                  .comparison-performer-poster.export-capture .top-performer-copy span,
+                  .top-performer-poster.export-capture .top-performer-rankline,
+                  .comparison-performer-poster.export-capture .top-performer-rankline,
+                  .top-performer-poster.export-capture .top-performer-poster-foot,
+                  .comparison-performer-poster.export-capture .top-performer-poster-foot {
+                    color: #ecf2ff !important;
+                  }
+                `;
+                clonedDoc.head.appendChild(style);
+              },
+            }),
+            20000,
+            'Poster capture took too long.'
+          );
           const filename = sanitizeFilename(title);
 
           if (format === 'pdf') {
