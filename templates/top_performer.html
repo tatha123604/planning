@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Top Performer (Based On SSTS) | SDAH Crew Analysis</title>
-  <link rel="stylesheet" href="/static/style.css" />
-  <link rel="icon" type="image/svg+xml" href="/static/indian-railways-mark.svg" />
+  <link rel="stylesheet" href="/static/style.css?v={{ asset_ver }}" />
+  <link rel="icon" type="image/svg+xml" href="/static/indian-railways-mark.svg?v={{ asset_ver }}" />
 </head>
 <body>
   <div class="layout">
@@ -401,12 +401,12 @@
       {% endif %}
     </main>
   </div>
-  <script src="/static/sidebar-toggle.js"></script>
-  <script src="/static/table-pager.js"></script>
-  <script src="/static/table-export.js"></script>
-  <script src="/static/button-confirm.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="/static/sidebar-toggle.js?v={{ asset_ver }}"></script>
+  <script src="/static/table-pager.js?v={{ asset_ver }}"></script>
+  <script src="/static/table-export.js?v={{ asset_ver }}"></script>
+  <script src="/static/button-confirm.js?v={{ asset_ver }}"></script>
+  <script src="/static/vendor/html2canvas/html2canvas.min.js?v={{ asset_ver }}"></script>
+  <script src="/static/vendor/jspdf/jspdf.umd.min.js?v={{ asset_ver }}"></script>
   <script>
     (() => {
       const buttons = Array.from(document.querySelectorAll('.top-performer-poster-download'));
@@ -419,6 +419,31 @@
           .replace(/[^a-z0-9]+/g, '_')
           .replace(/^_+|_+$/g, '');
         return cleaned || fallback;
+      };
+
+      const downloadBlob = (blob, filename) => {
+        const downloadUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+      };
+
+      const canvasToJpegBlob = async (canvas, quality = 0.95) => {
+        if (typeof canvas.toBlob === 'function') {
+          const blob = await new Promise((resolve) => {
+            canvas.toBlob(resolve, 'image/jpeg', quality);
+          });
+          if (blob) {
+            return blob;
+          }
+        }
+        const dataUrl = canvas.toDataURL('image/jpeg', quality);
+        const response = await fetch(dataUrl);
+        return response.blob();
       };
 
       const exportPoster = async (button) => {
@@ -498,7 +523,6 @@
               clonedDoc.head.appendChild(style);
             },
           });
-          const imageData = canvas.toDataURL('image/jpeg', 0.95);
           const filename = sanitizeFilename(title);
 
           if (format === 'pdf') {
@@ -506,6 +530,7 @@
             if (!jsPDF) {
               throw new Error('PDF library not loaded.');
             }
+            const imageData = canvas.toDataURL('image/jpeg', 0.95);
             const pdf = new jsPDF({
               orientation: canvas.width >= canvas.height ? 'landscape' : 'portrait',
               unit: 'px',
@@ -514,12 +539,8 @@
             pdf.addImage(imageData, 'JPEG', 0, 0, canvas.width, canvas.height);
             pdf.save(`${filename}.pdf`);
           } else {
-            const link = document.createElement('a');
-            link.href = imageData;
-            link.download = `${filename}.jpeg`;
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
+            const jpegBlob = await canvasToJpegBlob(canvas, 0.95);
+            downloadBlob(jpegBlob, `${filename}.jpeg`);
           }
         } catch (error) {
           console.error(error);
