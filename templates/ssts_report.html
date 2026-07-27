@@ -1075,7 +1075,8 @@
             </div>
           </div>
           <div class="table-wrap">
-            <table class="employee-table paged" data-exportable="true" data-export-name="ssts_pf_detailed_daily_report_{{ pf_report_day }}_{{ pf_speed_threshold }}" data-export-title="SSTS PF Detailed Daily Report" data-export-report-date="Date: {{ pf_report_day_label }} | Speed Range: {{ pf_speed_threshold_label }} KMPH">
+            {% set pf_output_report_date = pf_detailed_daily_report_rows[0].report_date if pf_detailed_daily_report_rows else pf_report_day_label %}
+            <table class="employee-table paged" data-exportable="true" data-export-name="ssts_pf_detailed_daily_report_{{ pf_report_day }}_{{ pf_speed_threshold }}" data-export-title="SSTS PF Detailed Daily Report" data-export-report-date="Date: {{ pf_output_report_date }} | Speed Range: {{ pf_speed_threshold_label }} KMPH">
               <thead>
                 <tr>
                   <th class="skip-pdf-col">Select</th>
