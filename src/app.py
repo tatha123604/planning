@@ -615,34 +615,42 @@ def _sanitize_excel_sheet_title(value: object | None) -> str:
 
 def _sanitize_export_filename(value: object | None, suffix: str) -> str:
     title = _sanitize_export_title(value)
-    slug = re.sub(r"[^A-Za-z0-9]+", "_", title).strip("_").lower() or "table_export"
+    slug = _export_filename_slug(title)
     return f"{slug}.{suffix}"
+
+
+def _export_filename_slug(value: object | None) -> str:
+    title = _sanitize_export_title(value)
+    return re.sub(r"[^A-Za-z0-9]+", "_", title).strip("_").lower() or "table_export"
 
 
 def _format_export_report_date_for_filename(value: object | None) -> str:
     text = _normalize_export_text(value)
     if not text:
         return ""
+    candidates = [text]
     if ":" in text:
-        text = _normalize_export_text(text.split(":", 1)[1])
+        candidates.append(_normalize_export_text(text.split(":", 1)[1]))
+    candidates.extend(match.group(0) for match in re.finditer(r"\b\d{4}-\d{2}-\d{2}\b|\b\d{2}[-/]\d{2}[-/]\d{4}\b", text))
     for parser in (
         lambda raw: date.fromisoformat(raw),
         lambda raw: datetime.strptime(raw, "%d-%m-%Y").date(),
         lambda raw: datetime.strptime(raw, "%d/%m/%Y").date(),
     ):
-        try:
-            return parser(text).strftime("%d_%m_%Y")
-        except ValueError:
-            continue
+        for candidate in candidates:
+            try:
+                return parser(candidate).strftime("%d_%m_%Y")
+            except ValueError:
+                continue
     return ""
 
 
 def _build_pdf_export_filename(title: object | None, report_date_label: object | None) -> str:
     safe_title = _sanitize_export_title(title)
-    if safe_title == "SSTS PF Entering Speed Daily Report":
+    if safe_title in {"SSTS PF Entering Speed Daily Report", "SSTS PF Detailed Daily Report"}:
         report_date_suffix = _format_export_report_date_for_filename(report_date_label)
         if report_date_suffix:
-            return f"{safe_title}_{report_date_suffix}.pdf"
+            return f"{_export_filename_slug(safe_title)}_{report_date_suffix}.pdf"
     return _sanitize_export_filename(title, "pdf")
 
 
