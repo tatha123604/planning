@@ -1196,6 +1196,9 @@ SSTS_PF_CREW_ID_OVERRIDES = {
     "KUNDAN KUMAR": "SDAH1898",
     "AMIT KUMAR": "SDAH2345",
 }
+SSTS_PF_TRAIN_CREW_OVERRIDES = {
+    ("2026-07-27", "31745"): "MANOJ KUMAR SHAW",
+}
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -2537,11 +2540,16 @@ def _resolve_pf_crew_id(crew_name: object) -> str:
     return SSTS_PF_CREW_ID_OVERRIDES.get(normalized_name, "")
 
 
+def _resolve_pf_train_crew_name(report_day: date, train_no: object) -> str:
+    return SSTS_PF_TRAIN_CREW_OVERRIDES.get((report_day.isoformat(), str(train_no or "").strip()), "")
+
+
 def _build_pf_report_rows_for_train(
     train: dict[str, object],
     report_day: date,
     token: str,
 ) -> list[dict[str, object]]:
+    override_crew_name = _resolve_pf_train_crew_name(report_day, train.get("train_no"))
     base_row = {
         "report_date": report_day.strftime("%d-%m-%Y"),
         "train_date_iso": report_day.isoformat(),
@@ -2550,7 +2558,7 @@ def _build_pf_report_rows_for_train(
         "device_id": train.get("device_id"),
         "org": str(train.get("org") or ""),
         "dest": str(train.get("dest") or ""),
-        "crew_name": str(train.get("crew_name") or ""),
+        "crew_name": override_crew_name or str(train.get("crew_name") or ""),
         "train_dep_raw": train.get("dep"),
         "train_arr_raw": train.get("arr"),
     }
@@ -2601,7 +2609,7 @@ def _build_pf_report_rows_for_train(
     for item in response:
         if not isinstance(item, dict):
             continue
-        crew_name = str(item.get("crew_name") or "").strip()
+        crew_name = str(item.get("crew_name") or base_row.get("crew_name") or "").strip()
         detail_rows.append(
             {
                 **base_row,
@@ -2611,7 +2619,6 @@ def _build_pf_report_rows_for_train(
                 "sch_dep": _format_time_value(item.get("sch_dep")),
                 "act_arr": _format_time_value(item.get("act_arr")),
                 "act_dep": _format_time_value(item.get("act_dep")),
-                "crew_name": str(item.get("crew_name") or base_row.get("crew_name") or ""),
                 "stop_time": _format_time_value(item.get("stop_time")),
                 "geofence_enter_speed": item.get("geofence_enter_speed")
                 if item.get("geofence_enter_speed") is not None
