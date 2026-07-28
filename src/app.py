@@ -4888,7 +4888,7 @@ def _run_google_sheet_sync(session: Session, *, commit_changes: bool) -> dict[st
         preview = "; ".join(warnings[:3])
         if len(warnings) > 3:
             preview += f"; and {len(warnings) - 3} more"
-        warning_text = f"Auto-corrected {len(warnings)} date value(s): {preview}"
+        warning_text = f"Google Sheet sync warning(s): {preview}"
     backup_notice = ""
     if commit_changes:
         backup_notice = f"Backup saved: {backup_label}" if backup_label else "Backup failed to save."
@@ -6506,6 +6506,11 @@ EMPLOYEE_ALIAS_MAP = {
     "hiredate": "hire_date",
     "dateofapptt": "hire_date",
     "dateofappt": "hire_date",
+    "apptdate": "hire_date",
+    "appointmentdate": "hire_date",
+    "dateofjoining": "hire_date",
+    "joiningdate": "hire_date",
+    "doj": "hire_date",
     "dateofappointment": "hire_date",
     "doa": "doa",
     "retirementdate": "retirement_date",
@@ -7031,6 +7036,12 @@ def _import_employee_rows(
         if hire_date is None and existing is not None:
             hire_date = existing.hire_date
         if hire_date is None:
+            if source_label.strip().lower().startswith("google sheet"):
+                if sync_stats is not None:
+                    sync_stats["skipped"] = sync_stats.get("skipped", 0) + 1
+                if warnings is not None:
+                    warnings.append(f"{source_label} {row_hint}: skipped because hire_date is missing and could not be derived.")
+                continue
             raise HTTPException(status_code=400, detail=f"hire_date missing in {source_label} and could not be derived.")
 
         if existing:
