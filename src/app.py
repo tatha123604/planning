@@ -1162,6 +1162,7 @@ SSTS_BACKGROUND_SYNC_INTERVAL_MINUTES = 60
 SSTS_SNAPSHOT_RETENTION_DAYS = 7
 SSTS_PF_REPORT_CACHE_TTL_MINUTES = 20
 SSTS_PF_ANALYSIS_TASK_TTL_MINUTES = 180
+SSTS_PF_CREW_OVERRIDE_PATH = BASE_PATH / "data" / "ssts_pf_crew_overrides.json"
 SSTS_EXCLUDED_RAKE_NAMES = {"TEST1", "TEST2"}
 SSTS_PF_SPIKE_FILTER_TRAIN_OVERRIDES: dict[str, set[str]] = {
     "2026-05-29": {
@@ -2540,16 +2541,138 @@ def _resolve_pf_crew_id(crew_name: object) -> str:
     return SSTS_PF_CREW_ID_OVERRIDES.get(normalized_name, "")
 
 
-def _resolve_pf_train_crew_name(report_day: date, train_no: object) -> str:
-    return SSTS_PF_TRAIN_CREW_OVERRIDES.get((report_day.isoformat(), str(train_no or "").strip()), "")
+def _normalize_pf_train_no(value: object) -> str:
+    return str(value or "").strip()
+
+
+def _normalize_pf_station(value: object) -> str:
+    return str(value or "").strip().upper()
+
+
+def _pf_crew_key(report_day: date | str, train_no: object, station: object = "") -> str:
+    report_date = report_day if isinstance(report_day, str) else report_day.isoformat()
+    parts = [str(report_date), _normalize_pf_train_no(train_no)]
+    normalized_station = _normalize_pf_station(station)
+    if normalized_station:
+        parts.append(normalized_station)
+    return "|".join(parts)
+
+
+def _pf_extract_override_crew_name(value: object) -> str:
+    if isinstance(value, dict):
+        for key in ("crew_name", "crewName", "driver_name", "driverName", "name"):
+            crew_name = _normalize_pf_crew_name(value.get(key))
+            if crew_name and crew_name not in {"N/A", "NA", "NONE", "NULL", "-", "--"}:
+                return crew_name
+        return ""
+    crew_name = _normalize_pf_crew_name(value)
+    return "" if crew_name in {"N/A", "NA", "NONE", "NULL", "-", "--"} else crew_name
+
+
+def _load_ssts_pf_manual_crew_overrides() -> dict[str, str]:
+    overrides: dict[str, str] = {
+        _pf_crew_key(report_day, train_no): _normalize_pf_crew_name(crew_name)
+        for (report_day, train_no), crew_name in SSTS_PF_TRAIN_CREW_OVERRIDES.items()
+    }
+    if not SSTS_PF_CREW_OVERRIDE_PATH.exists():
+        return {key: value for key, value in overrides.items() if value}
+    try:
+        raw = json.loads(SSTS_PF_CREW_OVERRIDE_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {key: value for key, value in overrides.items() if value}
+
+    if isinstance(raw, dict):
+        for key, value in raw.items():
+            crew_name = _pf_extract_override_crew_name(value)
+            key_text = str(key or "").strip()
+            if crew_name and key_text:
+                overrides[key_text.upper()] = crew_name
+    elif isinstance(raw, list):
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            report_date = str(item.get("report_date") or item.get("date") or "").strip()
+            train_no = _normalize_pf_train_no(item.get("train_no") or item.get("trainNo"))
+            crew_name = _pf_extract_override_crew_name(item)
+            if report_date and train_no and crew_name:
+                overrides[_pf_crew_key(report_date, train_no, item.get("station") or item.get("stn_code"))] = crew_name
+    return {key.upper(): value for key, value in overrides.items() if value}
+
+
+def _fetch_ssts_default_config_preset_id(token: str) -> object | None:
+    response = _ssts_get_json(
+        f"{SSTS_API_BASE_URL}/timetable/tc/config_presets",
+        headers={"Authorization": token},
+    )
+    if not isinstance(response, list):
+        return None
+    default_preset = next(
+        (item for item in response if isinstance(item, dict) and item.get("is_default")),
+        None,
+    )
+    fallback_preset = next((item for item in response if isinstance(item, dict)), None)
+    selected = default_preset or fallback_preset
+    return selected.get("id") if isinstance(selected, dict) else None
+
+
+def _fetch_ssts_bulk_analysis_crew_fallbacks(report_day: date, token: str) -> dict[str, str]:
+    try:
+        preset_id = _fetch_ssts_default_config_preset_id(token)
+        if not preset_id:
+            return {}
+        response = _ssts_get_json_with_params(
+            f"{SSTS_API_BASE_URL}/timetable/tc/bulk_analysis_results",
+            {
+                "date": report_day.isoformat(),
+                "configPresetId": preset_id,
+            },
+            headers={"Authorization": token},
+        )
+    except (urlerror.URLError, RuntimeError, ValueError, json.JSONDecodeError):
+        return {}
+    rows = response.get("detailedResults") if isinstance(response, dict) else None
+    if not isinstance(rows, list):
+        return {}
+    fallbacks: dict[str, str] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        train_no = _normalize_pf_train_no(row.get("trainNo") or row.get("train_no"))
+        crew_name = _pf_extract_override_crew_name(row.get("crewName") or row.get("crew_name"))
+        if train_no and crew_name:
+            fallbacks[_pf_crew_key(report_day, train_no)] = crew_name
+    return fallbacks
+
+
+def _build_ssts_pf_crew_fallbacks(report_day: date, token: str) -> dict[str, str]:
+    fallbacks = _fetch_ssts_bulk_analysis_crew_fallbacks(report_day, token)
+    fallbacks.update(_load_ssts_pf_manual_crew_overrides())
+    return {key.upper(): value for key, value in fallbacks.items() if value}
+
+
+def _resolve_pf_train_crew_name(
+    report_day: date,
+    train_no: object,
+    station: object = "",
+    crew_fallbacks: dict[str, str] | None = None,
+) -> str:
+    fallback_map = crew_fallbacks or _load_ssts_pf_manual_crew_overrides()
+    station_key = _pf_crew_key(report_day, train_no, station).upper()
+    train_key = _pf_crew_key(report_day, train_no).upper()
+    return fallback_map.get(station_key) or fallback_map.get(train_key) or ""
 
 
 def _build_pf_report_rows_for_train(
     train: dict[str, object],
     report_day: date,
     token: str,
+    crew_fallbacks: dict[str, str] | None = None,
 ) -> list[dict[str, object]]:
-    override_crew_name = _resolve_pf_train_crew_name(report_day, train.get("train_no"))
+    override_crew_name = _resolve_pf_train_crew_name(
+        report_day,
+        train.get("train_no"),
+        crew_fallbacks=crew_fallbacks,
+    )
     base_row = {
         "report_date": report_day.strftime("%d-%m-%Y"),
         "train_date_iso": report_day.isoformat(),
@@ -2609,11 +2732,18 @@ def _build_pf_report_rows_for_train(
     for item in response:
         if not isinstance(item, dict):
             continue
-        crew_name = str(item.get("crew_name") or base_row.get("crew_name") or "").strip()
+        station = str(item.get("stn_code") or "")
+        station_override_crew_name = _resolve_pf_train_crew_name(
+            report_day,
+            train.get("train_no"),
+            station=station,
+            crew_fallbacks=crew_fallbacks,
+        )
+        crew_name = str(station_override_crew_name or item.get("crew_name") or base_row.get("crew_name") or "").strip()
         detail_rows.append(
             {
                 **base_row,
-                "station": str(item.get("stn_code") or ""),
+                "station": station,
                 "srl_no": item.get("srl_no") or "",
                 "sch_arr": _format_time_value(item.get("sch_arr")),
                 "sch_dep": _format_time_value(item.get("sch_dep")),
@@ -2676,6 +2806,7 @@ def build_ssts_pf_entering_context(report_day: date) -> dict[str, object]:
     trains = fetch_ssts_trains_report(report_day, token)
     rows: list[dict[str, object]] = []
     missing_count = 0
+    crew_fallbacks = _build_ssts_pf_crew_fallbacks(report_day, token)
     crew_lookup: dict[str, str] = {}
     try:
         crew_lookup = fetch_ssts_crew_lookup(token)
@@ -2684,7 +2815,7 @@ def build_ssts_pf_entering_context(report_day: date) -> dict[str, object]:
     if trains:
         with ThreadPoolExecutor(max_workers=6) as executor:
             future_map = {
-                executor.submit(_build_pf_report_rows_for_train, train, report_day, token): train
+                executor.submit(_build_pf_report_rows_for_train, train, report_day, token, crew_fallbacks): train
                 for train in trains
             }
             for future in as_completed(future_map):
