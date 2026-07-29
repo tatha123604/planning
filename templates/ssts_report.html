@@ -186,19 +186,22 @@
             </div>
           </article>
         </a>
-        <article class="card metric-card metric-card-recent-offline">
-          <div class="metric-card-body">
-            <span class="metric-label">Offline 2h to 1 Day</span>
-            <strong class="metric-value">{{ recent_offline_count }}</strong>
-            <div class="metric-level metric-level-warning" style="--level-fill: {{ ((recent_offline_count / total_rakes) * 100) if total_rakes else 0 }}%;">
-              <div class="metric-level-fill"></div>
+        <a class="metric-card-link" href="#recent-offline-table">
+          <article class="card metric-card metric-card-recent-offline metric-card-clickable">
+            <div class="metric-card-body">
+              <span class="metric-label">Offline 2h to 1 Day</span>
+              <strong class="metric-value">{{ recent_offline_count }}</strong>
+              <div class="metric-level metric-level-warning" style="--level-fill: {{ ((recent_offline_count / total_rakes) * 100) if total_rakes else 0 }}%;">
+                <div class="metric-level-fill"></div>
+              </div>
+              <div class="metric-meter-notes">
+                <span>{{ "%.1f"|format(((recent_offline_count / total_rakes) * 100) if total_rakes else 0) }}% of total rakes</span>
+              </div>
+              <p>Rakes offline between 2 hours and 1 day in the latest snapshot.</p>
+              <span class="metric-card-footer">Open table</span>
             </div>
-            <div class="metric-meter-notes">
-              <span>{{ "%.1f"|format(((recent_offline_count / total_rakes) * 100) if total_rakes else 0) }}% of total rakes</span>
-            </div>
-            <p>Rakes offline between 2 hours and 1 day in the latest snapshot.</p>
-          </div>
-        </article>
+          </article>
+        </a>
         <a class="metric-card-link" href="#recently-online-table">
           <article class="card metric-card metric-card-recovery metric-card-clickable">
           <div class="metric-card-body">
@@ -659,7 +662,7 @@
         </details>
       </section>
 
-      <section class="card collapsible ssts-offline-section ssts-recent-offline-section">
+      <section class="card collapsible ssts-offline-section ssts-recent-offline-section" id="recent-offline-table">
         <details open>
           <summary>Current Recently Offline Rakes (2 Hours to 1 Day)</summary>
           {% if latest_run %}
