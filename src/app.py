@@ -2779,7 +2779,14 @@ def build_ssts_pf_entering_context(report_day: date) -> dict[str, object]:
         if not isinstance(row, dict):
             continue
         crew_id = ""
+        lobby_hints = _ssts_pf_row_lobby_hints(row)
         for crew_name_key in _ssts_crew_lookup_keys(row.get("crew_name")):
+            for lobby in lobby_hints:
+                crew_id = crew_lookup.get(f"{crew_name_key}|LOBBY:{lobby}", "")
+                if crew_id:
+                    break
+            if crew_id:
+                break
             crew_id = crew_lookup.get(crew_name_key, "")
             if crew_id:
                 break
@@ -3617,13 +3624,34 @@ def _ssts_expand_crew_name_tokens(tokens: list[str]) -> set[tuple[str, ...]]:
     return variants
 
 
-def _ssts_crew_lookup_keys(value: object | None) -> set[str]:
+def _ssts_crew_lookup_keys(value: object | None, *, include_suffixes: bool = False) -> set[str]:
     tokens = _ssts_crew_name_tokens(value)
     keys = {_normalize_ssts_crew_name(value)}
     for variant in _ssts_expand_crew_name_tokens(tokens):
         keys.add("".join(variant))
+        if include_suffixes:
+            for index in range(1, max(len(variant) - 1, 1)):
+                keys.add("".join(variant[index:]))
     keys.discard("")
     return keys
+
+
+def _ssts_lobby_hint(value: object | None) -> str:
+    text = str(value or "").strip().upper()
+    match = re.match(r"([A-Z]+)", text)
+    if not match:
+        return ""
+    lobby = match.group(1)
+    return lobby if 2 <= len(lobby) <= 5 else ""
+
+
+def _ssts_pf_row_lobby_hints(row: dict[str, object]) -> list[str]:
+    hints: list[str] = []
+    for field in ("rake_no", "org", "dest"):
+        lobby = _ssts_lobby_hint(row.get(field))
+        if lobby and lobby not in hints:
+            hints.append(lobby)
+    return hints
 
 
 def fetch_ssts_crew_lookup(token: str) -> dict[str, str]:
@@ -3648,8 +3676,11 @@ def fetch_ssts_crew_lookup(token: str) -> dict[str, str]:
         crew_id = str(item.get("crew_id") or "").strip()
         if not crew_id:
             continue
-        for crew_name_key in _ssts_crew_lookup_keys(item.get("crew_name")):
+        lobby = _ssts_lobby_hint(item.get("lobby") or crew_id)
+        for crew_name_key in _ssts_crew_lookup_keys(item.get("crew_name"), include_suffixes=True):
             lookup_candidates.setdefault(crew_name_key, set()).add(crew_id)
+            if lobby:
+                lookup_candidates.setdefault(f"{crew_name_key}|LOBBY:{lobby}", set()).add(crew_id)
     lookup = {
         crew_name_key: next(iter(crew_ids))
         for crew_name_key, crew_ids in lookup_candidates.items()
