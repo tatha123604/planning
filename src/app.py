@@ -1162,7 +1162,6 @@ SSTS_BACKGROUND_SYNC_INTERVAL_MINUTES = 60
 SSTS_SNAPSHOT_RETENTION_DAYS = 7
 SSTS_PF_REPORT_CACHE_TTL_MINUTES = 20
 SSTS_PF_ANALYSIS_TASK_TTL_MINUTES = 180
-SSTS_PF_CREW_OVERRIDE_PATH = BASE_PATH / "data" / "ssts_pf_crew_overrides.json"
 SSTS_EXCLUDED_RAKE_NAMES = {"TEST1", "TEST2"}
 SSTS_PF_SPIKE_FILTER_TRAIN_OVERRIDES: dict[str, set[str]] = {
     "2026-05-29": {
@@ -1193,15 +1192,6 @@ _SSTS_PF_ANALYSIS_LOCK = threading.Lock()
 _SSTS_CREW_CACHE: tuple[datetime, dict[str, str]] | None = None
 _SSTS_BACKGROUND_SYNC_STOP = threading.Event()
 _SSTS_BACKGROUND_SYNC_THREAD: threading.Thread | None = None
-SSTS_PF_CREW_ID_OVERRIDES = {
-    "KUNDAN KUMAR": "SDAH1898",
-    "AMIT KUMAR": "SDAH2345",
-}
-SSTS_PF_TRAIN_CREW_OVERRIDES = {
-    ("2026-07-27", "31745"): "MANOJ KUMAR SHAW",
-}
-
-
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         path = request.url.path
@@ -2534,13 +2524,6 @@ def _normalize_pf_crew_name(value: object) -> str:
     return re.sub(r"\s+", " ", text)
 
 
-def _resolve_pf_crew_id(crew_name: object) -> str:
-    normalized_name = _normalize_pf_crew_name(crew_name)
-    if not normalized_name:
-        return ""
-    return SSTS_PF_CREW_ID_OVERRIDES.get(normalized_name, "")
-
-
 def _normalize_pf_train_no(value: object) -> str:
     return str(value or "").strip()
 
@@ -2567,36 +2550,6 @@ def _pf_extract_override_crew_name(value: object) -> str:
         return ""
     crew_name = _normalize_pf_crew_name(value)
     return "" if crew_name in {"N/A", "NA", "NONE", "NULL", "-", "--"} else crew_name
-
-
-def _load_ssts_pf_manual_crew_overrides() -> dict[str, str]:
-    overrides: dict[str, str] = {
-        _pf_crew_key(report_day, train_no): _normalize_pf_crew_name(crew_name)
-        for (report_day, train_no), crew_name in SSTS_PF_TRAIN_CREW_OVERRIDES.items()
-    }
-    if not SSTS_PF_CREW_OVERRIDE_PATH.exists():
-        return {key: value for key, value in overrides.items() if value}
-    try:
-        raw = json.loads(SSTS_PF_CREW_OVERRIDE_PATH.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {key: value for key, value in overrides.items() if value}
-
-    if isinstance(raw, dict):
-        for key, value in raw.items():
-            crew_name = _pf_extract_override_crew_name(value)
-            key_text = str(key or "").strip()
-            if crew_name and key_text:
-                overrides[key_text.upper()] = crew_name
-    elif isinstance(raw, list):
-        for item in raw:
-            if not isinstance(item, dict):
-                continue
-            report_date = str(item.get("report_date") or item.get("date") or "").strip()
-            train_no = _normalize_pf_train_no(item.get("train_no") or item.get("trainNo"))
-            crew_name = _pf_extract_override_crew_name(item)
-            if report_date and train_no and crew_name:
-                overrides[_pf_crew_key(report_date, train_no, item.get("station") or item.get("stn_code"))] = crew_name
-    return {key.upper(): value for key, value in overrides.items() if value}
 
 
 def _fetch_ssts_default_config_preset_id(token: str) -> object | None:
@@ -2646,7 +2599,6 @@ def _fetch_ssts_bulk_analysis_crew_fallbacks(report_day: date, token: str) -> di
 
 def _build_ssts_pf_crew_fallbacks(report_day: date, token: str) -> dict[str, str]:
     fallbacks = _fetch_ssts_bulk_analysis_crew_fallbacks(report_day, token)
-    fallbacks.update(_load_ssts_pf_manual_crew_overrides())
     return {key.upper(): value for key, value in fallbacks.items() if value}
 
 
@@ -2656,7 +2608,7 @@ def _resolve_pf_train_crew_name(
     station: object = "",
     crew_fallbacks: dict[str, str] | None = None,
 ) -> str:
-    fallback_map = crew_fallbacks or _load_ssts_pf_manual_crew_overrides()
+    fallback_map = crew_fallbacks or {}
     station_key = _pf_crew_key(report_day, train_no, station).upper()
     train_key = _pf_crew_key(report_day, train_no).upper()
     return fallback_map.get(station_key) or fallback_map.get(train_key) or ""
@@ -2762,7 +2714,7 @@ def _build_pf_report_rows_for_train(
                 "speed_at_265m": item.get("speed_at_265m") if item.get("speed_at_265m") is not None else "",
                 "speed_at_100m": item.get("speed_at_100m") if item.get("speed_at_100m") is not None else "",
                 "crew_name": crew_name,
-                "crew_id": _resolve_pf_crew_id(crew_name),
+                "crew_id": "",
                 "remarks": str(item.get("remarks") or ""),
                 "status_message": "",
             }
@@ -2826,8 +2778,12 @@ def build_ssts_pf_entering_context(report_day: date) -> dict[str, object]:
     for row in rows:
         if not isinstance(row, dict):
             continue
-        crew_name_key = _normalize_ssts_crew_name(row.get("crew_name"))
-        row["crew_id"] = _resolve_pf_crew_id(row.get("crew_name")) or (crew_lookup.get(crew_name_key, "") if crew_name_key else "")
+        crew_id = ""
+        for crew_name_key in _ssts_crew_lookup_keys(row.get("crew_name")):
+            crew_id = crew_lookup.get(crew_name_key, "")
+            if crew_id:
+                break
+        row["crew_id"] = crew_id
     rows.sort(
         key=lambda row: (
             str(row.get("train_no") or ""),
@@ -3635,6 +3591,41 @@ def _normalize_ssts_crew_name(value: object | None) -> str:
     return re.sub(r"[^A-Z0-9]+", "", text)
 
 
+def _ssts_crew_name_tokens(value: object | None) -> list[str]:
+    text = str(value or "").strip().upper()
+    if not text:
+        return []
+    text = re.sub(r"[^A-Z0-9]+", " ", text)
+    return [token for token in text.split() if token]
+
+
+def _ssts_expand_crew_name_tokens(tokens: list[str]) -> set[tuple[str, ...]]:
+    variants: set[tuple[str, ...]] = {tuple(tokens)}
+    replacements = {
+        "KR": "KUMAR",
+        "KUMAR": "KR",
+        "CH": "CHANDRA",
+        "CHANDRA": "CH",
+    }
+    for index, token in enumerate(tokens):
+        replacement = replacements.get(token)
+        if not replacement:
+            continue
+        variant = list(tokens)
+        variant[index] = replacement
+        variants.add(tuple(variant))
+    return variants
+
+
+def _ssts_crew_lookup_keys(value: object | None) -> set[str]:
+    tokens = _ssts_crew_name_tokens(value)
+    keys = {_normalize_ssts_crew_name(value)}
+    for variant in _ssts_expand_crew_name_tokens(tokens):
+        keys.add("".join(variant))
+    keys.discard("")
+    return keys
+
+
 def fetch_ssts_crew_lookup(token: str) -> dict[str, str]:
     global _SSTS_CREW_CACHE
     now_utc = _utc_now()
@@ -3650,18 +3641,20 @@ def fetch_ssts_crew_lookup(token: str) -> dict[str, str]:
     if not isinstance(raw_rows, list):
         raise RuntimeError("Unexpected SSTS crew data payload.")
 
-    lookup: dict[str, str] = {}
+    lookup_candidates: dict[str, set[str]] = {}
     for item in raw_rows:
         if not isinstance(item, dict):
             continue
-        crew_name_key = _normalize_ssts_crew_name(item.get("crew_name"))
         crew_id = str(item.get("crew_id") or "").strip()
-        if crew_name_key and crew_id and crew_name_key not in lookup:
-            lookup[crew_name_key] = crew_id
-    for crew_name, crew_id in SSTS_PF_CREW_ID_OVERRIDES.items():
-        crew_name_key = _normalize_ssts_crew_name(crew_name)
-        if crew_name_key and crew_id:
-            lookup[crew_name_key] = crew_id
+        if not crew_id:
+            continue
+        for crew_name_key in _ssts_crew_lookup_keys(item.get("crew_name")):
+            lookup_candidates.setdefault(crew_name_key, set()).add(crew_id)
+    lookup = {
+        crew_name_key: next(iter(crew_ids))
+        for crew_name_key, crew_ids in lookup_candidates.items()
+        if len(crew_ids) == 1
+    }
 
     _SSTS_CREW_CACHE = (now_utc, lookup)
     return dict(lookup)
