@@ -2780,16 +2780,28 @@ def build_ssts_pf_entering_context(report_day: date) -> dict[str, object]:
             continue
         crew_id = ""
         lobby_hints = _ssts_pf_row_lobby_hints(row)
-        for crew_name_key in _ssts_crew_lookup_keys(row.get("crew_name")):
-            for lobby in lobby_hints:
-                crew_id = crew_lookup.get(f"{crew_name_key}|LOBBY:{lobby}", "")
-                if crew_id:
-                    break
-            if crew_id:
-                break
+        primary_keys = _ssts_crew_primary_lookup_keys(row.get("crew_name"))
+        suffix_keys = _ssts_crew_suffix_lookup_keys(row.get("crew_name"))
+        for crew_name_key in primary_keys:
             crew_id = crew_lookup.get(crew_name_key, "")
             if crew_id:
                 break
+        if not crew_id:
+            for crew_name_key in primary_keys:
+                for lobby in lobby_hints:
+                    crew_id = crew_lookup.get(f"{crew_name_key}|LOBBY:{lobby}", "")
+                    if crew_id:
+                        break
+                if crew_id:
+                    break
+        if not crew_id:
+            for crew_name_key in suffix_keys:
+                for lobby in lobby_hints:
+                    crew_id = crew_lookup.get(f"{crew_name_key}|LOBBY:{lobby}", "")
+                    if crew_id:
+                        break
+                if crew_id:
+                    break
         row["crew_id"] = crew_id
     rows.sort(
         key=lambda row: (
@@ -3613,6 +3625,8 @@ def _ssts_expand_crew_name_tokens(tokens: list[str]) -> set[tuple[str, ...]]:
         "KUMAR": "KR",
         "CH": "CHANDRA",
         "CHANDRA": "CH",
+        "RAY": "ROY",
+        "ROY": "RAY",
     }
     for index, token in enumerate(tokens):
         replacement = replacements.get(token)
@@ -3634,6 +3648,14 @@ def _ssts_crew_lookup_keys(value: object | None, *, include_suffixes: bool = Fal
                 keys.add("".join(variant[index:]))
     keys.discard("")
     return keys
+
+
+def _ssts_crew_primary_lookup_keys(value: object | None) -> set[str]:
+    return _ssts_crew_lookup_keys(value, include_suffixes=False)
+
+
+def _ssts_crew_suffix_lookup_keys(value: object | None) -> set[str]:
+    return _ssts_crew_lookup_keys(value, include_suffixes=True) - _ssts_crew_primary_lookup_keys(value)
 
 
 def _ssts_lobby_hint(value: object | None) -> str:
@@ -3677,8 +3699,11 @@ def fetch_ssts_crew_lookup(token: str) -> dict[str, str]:
         if not crew_id:
             continue
         lobby = _ssts_lobby_hint(item.get("lobby") or crew_id)
-        for crew_name_key in _ssts_crew_lookup_keys(item.get("crew_name"), include_suffixes=True):
+        for crew_name_key in _ssts_crew_primary_lookup_keys(item.get("crew_name")):
             lookup_candidates.setdefault(crew_name_key, set()).add(crew_id)
+            if lobby:
+                lookup_candidates.setdefault(f"{crew_name_key}|LOBBY:{lobby}", set()).add(crew_id)
+        for crew_name_key in _ssts_crew_suffix_lookup_keys(item.get("crew_name")):
             if lobby:
                 lookup_candidates.setdefault(f"{crew_name_key}|LOBBY:{lobby}", set()).add(crew_id)
     lookup = {
