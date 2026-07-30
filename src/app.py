@@ -3627,6 +3627,8 @@ def _ssts_expand_crew_name_tokens(tokens: list[str]) -> set[tuple[str, ...]]:
         "CHANDRA": "CH",
         "RAY": "ROY",
         "ROY": "RAY",
+        "KANTA": "KANTI",
+        "KANTI": "KANTA",
     }
     for index, token in enumerate(tokens):
         replacement = replacements.get(token)
