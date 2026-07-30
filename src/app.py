@@ -1191,6 +1191,7 @@ _SSTS_PF_REPORT_CACHE: dict[str, tuple[datetime, dict[str, object]]] = {}
 _SSTS_PF_ANALYSIS_TASKS: dict[str, dict[str, object]] = {}
 _SSTS_PF_ANALYSIS_LOCK = threading.Lock()
 _SSTS_CREW_CACHE: tuple[datetime, dict[str, str]] | None = None
+_SSTS_CREW_ID_NAME_CACHE: tuple[datetime, dict[str, str]] | None = None
 _SSTS_SHED_NOTICE_CACHE: dict[str, tuple[datetime, dict[str, list[dict[str, str]]]]] = {}
 _SSTS_BACKGROUND_SYNC_STOP = threading.Event()
 _SSTS_BACKGROUND_SYNC_THREAD: threading.Thread | None = None
@@ -2939,6 +2940,11 @@ def build_ssts_pf_entering_context(report_day: date) -> dict[str, object]:
         crew_lookup = fetch_ssts_crew_lookup(token)
     except (urlerror.URLError, RuntimeError, ValueError, json.JSONDecodeError):
         crew_lookup = {}
+    crew_id_name_lookup: dict[str, str] = {}
+    try:
+        crew_id_name_lookup = fetch_ssts_crew_id_name_lookup(token)
+    except (urlerror.URLError, RuntimeError, ValueError, json.JSONDecodeError):
+        crew_id_name_lookup = {}
     shed_notice_lookup: dict[str, list[dict[str, str]]] = {}
     try:
         shed_notice_lookup = fetch_ssts_shed_notice_lookup(report_day, token)
@@ -2966,6 +2972,9 @@ def build_ssts_pf_entering_context(report_day: date) -> dict[str, object]:
             if shed_crew_name:
                 row["crew_name"] = shed_crew_name
             if shed_crew_id:
+                canonical_crew_name = crew_id_name_lookup.get(shed_crew_id.upper())
+                if canonical_crew_name:
+                    row["crew_name"] = canonical_crew_name
                 row["crew_id"] = shed_crew_id
                 continue
         lobby_hints = _ssts_pf_row_lobby_hints(row)
@@ -2991,6 +3000,10 @@ def build_ssts_pf_entering_context(report_day: date) -> dict[str, object]:
                         break
                 if crew_id:
                     break
+        if crew_id:
+            canonical_crew_name = crew_id_name_lookup.get(crew_id.upper())
+            if canonical_crew_name:
+                row["crew_name"] = canonical_crew_name
         row["crew_id"] = crew_id
     rows.sort(
         key=lambda row: (
@@ -3904,6 +3917,34 @@ def fetch_ssts_crew_lookup(token: str) -> dict[str, str]:
     }
 
     _SSTS_CREW_CACHE = (now_utc, lookup)
+    return dict(lookup)
+
+
+def fetch_ssts_crew_id_name_lookup(token: str) -> dict[str, str]:
+    global _SSTS_CREW_ID_NAME_CACHE
+    now_utc = _utc_now()
+    if _SSTS_CREW_ID_NAME_CACHE is not None:
+        cached_at, cached_lookup = _SSTS_CREW_ID_NAME_CACHE
+        if (now_utc - cached_at) < timedelta(minutes=SSTS_PF_REPORT_CACHE_TTL_MINUTES):
+            return dict(cached_lookup)
+
+    response = _ssts_get_json(SSTS_API_CREW_URL, headers={"Authorization": token})
+    if not isinstance(response, dict):
+        raise RuntimeError("Unexpected SSTS crew response format.")
+    raw_rows = response.get("data")
+    if not isinstance(raw_rows, list):
+        raise RuntimeError("Unexpected SSTS crew data payload.")
+
+    lookup: dict[str, str] = {}
+    for item in raw_rows:
+        if not isinstance(item, dict):
+            continue
+        crew_id = str(item.get("crew_id") or "").strip().upper()
+        crew_name = str(item.get("crew_name") or "").strip()
+        if crew_id and crew_name:
+            lookup[crew_id] = crew_name
+
+    _SSTS_CREW_ID_NAME_CACHE = (now_utc, lookup)
     return dict(lookup)
 
 
