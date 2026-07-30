@@ -1151,6 +1151,7 @@ SSTS_API_TRAINS_REPORT_URL = f"{SSTS_API_BASE_URL}/train/tr/reportforperiod"
 SSTS_API_PUNCT_URL = f"{SSTS_API_BASE_URL}/timetable/tc/punct"
 SSTS_API_POSITIONS_URL = f"{SSTS_API_BASE_URL}/timetable/tc/positions"
 SSTS_API_CREW_URL = f"{SSTS_API_BASE_URL}/crew"
+SSTS_API_SHED_NOTICE_URL = f"{SSTS_API_BASE_URL}/shednotice"
 SSTS_API_USER = os.getenv("SSTS_API_USER", "srdeeopsdah@gmail.com")
 SSTS_API_PASSWORD = os.getenv("SSTS_API_PASSWORD", "sdah1234")
 SSTS_OFFLINE_THRESHOLD_MINUTES = 120
@@ -1190,6 +1191,7 @@ _SSTS_PF_REPORT_CACHE: dict[str, tuple[datetime, dict[str, object]]] = {}
 _SSTS_PF_ANALYSIS_TASKS: dict[str, dict[str, object]] = {}
 _SSTS_PF_ANALYSIS_LOCK = threading.Lock()
 _SSTS_CREW_CACHE: tuple[datetime, dict[str, str]] | None = None
+_SSTS_SHED_NOTICE_CACHE: dict[str, tuple[datetime, dict[str, list[dict[str, str]]]]] = {}
 _SSTS_BACKGROUND_SYNC_STOP = threading.Event()
 _SSTS_BACKGROUND_SYNC_THREAD: threading.Thread | None = None
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -2602,6 +2604,179 @@ def _build_ssts_pf_crew_fallbacks(report_day: date, token: str) -> dict[str, str
     return {key.upper(): value for key, value in fallbacks.items() if value}
 
 
+def _extract_ssts_shed_notice_rows(response: object) -> list[dict[str, object]]:
+    if isinstance(response, list):
+        return [row for row in response if isinstance(row, dict)]
+    if not isinstance(response, dict):
+        return []
+    for key in ("data", "rows", "results", "notices", "items"):
+        rows = response.get(key)
+        if isinstance(rows, list):
+            return [row for row in rows if isinstance(row, dict)]
+    return []
+
+
+def _extract_ssts_total_pages(response: object) -> int:
+    if not isinstance(response, dict):
+        return 1
+    for key in ("totalPages", "total_pages", "pages"):
+        value = response.get(key)
+        try:
+            pages = int(value)
+        except (TypeError, ValueError):
+            continue
+        if pages > 0:
+            return min(pages, 25)
+    pagination = response.get("pagination")
+    if isinstance(pagination, dict):
+        for key in ("totalPages", "total_pages", "pages"):
+            value = pagination.get(key)
+            try:
+                pages = int(value)
+            except (TypeError, ValueError):
+                continue
+            if pages > 0:
+                return min(pages, 25)
+    total = response.get("total") or response.get("count")
+    limit = response.get("limit") or response.get("perPage") or response.get("per_page")
+    try:
+        total_int = int(total)
+        limit_int = int(limit)
+    except (TypeError, ValueError):
+        return 1
+    if total_int <= 0 or limit_int <= 0:
+        return 1
+    return min(max(1, math.ceil(total_int / limit_int)), 25)
+
+
+def fetch_ssts_shed_notice_lookup(report_day: date, token: str) -> dict[str, list[dict[str, str]]]:
+    global _SSTS_SHED_NOTICE_CACHE
+    cache_key = report_day.isoformat()
+    now_utc = _utc_now()
+    cached_entry = _SSTS_SHED_NOTICE_CACHE.get(cache_key)
+    if cached_entry:
+        cached_at, cached_lookup = cached_entry
+        if (now_utc - cached_at) < timedelta(minutes=SSTS_PF_REPORT_CACHE_TTL_MINUTES):
+            return {key: [dict(row) for row in rows] for key, rows in cached_lookup.items()}
+
+    lookup: dict[str, list[dict[str, str]]] = {}
+    page = 1
+    total_pages = 1
+    while page <= total_pages:
+        response = _ssts_get_json_with_params(
+            SSTS_API_SHED_NOTICE_URL,
+            {
+                "notice_date": report_day.isoformat(),
+                "page": page,
+                "limit": 5000,
+            },
+            headers={"Authorization": token},
+        )
+        total_pages = max(total_pages, _extract_ssts_total_pages(response))
+        for item in _extract_ssts_shed_notice_rows(response):
+            crew_name = str(item.get("crew_name") or item.get("crewName") or "").strip()
+            crew_id = str(item.get("cms_id") or item.get("cmsId") or item.get("crew_id") or "").strip()
+            if not crew_name and not crew_id:
+                continue
+            notice = {
+                "crew_name": crew_name,
+                "crew_id": crew_id,
+                "train_no": _normalize_pf_train_no(item.get("train_no") or item.get("trainNo")),
+                "old_train_no": _normalize_pf_train_no(item.get("old_train_no") or item.get("oldTrainNo")),
+                "org": str(item.get("org") or "").strip(),
+                "dest": str(item.get("dest") or "").strip(),
+                "dep": str(item.get("dep") or "").strip(),
+                "arr": str(item.get("arr") or "").strip(),
+                "lobby": str(item.get("lobby") or item.get("division") or "").strip(),
+            }
+            for train_key in {notice["train_no"], notice["old_train_no"]}:
+                if train_key:
+                    lookup.setdefault(train_key, []).append(notice)
+        page += 1
+
+    _SSTS_SHED_NOTICE_CACHE[cache_key] = (now_utc, lookup)
+    stale_keys = [
+        key
+        for key, (cached_at, _) in _SSTS_SHED_NOTICE_CACHE.items()
+        if (now_utc - cached_at) >= timedelta(minutes=SSTS_PF_REPORT_CACHE_TTL_MINUTES)
+    ]
+    for stale_key in stale_keys:
+        _SSTS_SHED_NOTICE_CACHE.pop(stale_key, None)
+    return {key: [dict(row) for row in rows] for key, rows in lookup.items()}
+
+
+def _parse_ssts_notice_time_seconds(value: object) -> int | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    match = re.search(r"(\d{1,2}):(\d{2})(?::(\d{2}))?", text)
+    if not match:
+        return None
+    hour = int(match.group(1))
+    minute = int(match.group(2))
+    second = int(match.group(3) or 0)
+    if hour > 23 or minute > 59 or second > 59:
+        return None
+    return hour * 3600 + minute * 60 + second
+
+
+def _time_in_ssts_notice_window(target: object, start: object, end: object) -> bool:
+    target_seconds = _parse_ssts_notice_time_seconds(target)
+    start_seconds = _parse_ssts_notice_time_seconds(start)
+    end_seconds = _parse_ssts_notice_time_seconds(end)
+    if target_seconds is None or start_seconds is None or end_seconds is None:
+        return False
+    if start_seconds <= end_seconds:
+        return start_seconds <= target_seconds <= end_seconds
+    return target_seconds >= start_seconds or target_seconds <= end_seconds
+
+
+def _score_ssts_shed_notice_for_pf_row(row: dict[str, object], notice: dict[str, str]) -> int:
+    score = 0
+    row_org = _normalize_pf_station(row.get("org"))
+    row_dest = _normalize_pf_station(row.get("dest"))
+    row_station = _normalize_pf_station(row.get("station"))
+    notice_org = _normalize_pf_station(notice.get("org"))
+    notice_dest = _normalize_pf_station(notice.get("dest"))
+    if row_org and row_org == notice_org:
+        score += 5
+    if row_dest and row_dest == notice_dest:
+        score += 5
+    if row_org and row_dest and row_org == notice_org and row_dest == notice_dest:
+        score += 10
+    if row_station:
+        if row_station == notice_org:
+            score += 7
+        if row_station == notice_dest:
+            score += 7
+    for field in ("sch_arr", "sch_dep", "act_arr", "act_dep"):
+        if _time_in_ssts_notice_window(row.get(field), notice.get("dep"), notice.get("arr")):
+            score += 2
+            break
+    notice_lobby = _ssts_lobby_hint(notice.get("lobby") or notice.get("crew_id"))
+    if notice_lobby and notice_lobby in _ssts_pf_row_lobby_hints(row):
+        score += 1
+    return score
+
+
+def _resolve_ssts_shed_notice_for_pf_row(
+    row: dict[str, object],
+    shed_notice_lookup: dict[str, list[dict[str, str]]],
+) -> dict[str, str] | None:
+    train_key = _normalize_pf_train_no(row.get("train_no"))
+    candidates = shed_notice_lookup.get(train_key, [])
+    if not candidates:
+        return None
+    if len(candidates) == 1:
+        return candidates[0]
+    scored = [
+        (_score_ssts_shed_notice_for_pf_row(row, notice), index, notice)
+        for index, notice in enumerate(candidates)
+    ]
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    return scored[0][2]
+
+
 def _resolve_pf_train_crew_name(
     report_day: date,
     train_no: object,
@@ -2764,6 +2939,11 @@ def build_ssts_pf_entering_context(report_day: date) -> dict[str, object]:
         crew_lookup = fetch_ssts_crew_lookup(token)
     except (urlerror.URLError, RuntimeError, ValueError, json.JSONDecodeError):
         crew_lookup = {}
+    shed_notice_lookup: dict[str, list[dict[str, str]]] = {}
+    try:
+        shed_notice_lookup = fetch_ssts_shed_notice_lookup(report_day, token)
+    except (urlerror.URLError, RuntimeError, ValueError, json.JSONDecodeError):
+        shed_notice_lookup = {}
     if trains:
         with ThreadPoolExecutor(max_workers=6) as executor:
             future_map = {
@@ -2779,6 +2959,15 @@ def build_ssts_pf_entering_context(report_day: date) -> dict[str, object]:
         if not isinstance(row, dict):
             continue
         crew_id = ""
+        shed_notice = _resolve_ssts_shed_notice_for_pf_row(row, shed_notice_lookup)
+        if shed_notice:
+            shed_crew_name = str(shed_notice.get("crew_name") or "").strip()
+            shed_crew_id = str(shed_notice.get("crew_id") or "").strip()
+            if shed_crew_name:
+                row["crew_name"] = shed_crew_name
+            if shed_crew_id:
+                row["crew_id"] = shed_crew_id
+                continue
         lobby_hints = _ssts_pf_row_lobby_hints(row)
         primary_keys = _ssts_crew_primary_lookup_keys(row.get("crew_name"))
         suffix_keys = _ssts_crew_suffix_lookup_keys(row.get("crew_name"))
