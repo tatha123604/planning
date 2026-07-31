@@ -3215,41 +3215,38 @@ def _build_pf_counselling_summary_rows(
 def _build_ssts_pf_weekly_counselling_context(
     report_day: date,
     current_raw_context: dict[str, object] | None = None,
+    current_output_rows: list[dict[str, object]] | None = None,
     progress_callback: Callable[[int, str], None] | None = None,
 ) -> dict[str, object]:
     start_day = report_day - timedelta(days=SSTS_PF_COUNSELLING_LOOKBACK_DAYS - 1)
     report_days = [start_day + timedelta(days=offset) for offset in range(SSTS_PF_COUNSELLING_LOOKBACK_DAYS)]
     detail_rows: list[dict[str, object]] = []
-    errors: list[str] = []
+    loaded_days: set[str] = set()
 
-    def load_day_rows(day: date) -> tuple[date, list[dict[str, object]], str]:
-        try:
-            if day == report_day and current_raw_context is not None:
-                context = current_raw_context
-            else:
-                context = build_ssts_pf_entering_context(day)
-            rows = [row for row in context.get("pf_report_rows", []) if isinstance(row, dict)]
-            return day, [dict(row) for row in rows], ""
-        except (urlerror.URLError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
-            return day, [], str(exc)
+    def cached_rows_for_day(day: date) -> list[dict[str, object]]:
+        if day == report_day and current_output_rows is not None:
+            return [dict(row) for row in current_output_rows if isinstance(row, dict)]
+        if day == report_day and current_raw_context is not None:
+            return [dict(row) for row in current_raw_context.get("pf_report_rows", []) if isinstance(row, dict)]
+        cached_entry = _SSTS_PF_REPORT_CACHE.get(day.isoformat())
+        if not cached_entry:
+            return []
+        _, cached_payload = cached_entry
+        return [dict(row) for row in cached_payload.get("pf_report_rows", []) if isinstance(row, dict)]
 
-    completed_days = 0
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        future_map = {executor.submit(load_day_rows, day): day for day in report_days}
-        for future in as_completed(future_map):
-            day, rows, error = future.result()
-            if error:
-                errors.append(f"{day.strftime('%d-%m-%Y')}: {error}")
-            for row in rows:
-                detail_row = _pf_counselling_detail_row(row, day)
-                if detail_row is not None:
-                    detail_rows.append(detail_row)
-            completed_days += 1
-            if progress_callback is not None:
-                progress_callback(
-                    96 + min(3, int((completed_days / max(len(report_days), 1)) * 3)),
-                    f"Building 7-day counselling priority... {completed_days}/{len(report_days)} days",
-                )
+    for index, day in enumerate(report_days, start=1):
+        rows = cached_rows_for_day(day)
+        if rows:
+            loaded_days.add(day.strftime("%d-%m-%Y"))
+        for row in rows:
+            detail_row = _pf_counselling_detail_row(row, day)
+            if detail_row is not None:
+                detail_rows.append(detail_row)
+        if progress_callback is not None:
+            progress_callback(
+                96 + min(3, int((index / max(len(report_days), 1)) * 3)),
+                f"Building counselling priority from loaded PF rows... {index}/{len(report_days)} days",
+            )
 
     detail_rows = _sort_pf_counselling_detail_rows(detail_rows)
     summary_rows = _build_pf_counselling_summary_rows(detail_rows)
@@ -3261,7 +3258,8 @@ def _build_ssts_pf_weekly_counselling_context(
         "pf_weekly_counselling_threshold": SSTS_PF_COUNSELLING_SPEED_THRESHOLD,
         "pf_weekly_counselling_summary_rows": summary_rows,
         "pf_weekly_counselling_detail_rows": detail_rows,
-        "pf_weekly_counselling_error_rows": errors,
+        "pf_weekly_counselling_error_rows": [],
+        "pf_weekly_counselling_loaded_days": ", ".join(sorted(loaded_days, key=_pf_display_date_sort_key)),
     }
 
 
@@ -4408,6 +4406,7 @@ def _build_ssts_pf_speed_analysis_result(
     weekly_counselling_context = _build_ssts_pf_weekly_counselling_context(
         report_day,
         current_raw_context=raw_context,
+        current_output_rows=detailed_daily_report_rows,
         progress_callback=report_progress,
     )
 
@@ -6437,6 +6436,7 @@ def _build_ssts_report_response(
         "pf_weekly_counselling_summary_rows": [],
         "pf_weekly_counselling_detail_rows": [],
         "pf_weekly_counselling_error_rows": [],
+        "pf_weekly_counselling_loaded_days": "",
         "pf_analysis_summary_rows": [],
         "pf_analysis_selected_rows": [],
         "pf_analysis_selected_train": "",
