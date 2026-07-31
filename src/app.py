@@ -1163,6 +1163,8 @@ SSTS_BACKGROUND_SYNC_INTERVAL_MINUTES = 60
 SSTS_SNAPSHOT_RETENTION_DAYS = 7
 SSTS_PF_REPORT_CACHE_TTL_MINUTES = 20
 SSTS_PF_ANALYSIS_TASK_TTL_MINUTES = 180
+SSTS_PF_COUNSELLING_LOOKBACK_DAYS = 7
+SSTS_PF_COUNSELLING_SPEED_THRESHOLD = 42
 SSTS_EXCLUDED_RAKE_NAMES = {"TEST1", "TEST2"}
 SSTS_PF_SPIKE_FILTER_TRAIN_OVERRIDES: dict[str, set[str]] = {
     "2026-05-29": {
@@ -2233,6 +2235,7 @@ def _pf_hydrate_chart_links_in_result(result: dict[str, object]) -> dict[str, ob
         "pf_daily_report_rows",
         "pf_detailed_daily_report_rows",
         "pf_detailed_daily_spike_rows",
+        "pf_weekly_counselling_detail_rows",
         "pf_analysis_summary_rows",
     ):
         if key in hydrated:
@@ -3062,6 +3065,204 @@ def _pf_speed_matches_threshold(speed: float | None, threshold: int) -> bool:
     if threshold > 50:
         return speed > 50
     return speed >= threshold
+
+
+def _pf_numeric_display(value: float | None) -> int | float | str:
+    if value is None:
+        return ""
+    return int(value) if value.is_integer() else round(value, 2)
+
+
+def _pf_counselling_group_key(row: dict[str, object]) -> str:
+    crew_id = str(row.get("crew_id") or "").strip().upper()
+    if crew_id:
+        return f"ID:{crew_id}"
+    return f"NAME:{_normalize_ssts_crew_name(row.get('crew_name'))}"
+
+
+def _pf_counselling_report_date(row: dict[str, object], fallback_day: date) -> str:
+    report_date = str(row.get("report_date") or "").strip()
+    return report_date or fallback_day.strftime("%d-%m-%Y")
+
+
+def _pf_display_date_sort_key(value: str) -> str:
+    try:
+        return datetime.strptime(value, "%d-%m-%Y").date().isoformat()
+    except ValueError:
+        return value
+
+
+def _pf_counselling_detail_row(row: dict[str, object], fallback_day: date) -> dict[str, object] | None:
+    pf_speed = _pf_speed_value(row.get("pf_enter_speed"))
+    if not _pf_speed_matches_threshold(pf_speed, SSTS_PF_COUNSELLING_SPEED_THRESHOLD):
+        return None
+    if str(row.get("stop_time") or "").strip() == "00:00:00":
+        return None
+    crew_name = str(row.get("crew_name") or "").strip()
+    crew_id = str(row.get("crew_id") or "").strip()
+    if not crew_name and not crew_id:
+        return None
+    detail = dict(row)
+    detail["report_date"] = _pf_counselling_report_date(row, fallback_day)
+    detail["report_date_iso"] = str(row.get("train_date_iso") or fallback_day.isoformat())
+    detail["crew_name"] = crew_name
+    detail["crew_id"] = crew_id
+    detail["pf_enter_speed"] = _pf_numeric_display(pf_speed)
+    detail["geofence_enter_speed"] = _pf_numeric_display(_pf_speed_value(row.get("geofence_enter_speed")))
+    return detail
+
+
+def _sort_pf_counselling_detail_rows(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    return sorted(
+        rows,
+        key=lambda row: (
+            str(row.get("report_date_iso") or ""),
+            str(row.get("report_date") or ""),
+            str(row.get("crew_name") or ""),
+            str(row.get("train_no") or ""),
+            999999 if row.get("srl_no") in ("", None) else int(row.get("srl_no") or 0),
+            str(row.get("station") or ""),
+        ),
+    )
+
+
+def _build_pf_counselling_summary_rows(
+    detail_rows: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    grouped: dict[str, dict[str, object]] = {}
+    for row in detail_rows:
+        key = _pf_counselling_group_key(row)
+        if key in {"ID:", "NAME:"}:
+            continue
+        summary = grouped.setdefault(
+            key,
+            {
+                "crew_id": str(row.get("crew_id") or "").strip(),
+                "crew_name": str(row.get("crew_name") or "").strip(),
+                "occurrence_count": 0,
+                "max_pf_enter_speed": "",
+                "dates": set(),
+                "trains": set(),
+                "stations": set(),
+                "details": [],
+            },
+        )
+        if not summary.get("crew_id") and row.get("crew_id"):
+            summary["crew_id"] = str(row.get("crew_id") or "").strip()
+        if not summary.get("crew_name") and row.get("crew_name"):
+            summary["crew_name"] = str(row.get("crew_name") or "").strip()
+        summary["occurrence_count"] = int(summary.get("occurrence_count") or 0) + 1
+        pf_speed = _pf_speed_value(row.get("pf_enter_speed"))
+        current_max = _pf_speed_value(summary.get("max_pf_enter_speed"))
+        if pf_speed is not None and (current_max is None or pf_speed > current_max):
+            summary["max_pf_enter_speed"] = _pf_numeric_display(pf_speed)
+        for field_name, bucket_name in (
+            ("report_date", "dates"),
+            ("train_no", "trains"),
+            ("station", "stations"),
+        ):
+            value = str(row.get(field_name) or "").strip()
+            if value:
+                bucket = summary.get(bucket_name)
+                if isinstance(bucket, set):
+                    bucket.add(value)
+        details = summary.get("details")
+        if isinstance(details, list):
+            details.append(
+                " ".join(
+                    part
+                    for part in (
+                        str(row.get("report_date") or "").strip(),
+                        f"Train {str(row.get('train_no') or '').strip()}",
+                        str(row.get("station") or "").strip(),
+                        f"{_pf_numeric_display(pf_speed)} KMPH" if pf_speed is not None else "",
+                    )
+                    if part
+                )
+            )
+    summary_rows: list[dict[str, object]] = []
+    for summary in grouped.values():
+        dates = sorted(
+            summary.get("dates") if isinstance(summary.get("dates"), set) else [],
+            key=_pf_display_date_sort_key,
+        )
+        trains = sorted(summary.get("trains") if isinstance(summary.get("trains"), set) else [])
+        stations = sorted(summary.get("stations") if isinstance(summary.get("stations"), set) else [])
+        details = summary.get("details") if isinstance(summary.get("details"), list) else []
+        summary_rows.append(
+            {
+                "crew_id": summary.get("crew_id") or "",
+                "crew_name": summary.get("crew_name") or "",
+                "occurrence_count": int(summary.get("occurrence_count") or 0),
+                "max_pf_enter_speed": summary.get("max_pf_enter_speed") or "",
+                "active_days": len(dates),
+                "dates": ", ".join(dates),
+                "trains": ", ".join(trains),
+                "stations": ", ".join(stations),
+                "details": "; ".join(details[:12]),
+            }
+        )
+    return sorted(
+        summary_rows,
+        key=lambda row: (
+            -int(row.get("occurrence_count") or 0),
+            -(_pf_speed_value(row.get("max_pf_enter_speed")) or 0),
+            str(row.get("crew_name") or ""),
+        ),
+    )
+
+
+def _build_ssts_pf_weekly_counselling_context(
+    report_day: date,
+    current_raw_context: dict[str, object] | None = None,
+    progress_callback: Callable[[int, str], None] | None = None,
+) -> dict[str, object]:
+    start_day = report_day - timedelta(days=SSTS_PF_COUNSELLING_LOOKBACK_DAYS - 1)
+    report_days = [start_day + timedelta(days=offset) for offset in range(SSTS_PF_COUNSELLING_LOOKBACK_DAYS)]
+    detail_rows: list[dict[str, object]] = []
+    errors: list[str] = []
+
+    def load_day_rows(day: date) -> tuple[date, list[dict[str, object]], str]:
+        try:
+            if day == report_day and current_raw_context is not None:
+                context = current_raw_context
+            else:
+                context = build_ssts_pf_entering_context(day)
+            rows = [row for row in context.get("pf_report_rows", []) if isinstance(row, dict)]
+            return day, [dict(row) for row in rows], ""
+        except (urlerror.URLError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
+            return day, [], str(exc)
+
+    completed_days = 0
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        future_map = {executor.submit(load_day_rows, day): day for day in report_days}
+        for future in as_completed(future_map):
+            day, rows, error = future.result()
+            if error:
+                errors.append(f"{day.strftime('%d-%m-%Y')}: {error}")
+            for row in rows:
+                detail_row = _pf_counselling_detail_row(row, day)
+                if detail_row is not None:
+                    detail_rows.append(detail_row)
+            completed_days += 1
+            if progress_callback is not None:
+                progress_callback(
+                    96 + min(3, int((completed_days / max(len(report_days), 1)) * 3)),
+                    f"Building 7-day counselling priority... {completed_days}/{len(report_days)} days",
+                )
+
+    detail_rows = _sort_pf_counselling_detail_rows(detail_rows)
+    summary_rows = _build_pf_counselling_summary_rows(detail_rows)
+    return {
+        "pf_weekly_counselling_start": start_day.isoformat(),
+        "pf_weekly_counselling_end": report_day.isoformat(),
+        "pf_weekly_counselling_start_label": start_day.strftime("%d-%m-%Y"),
+        "pf_weekly_counselling_end_label": report_day.strftime("%d-%m-%Y"),
+        "pf_weekly_counselling_threshold": SSTS_PF_COUNSELLING_SPEED_THRESHOLD,
+        "pf_weekly_counselling_summary_rows": summary_rows,
+        "pf_weekly_counselling_detail_rows": detail_rows,
+        "pf_weekly_counselling_error_rows": errors,
+    }
 
 
 def _pf_reference_speed(row: dict[str, object] | None) -> float | None:
@@ -4203,7 +4404,14 @@ def _build_ssts_pf_speed_analysis_result(
             if _pf_row_signature(row) not in suspected_spike_signatures
         ]
         detailed_detail_rows_by_train[train_no] = cleaned_rows
-    report_progress(96, "Finalizing detailed PF report...")
+    report_progress(96, "Building 7-day counselling priority...")
+    weekly_counselling_context = _build_ssts_pf_weekly_counselling_context(
+        report_day,
+        current_raw_context=raw_context,
+        progress_callback=report_progress,
+    )
+
+    report_progress(99, "Finalizing detailed PF report...")
 
     return {
         "pf_report_day": report_day.isoformat(),
@@ -4222,6 +4430,7 @@ def _build_ssts_pf_speed_analysis_result(
         "pf_analysis_source_total_trains": int(raw_context.get("pf_report_total_trains") or 0),
         "pf_analysis_source_total_rows": int(raw_context.get("pf_report_total_rows") or 0),
         "pf_analysis_missing_count": int(raw_context.get("pf_report_missing_count") or 0),
+        **weekly_counselling_context,
     }
 
 
@@ -6218,6 +6427,16 @@ def _build_ssts_report_response(
         "pf_detailed_daily_report_rows": [],
         "pf_detailed_daily_spike_count": 0,
         "pf_detailed_daily_spike_rows": [],
+        "pf_weekly_counselling_start": (pf_day_value - timedelta(days=SSTS_PF_COUNSELLING_LOOKBACK_DAYS - 1)).isoformat(),
+        "pf_weekly_counselling_end": pf_day_value.isoformat(),
+        "pf_weekly_counselling_start_label": (
+            pf_day_value - timedelta(days=SSTS_PF_COUNSELLING_LOOKBACK_DAYS - 1)
+        ).strftime("%d-%m-%Y"),
+        "pf_weekly_counselling_end_label": pf_day_value.strftime("%d-%m-%Y"),
+        "pf_weekly_counselling_threshold": SSTS_PF_COUNSELLING_SPEED_THRESHOLD,
+        "pf_weekly_counselling_summary_rows": [],
+        "pf_weekly_counselling_detail_rows": [],
+        "pf_weekly_counselling_error_rows": [],
         "pf_analysis_summary_rows": [],
         "pf_analysis_selected_rows": [],
         "pf_analysis_selected_train": "",

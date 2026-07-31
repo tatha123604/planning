@@ -1074,6 +1074,107 @@
           {% endif %}
           <div class="card-head-inline">
             <div>
+              <h3>Counselling Priority - Last 7 Days</h3>
+              <p>
+                Crew appearing most often with PF Enter Speed {{ pf_weekly_counselling_threshold }} KMPH and above
+                from {{ pf_weekly_counselling_start_label }} to {{ pf_weekly_counselling_end_label }}.
+              </p>
+            </div>
+          </div>
+          {% if pf_weekly_counselling_error_rows %}
+          <p class="status-error">
+            Some previous-day PF source rows could not be loaded:
+            {{ pf_weekly_counselling_error_rows | join('; ') }}
+          </p>
+          {% endif %}
+          <div class="table-wrap">
+            <table class="employee-table paged" data-exportable="true" data-export-name="ssts_pf_counselling_priority_summary_{{ pf_weekly_counselling_start }}_to_{{ pf_weekly_counselling_end }}" data-export-title="SSTS PF Counselling Priority Summary" data-export-report-date="Date Range: {{ pf_weekly_counselling_start_label }} to {{ pf_weekly_counselling_end_label }} | Speed Range: {{ pf_weekly_counselling_threshold }} KMPH and above">
+              <thead>
+                <tr>
+                  <th>Rank</th>
+                  <th>Crew ID</th>
+                  <th>Crew Name</th>
+                  <th>Cases</th>
+                  <th>Active Days</th>
+                  <th>Max PF Speed</th>
+                  <th>Dates</th>
+                  <th>Trains</th>
+                  <th>Stations</th>
+                  <th>Details</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in pf_weekly_counselling_summary_rows %}
+                <tr>
+                  <td>{{ loop.index }}</td>
+                  <td class="crew-alert">{{ row.crew_id }}</td>
+                  <td class="crew-alert">{{ row.crew_name }}</td>
+                  <td class="pf-speed-alert">{{ row.occurrence_count }}</td>
+                  <td>{{ row.active_days }}</td>
+                  <td class="pf-speed-alert">{{ row.max_pf_enter_speed }}</td>
+                  <td>{{ row.dates }}</td>
+                  <td>{{ row.trains }}</td>
+                  <td>{{ row.stations }}</td>
+                  <td>{{ row.details }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                  <td colspan="10">No crew found with PF Enter Speed {{ pf_weekly_counselling_threshold }} KMPH and above in the last 7 days.</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          <div class="table-wrap">
+            <table class="employee-table paged" data-exportable="true" data-export-name="ssts_pf_counselling_priority_details_{{ pf_weekly_counselling_start }}_to_{{ pf_weekly_counselling_end }}" data-export-title="SSTS PF Counselling Priority Detailed List" data-export-report-date="Date Range: {{ pf_weekly_counselling_start_label }} to {{ pf_weekly_counselling_end_label }} | Speed Range: {{ pf_weekly_counselling_threshold }} KMPH and above">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Train No</th>
+                  <th>Rake No</th>
+                  <th>Crew ID</th>
+                  <th>Crew Name</th>
+                  <th>ORG</th>
+                  <th>DEST</th>
+                  <th>Station</th>
+                  <th>Sch Arr</th>
+                  <th>Sch Dep</th>
+                  <th>Stop Time</th>
+                  <th>Geofence Enter Speed</th>
+                  <th>PF Enter Speed (KMPH)</th>
+                  <th>PF Enter Distance</th>
+                  <th>Remarks</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in pf_weekly_counselling_detail_rows %}
+                <tr>
+                  <td>{{ row.report_date }}</td>
+                  <td class="crew-alert">{{ row.train_no }}</td>
+                  <td>{{ row.rake_no }}</td>
+                  <td class="crew-alert">{{ row.crew_id }}</td>
+                  <td class="crew-alert">{{ row.crew_name }}</td>
+                  <td>{{ row.org }}</td>
+                  <td>{{ row.dest }}</td>
+                  <td class="crew-alert"><span class="station-highlight">{{ row.station }}</span></td>
+                  <td>{{ row.sch_arr }}</td>
+                  <td>{{ row.sch_dep }}</td>
+                  <td class="crew-alert">{{ row.stop_time }}</td>
+                  <td>{{ row.geofence_enter_speed }}</td>
+                  <td class="pf-speed-alert">{{ row.pf_enter_speed }}</td>
+                  <td>{{ row.pf_distance }}</td>
+                  <td>{{ row.remarks }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                  <td colspan="15">No detailed counselling priority rows found for this date range.</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          <div class="card-head-inline">
+            <div>
               <h3>Output</h3>
             </div>
           </div>
