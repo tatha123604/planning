@@ -46,7 +46,15 @@ from .logic import (
     role_sort_key,
     normalize_role,
 )
-from .models import CliMatrixOverdueSnapshot, CliMatrixSummarySnapshot, Employee, Requirement, SstsDeviceSnapshot, SstsSnapshotRun
+from .models import (
+    CliMatrixOverdueSnapshot,
+    CliMatrixSummarySnapshot,
+    Employee,
+    Requirement,
+    SstsDeviceSnapshot,
+    SstsPfCounsellingHistory,
+    SstsSnapshotRun,
+)
 from .seed import seed_all
 from processor import build_sheet2_df, build_summary_df
 
@@ -3112,6 +3120,118 @@ def _pf_counselling_detail_row(row: dict[str, object], fallback_day: date) -> di
     return detail
 
 
+def _pf_history_number(value: object) -> float | None:
+    number = _pf_speed_value(value)
+    return number
+
+
+def _pf_history_int(value: object) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _pf_history_text(value: object) -> str | None:
+    text = str(value or "").strip()
+    return text or None
+
+
+def _flatten_pf_rows_by_train(rows_by_train: dict[str, list[dict[str, object]]]) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for train_rows in rows_by_train.values():
+        if not isinstance(train_rows, list):
+            continue
+        rows.extend(dict(row) for row in train_rows if isinstance(row, dict))
+    return rows
+
+
+def _save_ssts_pf_counselling_history(report_day: date, rows: list[dict[str, object]]) -> None:
+    history_rows: list[SstsPfCounsellingHistory] = []
+    for row in rows:
+        detail_row = _pf_counselling_detail_row(row, report_day)
+        if detail_row is None:
+            continue
+        pf_speed = _pf_speed_value(detail_row.get("pf_enter_speed"))
+        if pf_speed is None:
+            continue
+        history_rows.append(
+            SstsPfCounsellingHistory(
+                report_date=report_day,
+                report_date_label=_pf_counselling_report_date(detail_row, report_day),
+                train_no=str(detail_row.get("train_no") or "").strip(),
+                rake_no=_pf_history_text(detail_row.get("rake_no")),
+                crew_id=_pf_history_text(detail_row.get("crew_id")),
+                crew_name=_pf_history_text(detail_row.get("crew_name")),
+                org=_pf_history_text(detail_row.get("org")),
+                dest=_pf_history_text(detail_row.get("dest")),
+                station=_pf_history_text(detail_row.get("station")),
+                srl_no=_pf_history_int(detail_row.get("srl_no")),
+                sch_arr=_pf_history_text(detail_row.get("sch_arr")),
+                act_arr=_pf_history_text(detail_row.get("act_arr")),
+                sch_dep=_pf_history_text(detail_row.get("sch_dep")),
+                act_dep=_pf_history_text(detail_row.get("act_dep")),
+                stop_time=_pf_history_text(detail_row.get("stop_time")),
+                geofence_enter_speed=_pf_history_number(detail_row.get("geofence_enter_speed")),
+                pf_enter_speed=pf_speed,
+                pf_distance=_pf_history_number(detail_row.get("pf_distance")),
+                remarks=_pf_history_text(detail_row.get("remarks")),
+                chart_link=_pf_history_text(detail_row.get("chart_link")),
+            )
+        )
+    with Session(engine) as session:
+        existing_rows = session.exec(
+            select(SstsPfCounsellingHistory).where(SstsPfCounsellingHistory.report_date == report_day)
+        ).all()
+        for existing in existing_rows:
+            session.delete(existing)
+        for history_row in history_rows:
+            session.add(history_row)
+        session.commit()
+
+
+def _history_row_to_pf_counselling_detail(row: SstsPfCounsellingHistory) -> dict[str, object]:
+    return {
+        "report_date": row.report_date_label or row.report_date.strftime("%d-%m-%Y"),
+        "report_date_iso": row.report_date.isoformat(),
+        "train_no": row.train_no,
+        "rake_no": row.rake_no or "",
+        "crew_id": row.crew_id or "",
+        "crew_name": row.crew_name or "",
+        "org": row.org or "",
+        "dest": row.dest or "",
+        "station": row.station or "",
+        "srl_no": row.srl_no or "",
+        "sch_arr": row.sch_arr or "",
+        "act_arr": row.act_arr or "",
+        "sch_dep": row.sch_dep or "",
+        "act_dep": row.act_dep or "",
+        "stop_time": row.stop_time or "",
+        "geofence_enter_speed": _pf_numeric_display(row.geofence_enter_speed),
+        "pf_enter_speed": _pf_numeric_display(float(row.pf_enter_speed)),
+        "pf_distance": _pf_numeric_display(row.pf_distance),
+        "remarks": row.remarks or "",
+        "chart_link": row.chart_link or "",
+    }
+
+
+def _load_ssts_pf_counselling_history(start_day: date, end_day: date) -> list[dict[str, object]]:
+    with Session(engine) as session:
+        history_rows = session.exec(
+            select(SstsPfCounsellingHistory)
+            .where(SstsPfCounsellingHistory.report_date >= start_day)
+            .where(SstsPfCounsellingHistory.report_date <= end_day)
+            .where(SstsPfCounsellingHistory.pf_enter_speed >= SSTS_PF_COUNSELLING_SPEED_THRESHOLD)
+            .order_by(
+                SstsPfCounsellingHistory.report_date,
+                SstsPfCounsellingHistory.crew_name,
+                SstsPfCounsellingHistory.train_no,
+                SstsPfCounsellingHistory.srl_no,
+            )
+        ).all()
+    return [_history_row_to_pf_counselling_detail(row) for row in history_rows]
+
+
 def _sort_pf_counselling_detail_rows(rows: list[dict[str, object]]) -> list[dict[str, object]]:
     return sorted(
         rows,
@@ -3220,8 +3340,17 @@ def _build_ssts_pf_weekly_counselling_context(
 ) -> dict[str, object]:
     start_day = report_day - timedelta(days=SSTS_PF_COUNSELLING_LOOKBACK_DAYS - 1)
     report_days = [start_day + timedelta(days=offset) for offset in range(SSTS_PF_COUNSELLING_LOOKBACK_DAYS)]
-    detail_rows: list[dict[str, object]] = []
+    errors: list[str] = []
+    try:
+        detail_rows = _load_ssts_pf_counselling_history(start_day, report_day)
+    except Exception as exc:
+        detail_rows = []
+        errors.append(f"Stored PF counselling history could not be loaded: {exc}")
     loaded_days: set[str] = set()
+    for row in detail_rows:
+        report_date = str(row.get("report_date") or "").strip()
+        if report_date:
+            loaded_days.add(report_date)
 
     def cached_rows_for_day(day: date) -> list[dict[str, object]]:
         if day == report_day and current_output_rows is not None:
@@ -3235,21 +3364,31 @@ def _build_ssts_pf_weekly_counselling_context(
         return [dict(row) for row in cached_payload.get("pf_report_rows", []) if isinstance(row, dict)]
 
     for index, day in enumerate(report_days, start=1):
-        rows = cached_rows_for_day(day)
-        if rows:
+        day_label = day.strftime("%d-%m-%Y")
+        if day_label not in loaded_days:
+            rows = cached_rows_for_day(day)
+            if rows:
+                for row in rows:
+                    detail_row = _pf_counselling_detail_row(row, day)
+                    if detail_row is not None:
+                        detail_rows.append(detail_row)
+            if rows:
+                loaded_days.add(day_label)
+        else:
             loaded_days.add(day.strftime("%d-%m-%Y"))
-        for row in rows:
-            detail_row = _pf_counselling_detail_row(row, day)
-            if detail_row is not None:
-                detail_rows.append(detail_row)
         if progress_callback is not None:
             progress_callback(
                 96 + min(3, int((index / max(len(report_days), 1)) * 3)),
-                f"Building counselling priority from loaded PF rows... {index}/{len(report_days)} days",
+                f"Building counselling priority from stored PF history... {index}/{len(report_days)} days",
             )
 
     detail_rows = _sort_pf_counselling_detail_rows(detail_rows)
     summary_rows = _build_pf_counselling_summary_rows(detail_rows)
+    missing_days = [
+        day.strftime("%d-%m-%Y")
+        for day in report_days
+        if day.strftime("%d-%m-%Y") not in loaded_days
+    ]
     return {
         "pf_weekly_counselling_start": start_day.isoformat(),
         "pf_weekly_counselling_end": report_day.isoformat(),
@@ -3258,8 +3397,9 @@ def _build_ssts_pf_weekly_counselling_context(
         "pf_weekly_counselling_threshold": SSTS_PF_COUNSELLING_SPEED_THRESHOLD,
         "pf_weekly_counselling_summary_rows": summary_rows,
         "pf_weekly_counselling_detail_rows": detail_rows,
-        "pf_weekly_counselling_error_rows": [],
+        "pf_weekly_counselling_error_rows": errors,
         "pf_weekly_counselling_loaded_days": ", ".join(sorted(loaded_days, key=_pf_display_date_sort_key)),
+        "pf_weekly_counselling_missing_days": ", ".join(missing_days),
     }
 
 
@@ -4402,6 +4542,13 @@ def _build_ssts_pf_speed_analysis_result(
             if _pf_row_signature(row) not in suspected_spike_signatures
         ]
         detailed_detail_rows_by_train[train_no] = cleaned_rows
+    try:
+        _save_ssts_pf_counselling_history(
+            report_day,
+            _flatten_pf_rows_by_train(detailed_detail_rows_by_train),
+        )
+    except Exception as exc:
+        report_progress(96, f"PF counselling history save skipped: {exc}")
     report_progress(96, "Building 7-day counselling priority...")
     weekly_counselling_context = _build_ssts_pf_weekly_counselling_context(
         report_day,
@@ -6437,6 +6584,7 @@ def _build_ssts_report_response(
         "pf_weekly_counselling_detail_rows": [],
         "pf_weekly_counselling_error_rows": [],
         "pf_weekly_counselling_loaded_days": "",
+        "pf_weekly_counselling_missing_days": "",
         "pf_analysis_summary_rows": [],
         "pf_analysis_selected_rows": [],
         "pf_analysis_selected_train": "",

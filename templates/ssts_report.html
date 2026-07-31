@@ -1079,7 +1079,10 @@
                 Crew appearing most often with PF Enter Speed {{ pf_weekly_counselling_threshold }} KMPH and above
                 from {{ pf_weekly_counselling_start_label }} to {{ pf_weekly_counselling_end_label }}.
                 {% if pf_weekly_counselling_loaded_days %}
-                Loaded days: {{ pf_weekly_counselling_loaded_days }}.
+                Stored days: {{ pf_weekly_counselling_loaded_days }}.
+                {% endif %}
+                {% if pf_weekly_counselling_missing_days %}
+                Not yet stored: {{ pf_weekly_counselling_missing_days }}.
                 {% endif %}
               </p>
             </div>

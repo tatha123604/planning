@@ -198,3 +198,28 @@ class SstsDeviceSnapshot(SQLModel, table=True):
     offline_minutes: int | None = None
     attributes: str | None = None
     remark: str | None = None
+
+
+class SstsPfCounsellingHistory(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    report_date: date = Field(index=True)
+    report_date_label: str
+    train_no: str = Field(index=True)
+    rake_no: str | None = None
+    crew_id: str | None = Field(default=None, index=True)
+    crew_name: str | None = Field(default=None, index=True)
+    org: str | None = None
+    dest: str | None = None
+    station: str | None = Field(default=None, index=True)
+    srl_no: int | None = None
+    sch_arr: str | None = None
+    act_arr: str | None = None
+    sch_dep: str | None = None
+    act_dep: str | None = None
+    stop_time: str | None = None
+    geofence_enter_speed: float | None = None
+    pf_enter_speed: float = Field(index=True)
+    pf_distance: float | None = None
+    remarks: str | None = None
+    chart_link: str | None = None
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)

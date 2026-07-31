@@ -186,6 +186,22 @@ def init_db() -> None:
             ssts_names = {c[1] for c in ssts_cols}
             if ssts_cols and "remark" not in ssts_names:
                 conn.execute(text("ALTER TABLE sstsdevicesnapshot ADD COLUMN remark TEXT;"))
+        pf_history_table_exists = conn.execute(
+            text("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sstspfcounsellinghistory';")
+        ).fetchone()
+        if pf_history_table_exists:
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_sstspfhistory_date_speed "
+                    "ON sstspfcounsellinghistory (report_date, pf_enter_speed);"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_sstspfhistory_crew_date "
+                    "ON sstspfcounsellinghistory (crew_id, crew_name, report_date);"
+                )
+            )
 
 
 def get_session() -> Session:
