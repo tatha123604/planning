@@ -8628,6 +8628,41 @@ def _load_employee_master_review_report() -> dict[str, object]:
     return raw
 
 
+def _remove_employee_master_mismatch_action_from_reports(action_key: str) -> None:
+    saved = _load_employee_master_review_report()
+    history_raw = saved.get("history")
+    history = [item for item in history_raw if isinstance(item, dict)] if isinstance(history_raw, list) else []
+    if not history and saved:
+        history = [dict(saved)]
+    if not history:
+        return
+
+    updated_history: list[dict[str, object]] = []
+    changed = False
+    for report in history:
+        updated_report = dict(report)
+        actions = updated_report.get("update_mismatch_actions")
+        if isinstance(actions, list):
+            filtered_actions = [
+                item
+                for item in actions
+                if not isinstance(item, dict) or str(item.get("action_key") or "") != action_key
+            ]
+            if len(filtered_actions) != len(actions):
+                changed = True
+            updated_report["update_mismatch_actions"] = filtered_actions
+        updated_history.append(updated_report)
+
+    if not changed:
+        return
+    latest = dict(updated_history[0])
+    latest["history"] = updated_history[:25]
+    EMPLOYEE_MASTER_REVIEW_REPORT_FILE.write_text(
+        json.dumps(latest, ensure_ascii=True, indent=2),
+        encoding="utf-8",
+    )
+
+
 def _delete_employee_master_review_report_at(index: int) -> dict[str, object]:
     saved = _load_employee_master_review_report()
     history = list(saved.get("history") or [])
@@ -10132,6 +10167,7 @@ async def upload_employee_master_mismatch_merge(
         session.add(employee)
         session.commit()
         mismatch_actions = _remove_employee_master_mismatch_action(action_key)
+        _remove_employee_master_mismatch_action_from_reports(action_key)
         notice = "Mismatch merge complete: incoming row added alongside existing."
         saved_report = _load_employee_master_review_report()
         _save_employee_master_review_report(
@@ -10177,6 +10213,7 @@ async def upload_employee_master_mismatch_delete(
         else:
             notice = "Delete complete: incoming row ignored, existing row kept."
         mismatch_actions = _remove_employee_master_mismatch_action(action_key)
+        _remove_employee_master_mismatch_action_from_reports(action_key)
         saved_report = _load_employee_master_review_report()
         _save_employee_master_review_report(
             update_notice=notice,
