@@ -662,6 +662,58 @@
         </details>
       </section>
 
+      <section class="card collapsible ssts-offline-section" id="offline-in-service-table">
+        <details open>
+          <summary>Rake OFFLINE but currently in service</summary>
+          {% if offline_in_service_day_label %}
+          <p>Rakes offline for 2 days or more in the latest snapshot, but attached to at least one train in the {{ offline_in_service_day_label }} train report.</p>
+          {% endif %}
+          {% if offline_in_service_error %}
+          <p class="status-error">Could not load train attachment data: {{ offline_in_service_error }}</p>
+          {% endif %}
+          <div class="table-wrap">
+            <table class="employee-table paged" data-exportable="true" data-export-name="rake_offline_but_in_service_{{ offline_in_service_day_label or 'latest' }}">
+              <thead>
+                <tr>
+                  <th>Rake No</th>
+                  <th>Device ID</th>
+                  <th>Mobile No</th>
+                  <th>Cars</th>
+                  <th>Last Update</th>
+                  <th>Offline Duration</th>
+                  <th>Service Date</th>
+                  <th>Attached Trains</th>
+                  <th>Train Count</th>
+                  <th>Routes</th>
+                  <th>Scheduled Time</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in offline_in_service_rows %}
+                <tr>
+                  <td class="crew-alert">{{ row.name }}</td>
+                  <td>{{ row.uniqueid }}</td>
+                  <td>{{ row.phone }}</td>
+                  <td>{{ row.contact }}</td>
+                  <td>{{ row.lastupdate_label }}</td>
+                  <td class="pf-speed-alert">{{ row.offline_duration }}</td>
+                  <td>{{ row.train_report_day }}</td>
+                  <td class="crew-alert">{{ row.train_numbers }}</td>
+                  <td>{{ row.train_count }}</td>
+                  <td>{{ row.routes }}</td>
+                  <td>{{ row.train_times }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                  <td colspan="11">No rake found that is offline for 2 days or more and still attached to a train in the selected service day.</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      </section>
+
       <section class="card collapsible ssts-offline-section ssts-recent-offline-section" id="recent-offline-table">
         <details open>
           <summary>Current Recently Offline Rakes (2 Hours to 1 Day)</summary>

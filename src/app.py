@@ -1166,6 +1166,7 @@ SSTS_OFFLINE_THRESHOLD_MINUTES = 120
 SSTS_RECENTLY_ONLINE_THRESHOLD_MINUTES = 5
 SSTS_PREVIOUSLY_OFFLINE_THRESHOLD_MINUTES = 300
 SSTS_RECENT_OFFLINE_MAX_MINUTES = 24 * 60
+SSTS_OFFLINE_IN_SERVICE_MINUTES = 2 * 24 * 60
 SSTS_REFRESH_INTERVAL_MINUTES = 5
 SSTS_BACKGROUND_SYNC_INTERVAL_MINUTES = 60
 SSTS_SNAPSHOT_RETENTION_DAYS = 7
@@ -1978,6 +1979,10 @@ def _ssts_normalize_rake_name(value: object | None) -> str:
     return str(value or "").strip().upper()
 
 
+def _ssts_rake_match_key(value: object | None) -> str:
+    return re.sub(r"[^A-Z0-9]+", "", _ssts_normalize_rake_name(value))
+
+
 def _ssts_is_excluded_rake_name(value: object | None) -> bool:
     return _ssts_normalize_rake_name(value) in SSTS_EXCLUDED_RAKE_NAMES
 
@@ -2091,6 +2096,109 @@ def fetch_ssts_trains_report(report_day: date, token: str) -> list[dict[str, obj
         for item in response
         if isinstance(item, dict) and not _ssts_is_excluded_rake_name(item.get("device_name"))
     ]
+
+
+def _ssts_train_route_label(train: dict[str, object]) -> str:
+    origin = str(train.get("org") or "").strip()
+    destination = str(train.get("dest") or "").strip()
+    if origin and destination:
+        return f"{origin}-{destination}"
+    return origin or destination
+
+
+def _ssts_train_time_range_label(train: dict[str, object]) -> str:
+    departure = _format_time_value(train.get("dep"))
+    arrival = _format_time_value(train.get("arr"))
+    if departure and arrival:
+        return f"{departure}-{arrival}"
+    return departure or arrival
+
+
+def _build_ssts_train_attachment_maps(
+    train_rows: list[dict[str, object]],
+) -> tuple[dict[int, list[dict[str, object]]], dict[str, list[dict[str, object]]]]:
+    by_device_id: dict[int, list[dict[str, object]]] = {}
+    by_rake_name: dict[str, list[dict[str, object]]] = {}
+    for train in train_rows:
+        if not isinstance(train, dict):
+            continue
+        attachment = {
+            "train_no": str(train.get("train_no") or "").strip(),
+            "rake_no": str(train.get("device_name") or "").strip(),
+            "device_id": _coerce_int(train.get("device_id")),
+            "route": _ssts_train_route_label(train),
+            "time": _ssts_train_time_range_label(train),
+        }
+        if not attachment["train_no"] and not attachment["route"]:
+            continue
+        device_id = attachment.get("device_id")
+        if isinstance(device_id, int):
+            by_device_id.setdefault(device_id, []).append(attachment)
+        rake_key = _ssts_rake_match_key(attachment.get("rake_no"))
+        if rake_key:
+            by_rake_name.setdefault(rake_key, []).append(attachment)
+    return by_device_id, by_rake_name
+
+
+def _ssts_unique_train_attachments(
+    attachments: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    seen: set[tuple[str, str, str]] = set()
+    unique: list[dict[str, object]] = []
+    for attachment in attachments:
+        key = (
+            str(attachment.get("train_no") or ""),
+            str(attachment.get("route") or ""),
+            str(attachment.get("time") or ""),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(attachment)
+    return sorted(unique, key=lambda item: (str(item.get("time") or ""), str(item.get("train_no") or "")))
+
+
+def _build_offline_in_service_rows(
+    latest_snapshots: list[SstsDeviceSnapshot],
+    *,
+    reference_time: datetime,
+    report_day: date,
+) -> tuple[list[dict[str, object]], str]:
+    try:
+        token = fetch_ssts_token()
+        train_rows = fetch_ssts_trains_report(report_day, token)
+    except (urlerror.URLError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
+        return [], str(exc)
+
+    trains_by_device_id, trains_by_rake_name = _build_ssts_train_attachment_maps(train_rows)
+    rows: list[dict[str, object]] = []
+    for snapshot in latest_snapshots:
+        offline_minutes = _snapshot_offline_minutes(snapshot, reference_time)
+        if offline_minutes is None or offline_minutes < SSTS_OFFLINE_IN_SERVICE_MINUTES:
+            continue
+        if not _ssts_is_offline(snapshot, reference_time=reference_time):
+            continue
+        attachments = list(trains_by_device_id.get(snapshot.device_id, []))
+        if not attachments:
+            attachments = list(trains_by_rake_name.get(_ssts_rake_match_key(snapshot.name), []))
+        attachments = _ssts_unique_train_attachments(attachments)
+        if not attachments:
+            continue
+        train_numbers = [str(item.get("train_no") or "") for item in attachments if item.get("train_no")]
+        routes = [str(item.get("route") or "") for item in attachments if item.get("route")]
+        times = [str(item.get("time") or "") for item in attachments if item.get("time")]
+        rows.append(
+            {
+                **_snapshot_to_row(snapshot, reference_time=reference_time),
+                "train_report_day": report_day.strftime("%d-%m-%Y"),
+                "train_count": len(attachments),
+                "train_numbers": ", ".join(train_numbers),
+                "routes": ", ".join(routes),
+                "train_times": ", ".join(times),
+            }
+        )
+    rows.sort(key=lambda row: (-int(row.get("offline_minutes") or 0), str(row.get("name") or "").lower()))
+    return rows, ""
 
 
 def _format_time_value(value: object) -> str:
@@ -4800,6 +4908,9 @@ def build_ssts_report_context(
             "selected_day_run": None,
             "selected_day_recent_offline_rows": [],
             "selected_day_recently_online_rows": [],
+            "offline_in_service_rows": [],
+            "offline_in_service_error": "",
+            "offline_in_service_day_label": "",
         }
 
     latest_snapshots = _snapshots_for_run(session, latest_run.id or 0)
@@ -4827,6 +4938,12 @@ def build_ssts_report_context(
         for row in sorted(latest_snapshots, key=lambda item: _ssts_sort_key(item, current_reference_time))
         if _ssts_is_recently_offline(row, reference_time=current_reference_time)
     ]
+    service_report_day = latest_run_time.astimezone(IST).date()
+    offline_in_service_rows, offline_in_service_error = _build_offline_in_service_rows(
+        latest_snapshots,
+        reference_time=current_reference_time,
+        report_day=service_report_day,
+    )
     recovery_runs = [run for run in runs if run.fetch_status == "ok" and _ensure_utc(run.observed_at) <= latest_run_time]
     snapshots_by_run = {run.id: _snapshots_for_run(session, run.id or 0) for run in recovery_runs}
     history_by_device: dict[int, list[SstsDeviceSnapshot]] = {}
@@ -5253,6 +5370,9 @@ def build_ssts_report_context(
         "selected_day_run": selected_day_run,
         "selected_day_recent_offline_rows": selected_day_recent_offline_rows,
         "selected_day_recently_online_rows": selected_day_recently_online_rows,
+        "offline_in_service_rows": offline_in_service_rows,
+        "offline_in_service_error": offline_in_service_error,
+        "offline_in_service_day_label": service_report_day.strftime("%d-%m-%Y"),
     }
 
 
