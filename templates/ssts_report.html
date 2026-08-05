@@ -696,7 +696,7 @@
                   <td>{{ row.phone }}</td>
                   <td>{{ row.contact }}</td>
                   <td>{{ row.lastupdate_label }}</td>
-                  <td class="pf-speed-alert">{{ row.offline_duration }}</td>
+                  <td class="pf-speed-alert">{{ row.offline_calendar_duration or row.offline_duration }}</td>
                   <td>{{ row.train_report_day }}</td>
                   <td class="crew-alert">{{ row.train_numbers }}</td>
                   <td>{{ row.train_count }}</td>

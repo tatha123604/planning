@@ -2209,6 +2209,7 @@ def _build_offline_in_service_rows(
         rows.append(
             {
                 **_snapshot_to_row(snapshot, reference_time=reference_time),
+                "offline_calendar_duration": _format_calendar_duration_30_day_month(offline_minutes),
                 "train_report_day": report_day.strftime("%d-%m-%Y"),
                 "train_count": len(attachments),
                 "train_numbers": ", ".join(train_numbers),
