@@ -638,7 +638,7 @@
                   <th>Mobile No</th>
                   <th>Cars</th>
                   <th>Last Update</th>
-                  <th>Offline Hours</th>
+                  <th>Offline Duration</th>
                 </tr>
               </thead>
               <tbody>
@@ -649,7 +649,7 @@
                   <td>{{ row.phone }}</td>
                   <td>{{ row.contact }}</td>
                   <td>{{ row.lastupdate_label }}</td>
-                  <td>{{ row.offline_duration }}</td>
+                  <td>{{ row.offline_calendar_duration or row.offline_duration }}</td>
                 </tr>
                 {% else %}
                 <tr>

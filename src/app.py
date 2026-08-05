@@ -1895,6 +1895,25 @@ def _format_duration(minutes: int | None) -> str | None:
     return f"{mins}m"
 
 
+def _format_calendar_duration_30_day_month(minutes: int | None) -> str | None:
+    if minutes is None:
+        return None
+    total_minutes = max(0, int(minutes))
+    total_days = total_minutes // (24 * 60)
+    remainder_minutes = total_minutes % (24 * 60)
+    hours = remainder_minutes // 60
+    mins = remainder_minutes % 60
+    years = total_days // 360
+    months = (total_days % 360) // 30
+    days = total_days % 30
+    return (
+        f"{years} year{'s' if years != 1 else ''}, "
+        f"{months} month{'s' if months != 1 else ''}, "
+        f"{days} day{'s' if days != 1 else ''}, "
+        f"{hours:02d}:{mins:02d}"
+    )
+
+
 def _parse_ssts_timestamp(value: str | None) -> datetime | None:
     if not value:
         return None
@@ -4928,6 +4947,10 @@ def build_ssts_report_context(
         for row in sorted(latest_snapshots, key=lambda item: _ssts_sort_key(item, current_reference_time))
         if not _ssts_is_online_now(row, reference_time=current_reference_time)
     ]
+    for row in current_not_online:
+        row["offline_calendar_duration"] = _format_calendar_duration_30_day_month(
+            row.get("offline_minutes") if isinstance(row.get("offline_minutes"), int) else None
+        )
     current_offline = [
         _snapshot_to_row(row, reference_time=current_reference_time)
         for row in sorted(latest_snapshots, key=lambda item: _ssts_sort_key(item, current_reference_time))
