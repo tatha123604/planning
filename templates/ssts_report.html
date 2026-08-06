@@ -1375,19 +1375,42 @@
         return 'Analysis';
       };
 
+      const getFormAnchor = (form) => {
+        if (form?.id === 'pf-daily-report-form') {
+          return '#pf-daily-report';
+        }
+        if (form?.id === 'pf-detailed-report-form') {
+          return '#pf-detailed-daily-report';
+        }
+        return '';
+      };
+
+      const appendAnchor = (url, anchor) => {
+        if (!url || !anchor || url.includes('#')) return url;
+        return `${url}${anchor}`;
+      };
+
+      const navigateToResult = (url) => {
+        const target = new URL(url, window.location.href);
+        const current = new URL(window.location.href);
+        if (target.pathname === current.pathname && target.search === current.search) {
+          if (target.hash && target.hash !== current.hash) {
+            window.location.hash = target.hash;
+          }
+          window.location.reload();
+          return;
+        }
+        window.location.assign(target.href);
+      };
+
       const getResultUrl = (form, taskId, fallbackUrl) => {
-        if (fallbackUrl) return fallbackUrl;
+        const anchor = getFormAnchor(form);
+        if (fallbackUrl) return appendAnchor(fallbackUrl, anchor);
         const encodedTaskId = encodeURIComponent(taskId);
         const dayInput = form?.querySelector('input[name="pf_day"]');
         const thresholdInput = form?.querySelector('select[name="pf_speed_threshold"]');
         const dayValue = encodeURIComponent(dayInput?.value || document.getElementById('pf-day-select')?.value || '');
         const thresholdValue = encodeURIComponent(thresholdInput?.value || document.getElementById('pf-speed-threshold')?.value || '40');
-        let anchor = '';
-        if (form?.id === 'pf-daily-report-form') {
-          anchor = '#pf-daily-report';
-        } else if (form?.id === 'pf-detailed-report-form') {
-          anchor = '#pf-detailed-daily-report';
-        }
         return `/ssts-report?report_tab=pf_entering&pf_task_id=${encodedTaskId}&pf_day=${dayValue}&pf_speed_threshold=${thresholdValue}${anchor}`;
       };
 
@@ -1461,7 +1484,7 @@
           }
           setProgress(payload.progress, payload.message);
           if (payload.status === 'completed') {
-            window.location.href = getResultUrl(sourceForm, taskId, resultUrl || payload.result_url);
+            navigateToResult(getResultUrl(sourceForm, taskId, resultUrl || payload.result_url));
             return;
           }
           if (payload.status === 'error') {
@@ -1482,7 +1505,7 @@
               || message.includes('Could not read PF analysis status.')
             )
           ) {
-            window.location.href = getResultUrl(sourceForm, taskId, resultUrl);
+            navigateToResult(getResultUrl(sourceForm, taskId, resultUrl));
             return;
           }
           setButtonState(activeButton, false, getButtonLabel(activeButton));
