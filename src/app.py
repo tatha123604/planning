@@ -3203,6 +3203,28 @@ def _pf_speed_matches_threshold(speed: float | None, threshold: int) -> bool:
     return speed >= threshold
 
 
+def _pf_normalize_schedule_time(value: object | None) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    parts = text.split(":")
+    if len(parts) != 3:
+        return text
+    try:
+        hours, minutes, seconds = (int(part) for part in parts)
+    except ValueError:
+        return text
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+
+def _pf_is_through_station_row(row: dict[str, object] | None) -> bool:
+    if not isinstance(row, dict):
+        return False
+    sch_arr = _pf_normalize_schedule_time(row.get("sch_arr"))
+    sch_dep = _pf_normalize_schedule_time(row.get("sch_dep"))
+    return bool(sch_arr and sch_dep and sch_arr == sch_dep)
+
+
 def _pf_numeric_display(value: float | None) -> int | float | str:
     if value is None:
         return ""
@@ -3229,6 +3251,8 @@ def _pf_display_date_sort_key(value: str) -> str:
 
 
 def _pf_counselling_detail_row(row: dict[str, object], fallback_day: date) -> dict[str, object] | None:
+    if _pf_is_through_station_row(row):
+        return None
     pf_speed = _pf_speed_value(row.get("pf_enter_speed"))
     if not _pf_speed_matches_threshold(pf_speed, SSTS_PF_COUNSELLING_SPEED_THRESHOLD):
         return None
@@ -4479,6 +4503,8 @@ def _build_ssts_pf_speed_analysis_result(
     for row in raw_context.get("pf_report_rows", []):
         if not isinstance(row, dict):
             continue
+        if _pf_is_through_station_row(row):
+            continue
         geofence_speed = _pf_speed_value(row.get("geofence_enter_speed"))
         pf_speed = _pf_speed_value(row.get("pf_enter_speed"))
         if (geofence_speed is not None and geofence_speed > 40) or (pf_speed is not None and pf_speed > 40):
@@ -4538,6 +4564,8 @@ def _build_ssts_pf_speed_analysis_result(
     for row in raw_context.get("pf_report_rows", []):
         if not isinstance(row, dict):
             continue
+        if _pf_is_through_station_row(row):
+            continue
         stop_time = str(row.get("stop_time") or "").strip()
         if stop_time == "00:00:00":
             continue
@@ -4557,6 +4585,7 @@ def _build_ssts_pf_speed_analysis_result(
         str(row.get("train_no") or "").strip()
         for row in raw_context.get("pf_report_rows", [])
         if isinstance(row, dict)
+        and not _pf_is_through_station_row(row)
         and _pf_speed_matches_threshold(_pf_speed_value(row.get("pf_enter_speed")), detailed_analysis_threshold)
     }
     chart_points_by_train: dict[str, list[dict[str, object]]] = {train_no: [] for train_no in detailed_candidate_trains if train_no}
@@ -4597,6 +4626,8 @@ def _build_ssts_pf_speed_analysis_result(
         train_kept_rows: list[dict[str, object]] = []
         train_spike_rows: list[dict[str, object]] = []
         for index, row in enumerate(rows):
+            if _pf_is_through_station_row(row):
+                continue
             stop_time = str(row.get("stop_time") or "").strip()
             if stop_time == "00:00:00":
                 continue
@@ -4667,6 +4698,7 @@ def _build_ssts_pf_speed_analysis_result(
     for train_no, rows in all_rows_by_train.items():
         cleaned_rows = [
             dict(row) for row in rows
+            if not _pf_is_through_station_row(row)
             if _pf_row_signature(row) not in suspected_spike_signatures
         ]
         detailed_detail_rows_by_train[train_no] = cleaned_rows
