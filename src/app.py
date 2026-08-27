@@ -3144,6 +3144,7 @@ def build_ssts_pf_entering_context(report_day: date) -> dict[str, object]:
             if canonical_crew_name:
                 row["crew_name"] = canonical_crew_name
         row["crew_id"] = crew_id
+    rows = _pf_deduplicate_report_rows(rows)
     rows.sort(
         key=lambda row: (
             str(row.get("train_no") or ""),
@@ -4152,6 +4153,19 @@ def _pf_row_signature(row: dict[str, object]) -> tuple[str, str, str, str, str, 
         str(row.get("act_dep") or "").strip(),
         str(row.get("pf_enter_speed") or "").strip(),
     )
+
+
+def _pf_deduplicate_report_rows(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    """Keep the first copy of an identical PF station event from the SSTS feed."""
+    unique_rows: list[dict[str, object]] = []
+    seen_signatures: set[tuple[str, str, str, str, str, str]] = set()
+    for row in rows:
+        signature = _pf_row_signature(row)
+        if signature in seen_signatures:
+            continue
+        seen_signatures.add(signature)
+        unique_rows.append(row)
+    return unique_rows
 
 
 def _pf_run_level_spike_reason(
