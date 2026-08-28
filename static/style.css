@@ -689,6 +689,24 @@ ul { padding-left: 18px; margin: 6px 0; }
 .pf-train-detail-card {
   margin-top: 18px;
 }
+.pf-card-toggle {
+  margin-left: auto;
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 191, 108, 0.4);
+  border-radius: 8px;
+  background: rgba(99, 57, 18, 0.45);
+  color: #fff1d6;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.pf-card-toggle:hover {
+  background: rgba(132, 77, 22, 0.65);
+  border-color: rgba(255, 210, 142, 0.7);
+}
+.pf-card-body-collapsed {
+  display: none;
+}
 .detail-date-filter.report-filter-row {
   display: grid;
   grid-template-columns: minmax(220px, 320px) auto;
