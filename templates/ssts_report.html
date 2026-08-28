@@ -1319,7 +1319,7 @@
           </div>
           <div class="table-wrap">
             {% set pf_smart_output_report_date = pf_smart_entry_rows[0].report_date if pf_smart_entry_rows else pf_report_day_label %}
-            <table class="employee-table paged" data-exportable="true" data-export-name="ssts_pf_smart_output_{{ pf_report_day }}_{{ pf_speed_threshold }}" data-export-title="SSTS Smart PF Output" data-export-report-date="Date: {{ pf_smart_output_report_date }} | Speed: {{ pf_speed_threshold_label }} KMPH | Distance: {{ pf_smart_entry_distance_target }}m +/- {{ pf_smart_entry_distance_tolerance }}m">
+            <table class="employee-table paged" data-exportable="true" data-export-name="ssts_pf_smart_output_{{ pf_report_day }}_{{ pf_speed_threshold }}" data-export-title="SSTS Smart PF Output" data-export-distance-target="{{ pf_smart_entry_distance_target }}" data-export-report-date="Date: {{ pf_smart_output_report_date }} | Speed: {{ pf_speed_threshold_label }} KMPH | Distance: {{ pf_smart_entry_distance_target }}m +/- {{ pf_smart_entry_distance_tolerance }}m">
               <thead>
                 <tr>
                   <th class="skip-pdf-col">Select</th>
@@ -1730,6 +1730,7 @@
 
         const applyRange = () => {
           const distanceRange = Number(rangeSelect.value);
+          const distanceTarget = Number(smartTable.dataset.exportDistanceTarget);
           let visibleRows = 0;
           rows.forEach((row) => {
             const distanceDelta = Number(row.dataset.smartDistanceDelta);
@@ -1740,6 +1741,12 @@
           emptyRow.hidden = visibleRows > 0;
           if (matchCount) {
             matchCount.textContent = `Matched Rows ${visibleRows}`;
+          }
+          if (Number.isFinite(distanceTarget)) {
+            smartTable.dataset.exportReportDate = smartTable.dataset.exportReportDate.replace(
+              /Distance: \d+m \+\/- \d+m/,
+              `Distance: ${distanceTarget}m +/- ${distanceRange}m`
+            );
           }
           smartTable.dispatchEvent(new CustomEvent('table-pager:refresh', { detail: { resetPage: true } }));
         };
