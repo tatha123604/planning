@@ -1130,36 +1130,34 @@
           <div class="card-head-inline">
             <div>
               <h3>Daily Driver Analysis Statistics</h3>
-              <p>Daily unique drivers and cleaned PF entering cases at {{ pf_weekly_counselling_threshold }} KMPH and above for the stored last 7 days.</p>
+              <p>Unique crew counted from the complete SSTS PF source data, without applying speed, stoppage, or spike filters.</p>
             </div>
           </div>
           <div class="summary-strip pf-summary-strip">
-            <span class="summary-chip">Unique Drivers {{ pf_daily_driver_statistics_unique_drivers }}</span>
-            <span class="summary-chip">Clean Cases {{ pf_daily_driver_statistics_case_count }}</span>
+            <span class="summary-chip">Selected Day Unique Crew {{ pf_daily_driver_statistics_unique_crews }}</span>
+            <span class="summary-chip">Selected Day Source Trains {{ pf_daily_driver_statistics_source_trains }}</span>
           </div>
           <div class="table-wrap">
-            <table class="employee-table paged" data-exportable="true" data-export-name="ssts_pf_daily_driver_statistics_{{ pf_weekly_counselling_start }}_to_{{ pf_weekly_counselling_end }}" data-export-title="SSTS PF Daily Driver Analysis Statistics" data-export-report-date="Date Range: {{ pf_weekly_counselling_start_label }} to {{ pf_weekly_counselling_end_label }} | Speed Range: {{ pf_weekly_counselling_threshold }} KMPH and above">
+            <table class="employee-table paged" data-exportable="true" data-export-name="ssts_pf_daily_driver_statistics_{{ pf_weekly_counselling_start }}_to_{{ pf_weekly_counselling_end }}" data-export-title="SSTS PF Daily Driver Analysis Statistics" data-export-report-date="Date Range: {{ pf_weekly_counselling_start_label }} to {{ pf_weekly_counselling_end_label }} | Source: Complete SSTS PF data">
               <thead>
                 <tr>
                   <th>Date</th>
-                  <th>Unique Drivers Analyzed</th>
-                  <th>Clean PF Cases</th>
-                  <th>Trains</th>
-                  <th>Max PF Speed</th>
+                  <th>Unique SSTS Crew Analyzed</th>
+                  <th>Source Trains</th>
+                  <th>Source Station Records</th>
                 </tr>
               </thead>
               <tbody>
                 {% for row in pf_daily_driver_statistics_rows %}
                 <tr>
                   <td>{{ row.report_date }}</td>
-                  <td class="crew-alert">{{ row.driver_count }}</td>
-                  <td class="pf-speed-alert">{{ row.case_count }}</td>
-                  <td>{{ row.train_count }}</td>
-                  <td class="pf-speed-alert">{{ row.max_pf_enter_speed }}</td>
+                  <td class="crew-alert">{{ row.unique_crew_count }}</td>
+                  <td>{{ row.source_train_count }}</td>
+                  <td>{{ row.source_station_count }}</td>
                 </tr>
                 {% else %}
                 <tr>
-                  <td colspan="5">No stored PF driver-analysis statistics found for this date range.</td>
+                  <td colspan="4">No stored PF driver-analysis statistics found for this date range.</td>
                 </tr>
                 {% endfor %}
               </tbody>
@@ -1219,54 +1217,6 @@
                 {% else %}
                 <tr>
                   <td colspan="10">No crew found with PF Enter Speed {{ pf_weekly_counselling_threshold }} KMPH and above in the last 7 days.</td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-          <div class="table-wrap">
-            <table class="employee-table paged" data-exportable="true" data-export-name="ssts_pf_counselling_priority_details_{{ pf_weekly_counselling_start }}_to_{{ pf_weekly_counselling_end }}" data-export-title="SSTS PF Counselling Priority Detailed List" data-export-report-date="Date Range: {{ pf_weekly_counselling_start_label }} to {{ pf_weekly_counselling_end_label }} | Speed Range: {{ pf_weekly_counselling_threshold }} KMPH and above">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Train No</th>
-                  <th>Rake No</th>
-                  <th>Crew ID</th>
-                  <th>Crew Name</th>
-                  <th>ORG</th>
-                  <th>DEST</th>
-                  <th>Station</th>
-                  <th>Sch Arr</th>
-                  <th>Sch Dep</th>
-                  <th>Stop Time</th>
-                  <th>Geofence Enter Speed</th>
-                  <th>PF Enter Speed (KMPH)</th>
-                  <th>PF Enter Distance</th>
-                  <th>Remarks</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for row in pf_weekly_counselling_detail_rows %}
-                <tr>
-                  <td>{{ row.report_date }}</td>
-                  <td class="crew-alert">{{ row.train_no }}</td>
-                  <td>{{ row.rake_no }}</td>
-                  <td class="crew-alert">{{ row.crew_id }}</td>
-                  <td class="crew-alert">{{ row.crew_name }}</td>
-                  <td>{{ row.org }}</td>
-                  <td>{{ row.dest }}</td>
-                  <td class="crew-alert"><span class="station-highlight">{{ row.station }}</span></td>
-                  <td>{{ row.sch_arr }}</td>
-                  <td>{{ row.sch_dep }}</td>
-                  <td class="crew-alert">{{ row.stop_time }}</td>
-                  <td>{{ row.geofence_enter_speed }}</td>
-                  <td class="pf-speed-alert">{{ row.pf_enter_speed }}</td>
-                  <td>{{ row.pf_distance }}</td>
-                  <td>{{ row.remarks }}</td>
-                </tr>
-                {% else %}
-                <tr>
-                  <td colspan="15">No detailed counselling priority rows found for this date range.</td>
                 </tr>
                 {% endfor %}
               </tbody>

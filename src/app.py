@@ -52,6 +52,7 @@ from .models import (
     Employee,
     Requirement,
     SstsDeviceSnapshot,
+    SstsPfDailyAnalysisStats,
     SstsPfCounsellingHistory,
     SstsSnapshotRun,
 )
@@ -3485,66 +3486,65 @@ def _build_pf_counselling_summary_rows(
     )
 
 
-def _build_pf_daily_driver_statistics(
-    detail_rows: list[dict[str, object]],
-) -> tuple[list[dict[str, object]], int, int]:
-    """Summarize unique PF-analysis drivers per stored report day."""
-    daily_stats: dict[str, dict[str, object]] = {}
-    seen_cases: set[tuple[str, tuple[str, str, str, str, str, str]]] = set()
-    for row in detail_rows:
-        report_date = str(row.get("report_date") or "").strip()
-        report_date_iso = str(row.get("report_date_iso") or "").strip()
-        if not report_date or not report_date_iso:
+def _build_pf_daily_source_statistics(rows: list[dict[str, object]]) -> dict[str, int]:
+    """Count all valid SSTS PF crew, independent of speed or spike filtering."""
+    crew_keys: set[str] = set()
+    train_numbers: set[str] = set()
+    station_count = 0
+    for row in rows:
+        if not isinstance(row, dict) or str(row.get("status_message") or "").strip():
             continue
-        driver_key = _pf_counselling_group_key(row)
-        if driver_key in {"ID:", "NAME:"}:
-            continue
-        case_key = (report_date_iso, _pf_row_signature(row))
-        if case_key in seen_cases:
-            continue
-        seen_cases.add(case_key)
-        summary = daily_stats.setdefault(
-            report_date_iso,
-            {
-                "report_date": report_date,
-                "report_date_iso": report_date_iso,
-                "drivers": set(),
-                "trains": set(),
-                "case_count": 0,
-                "max_pf_enter_speed": None,
-            },
-        )
-        drivers = summary["drivers"]
-        if isinstance(drivers, set):
-            drivers.add(driver_key)
         train_no = str(row.get("train_no") or "").strip()
-        trains = summary["trains"]
-        if train_no and isinstance(trains, set):
-            trains.add(train_no)
-        summary["case_count"] = int(summary["case_count"]) + 1
-        speed = _pf_speed_value(row.get("pf_enter_speed"))
-        current_max = summary["max_pf_enter_speed"]
-        if speed is not None and (current_max is None or speed > current_max):
-            summary["max_pf_enter_speed"] = speed
-
-    stats_rows = [
-        {
-            "report_date": summary["report_date"],
-            "report_date_iso": report_date_iso,
-            "driver_count": len(summary["drivers"]),
-            "case_count": summary["case_count"],
-            "train_count": len(summary["trains"]),
-            "max_pf_enter_speed": _pf_numeric_display(summary["max_pf_enter_speed"]),
-        }
-        for report_date_iso, summary in daily_stats.items()
-    ]
-    stats_rows.sort(key=lambda row: str(row["report_date_iso"]), reverse=True)
-    unique_drivers = {
-        driver_key
-        for summary in daily_stats.values()
-        for driver_key in summary["drivers"]
+        if train_no:
+            train_numbers.add(train_no)
+        if str(row.get("station") or "").strip():
+            station_count += 1
+        crew_key = _pf_counselling_group_key(row)
+        if crew_key not in {"ID:", "NAME:"}:
+            crew_keys.add(crew_key)
+    return {
+        "unique_crew_count": len(crew_keys),
+        "source_train_count": len(train_numbers),
+        "source_station_count": station_count,
     }
-    return stats_rows, len(unique_drivers), sum(int(row["case_count"]) for row in stats_rows)
+
+
+def _save_ssts_pf_daily_source_statistics(report_day: date, rows: list[dict[str, object]]) -> None:
+    statistics = _build_pf_daily_source_statistics(rows)
+    with Session(engine) as session:
+        existing_rows = session.exec(
+            select(SstsPfDailyAnalysisStats).where(SstsPfDailyAnalysisStats.report_date == report_day)
+        ).all()
+        for existing in existing_rows:
+            session.delete(existing)
+        session.add(
+            SstsPfDailyAnalysisStats(
+                report_date=report_day,
+                report_date_label=report_day.strftime("%d-%m-%Y"),
+                **statistics,
+            )
+        )
+        session.commit()
+
+
+def _load_ssts_pf_daily_source_statistics(start_day: date, end_day: date) -> list[dict[str, object]]:
+    with Session(engine) as session:
+        history_rows = session.exec(
+            select(SstsPfDailyAnalysisStats)
+            .where(SstsPfDailyAnalysisStats.report_date >= start_day)
+            .where(SstsPfDailyAnalysisStats.report_date <= end_day)
+            .order_by(SstsPfDailyAnalysisStats.report_date.desc())
+        ).all()
+    return [
+        {
+            "report_date": row.report_date_label or row.report_date.strftime("%d-%m-%Y"),
+            "report_date_iso": row.report_date.isoformat(),
+            "unique_crew_count": row.unique_crew_count,
+            "source_train_count": row.source_train_count,
+            "source_station_count": row.source_station_count,
+        }
+        for row in history_rows
+    ]
 
 
 def _build_ssts_pf_weekly_counselling_context(
@@ -3599,8 +3599,17 @@ def _build_ssts_pf_weekly_counselling_context(
 
     detail_rows = _sort_pf_counselling_detail_rows(detail_rows)
     summary_rows = _build_pf_counselling_summary_rows(detail_rows)
-    daily_driver_statistics_rows, daily_driver_statistics_unique_drivers, daily_driver_statistics_case_count = (
-        _build_pf_daily_driver_statistics(detail_rows)
+    try:
+        daily_driver_statistics_rows = _load_ssts_pf_daily_source_statistics(start_day, report_day)
+    except Exception as exc:
+        daily_driver_statistics_rows = []
+        errors.append(f"Stored daily PF source statistics could not be loaded: {exc}")
+    current_day_statistics = next(
+        (
+            row for row in daily_driver_statistics_rows
+            if str(row.get("report_date_iso") or "") == report_day.isoformat()
+        ),
+        {},
     )
     missing_days = [
         day.strftime("%d-%m-%Y")
@@ -3619,8 +3628,8 @@ def _build_ssts_pf_weekly_counselling_context(
         "pf_weekly_counselling_loaded_days": ", ".join(sorted(loaded_days, key=_pf_display_date_sort_key)),
         "pf_weekly_counselling_missing_days": ", ".join(missing_days),
         "pf_daily_driver_statistics_rows": daily_driver_statistics_rows,
-        "pf_daily_driver_statistics_unique_drivers": daily_driver_statistics_unique_drivers,
-        "pf_daily_driver_statistics_case_count": daily_driver_statistics_case_count,
+        "pf_daily_driver_statistics_unique_crews": int(current_day_statistics.get("unique_crew_count") or 0),
+        "pf_daily_driver_statistics_source_trains": int(current_day_statistics.get("source_train_count") or 0),
     }
 
 
@@ -4791,6 +4800,13 @@ def _build_ssts_pf_speed_analysis_result(
         )
     except Exception as exc:
         report_progress(96, f"PF counselling history save skipped: {exc}")
+    try:
+        _save_ssts_pf_daily_source_statistics(
+            report_day,
+            [dict(row) for row in raw_context.get("pf_report_rows", []) if isinstance(row, dict)],
+        )
+    except Exception as exc:
+        report_progress(96, f"PF source statistics save skipped: {exc}")
     report_progress(96, "Building 7-day counselling priority...")
     weekly_counselling_context = _build_ssts_pf_weekly_counselling_context(
         report_day,
@@ -6844,8 +6860,8 @@ def _build_ssts_report_response(
         "pf_weekly_counselling_loaded_days": "",
         "pf_weekly_counselling_missing_days": "",
         "pf_daily_driver_statistics_rows": [],
-        "pf_daily_driver_statistics_unique_drivers": 0,
-        "pf_daily_driver_statistics_case_count": 0,
+        "pf_daily_driver_statistics_unique_crews": 0,
+        "pf_daily_driver_statistics_source_trains": 0,
         "pf_analysis_summary_rows": [],
         "pf_analysis_selected_rows": [],
         "pf_analysis_selected_train": "",

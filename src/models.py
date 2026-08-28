@@ -223,3 +223,13 @@ class SstsPfCounsellingHistory(SQLModel, table=True):
     remarks: str | None = None
     chart_link: str | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class SstsPfDailyAnalysisStats(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    report_date: date = Field(index=True)
+    report_date_label: str
+    unique_crew_count: int = 0
+    source_train_count: int = 0
+    source_station_count: int = 0
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
