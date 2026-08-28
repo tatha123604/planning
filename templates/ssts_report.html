@@ -1347,7 +1347,7 @@
                 {% for row in pf_smart_entry_rows %}
                 <tr data-smart-distance-delta="{{ row.pf_distance_delta }}">
                   <td class="skip-pdf-col">
-                    <input type="checkbox" class="skip-pdf-checkbox" data-pdf-select-row aria-label="Select this row for PDF export" />
+                    <input type="checkbox" class="skip-pdf-checkbox" data-skip-pdf-row aria-label="Skip this row in PDF export" />
                   </td>
                   <td class="skip-pdf-col">
                     {% if row.chart_link %}

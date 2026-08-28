@@ -656,10 +656,16 @@ def _format_export_report_date_for_filename(value: object | None) -> str:
 
 def _build_pdf_export_filename(title: object | None, report_date_label: object | None) -> str:
     safe_title = _sanitize_export_title(title)
-    if safe_title in {"SSTS PF Entering Speed Daily Report", "SSTS PF Detailed Daily Report"}:
+    report_filenames = {
+        "SSTS PF Entering Speed Daily Report": "ssts_pf_entering_speed_daily_report",
+        "SSTS PF Detailed Daily Report": "ssts_pf_detailed_daily_report",
+        "SSTS Smart PF Output": "ssts_pf_detailed_daily_report",
+    }
+    filename_prefix = report_filenames.get(safe_title)
+    if filename_prefix:
         report_date_suffix = _format_export_report_date_for_filename(report_date_label)
         if report_date_suffix:
-            return f"{_export_filename_slug(safe_title)}_{report_date_suffix}.pdf"
+            return f"{filename_prefix}_{report_date_suffix}.pdf"
     return _sanitize_export_filename(title, "pdf")
 
 
