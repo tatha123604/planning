@@ -1175,6 +1175,8 @@ SSTS_PF_REPORT_CACHE_TTL_MINUTES = 20
 SSTS_PF_ANALYSIS_TASK_TTL_MINUTES = 180
 SSTS_PF_COUNSELLING_LOOKBACK_DAYS = 7
 SSTS_PF_COUNSELLING_SPEED_THRESHOLD = 42
+SSTS_PF_SMART_ENTRY_DISTANCE_TARGET_M = 265
+SSTS_PF_SMART_ENTRY_DISTANCE_TOLERANCE_M = 25
 SSTS_EXCLUDED_RAKE_NAMES = {"TEST1", "TEST2"}
 SSTS_PF_SPIKE_FILTER_TRAIN_OVERRIDES: dict[str, set[str]] = {
     "2026-05-29": {
@@ -4256,6 +4258,38 @@ def _pf_deduplicate_report_rows(rows: list[dict[str, object]]) -> list[dict[str,
     return unique_rows
 
 
+def _build_pf_smart_entry_rows(
+    rows_by_train: dict[str, list[dict[str, object]]],
+    speed_threshold: int,
+) -> list[dict[str, object]]:
+    """Return clean PF events nearest the 265m platform-entry reference point."""
+    target_distance = float(SSTS_PF_SMART_ENTRY_DISTANCE_TARGET_M)
+    tolerance = float(SSTS_PF_SMART_ENTRY_DISTANCE_TOLERANCE_M)
+    smart_rows: list[dict[str, object]] = []
+    for train_rows in rows_by_train.values():
+        for row in train_rows:
+            pf_speed = _pf_speed_value(row.get("pf_enter_speed"))
+            pf_distance = _pf_speed_value(row.get("pf_distance"))
+            if not _pf_speed_matches_threshold(pf_speed, speed_threshold) or pf_distance is None:
+                continue
+            distance_delta = abs(pf_distance - target_distance)
+            if distance_delta > tolerance:
+                continue
+            smart_row = dict(row)
+            smart_row["pf_distance_delta"] = _pf_numeric_display(distance_delta)
+            smart_rows.append(smart_row)
+    return sorted(
+        smart_rows,
+        key=lambda row: (
+            _pf_speed_value(row.get("pf_distance_delta")) or 0,
+            -(_pf_speed_value(row.get("pf_enter_speed")) or 0),
+            str(row.get("train_no") or ""),
+            999999 if row.get("srl_no") in ("", None) else int(row.get("srl_no") or 0),
+            str(row.get("station") or ""),
+        ),
+    )
+
+
 def _pf_run_level_spike_reason(
     rows: list[dict[str, object]],
     chart_points: list[dict[str, object]] | None,
@@ -4803,6 +4837,10 @@ def _build_ssts_pf_speed_analysis_result(
             if _pf_row_signature(row) not in suspected_spike_signatures
         ]
         detailed_detail_rows_by_train[train_no] = cleaned_rows
+    pf_smart_entry_rows = _build_pf_smart_entry_rows(
+        detailed_detail_rows_by_train,
+        speed_threshold,
+    )
     try:
         _save_ssts_pf_counselling_history(
             report_day,
@@ -4836,6 +4874,9 @@ def _build_ssts_pf_speed_analysis_result(
         "pf_detailed_daily_report_rows": detailed_daily_report_rows,
         "pf_detailed_daily_spike_count": len(suspected_spike_rows),
         "pf_detailed_daily_spike_rows": suspected_spike_rows,
+        "pf_smart_entry_rows": pf_smart_entry_rows,
+        "pf_smart_entry_distance_target": SSTS_PF_SMART_ENTRY_DISTANCE_TARGET_M,
+        "pf_smart_entry_distance_tolerance": SSTS_PF_SMART_ENTRY_DISTANCE_TOLERANCE_M,
         "pf_analysis_summary_rows": summary_rows,
         "pf_analysis_detail_rows_by_train": detail_rows_by_train,
         "pf_detailed_detail_rows_by_train": detailed_detail_rows_by_train,
@@ -6857,6 +6898,9 @@ def _build_ssts_report_response(
         "pf_detailed_daily_report_rows": [],
         "pf_detailed_daily_spike_count": 0,
         "pf_detailed_daily_spike_rows": [],
+        "pf_smart_entry_rows": [],
+        "pf_smart_entry_distance_target": SSTS_PF_SMART_ENTRY_DISTANCE_TARGET_M,
+        "pf_smart_entry_distance_tolerance": SSTS_PF_SMART_ENTRY_DISTANCE_TOLERANCE_M,
         "pf_weekly_counselling_start": (pf_day_value - timedelta(days=SSTS_PF_COUNSELLING_LOOKBACK_DAYS - 1)).isoformat(),
         "pf_weekly_counselling_end": pf_day_value.isoformat(),
         "pf_weekly_counselling_start_label": (
