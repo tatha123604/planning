@@ -3205,6 +3205,12 @@ def _pf_speed_matches_threshold(speed: float | None, threshold: int) -> bool:
     return speed >= threshold
 
 
+def _pf_is_platform_entry_measurement(row: dict[str, object]) -> bool:
+    """PF speed is sampled near 265m before a 12-coach train reaches the platform."""
+    pf_distance = _pf_speed_value(row.get("pf_distance"))
+    return pf_distance is not None and 240 <= pf_distance <= 320
+
+
 def _pf_normalize_schedule_time(value: object | None) -> str:
     text = str(value or "").strip()
     if not text:
@@ -3777,6 +3783,11 @@ def _pf_suspected_spike_reason(
             ):
                 return "Moderate-speed chart showed a short-lived local spike before settling back."
 
+        # A 12-coach train is measured roughly 265m before its platform stop.
+        # Normal braking to zero after that point is expected, not a spike signal.
+        if _pf_is_platform_entry_measurement(row):
+            return None
+
         entry_window_start = max(0, window_end - 12)
         entry_window_end = min(len(chart_points) - 1, spike_window_end + 3)
         entry_window_speeds = [
@@ -4280,6 +4291,8 @@ def _pf_run_level_spike_reason(
     short_mismatch_rows = 0
     short_stop_rows = 0
     for row in rows:
+        if _pf_is_platform_entry_measurement(row):
+            continue
         stop_time_seconds = _parse_hms_seconds(row.get("stop_time"))
         pf_speed = _pf_speed_value(row.get("pf_enter_speed"))
         geofence_speed = _pf_speed_value(row.get("geofence_enter_speed"))
@@ -4289,11 +4302,8 @@ def _pf_run_level_spike_reason(
         candidate_rows += 1
         if stop_time_seconds <= 60:
             short_stop_rows += 1
-        pf_distance = _pf_speed_value(row.get("pf_distance"))
         if (
-            pf_distance is not None
-            and 240 <= pf_distance <= 320
-            and stop_time_seconds <= 45
+            stop_time_seconds <= 45
             and pf_speed is not None
             and geofence_speed is not None
             and abs(pf_speed - geofence_speed) >= 20
