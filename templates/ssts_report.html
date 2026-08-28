@@ -836,6 +836,8 @@
           <span class="summary-chip">Missing Data {{ pf_analysis_missing_count }}</span>
         </div>
         <section class="pf-analysis-grid">
+          <details class="pf-table-collapse" open>
+          <summary>40+ Train Summary</summary>
           <div class="table-wrap">
           <table class="employee-table paged" data-exportable="true" data-export-name="ssts_pf_summary_{{ pf_report_day }}">
             <thead>
@@ -878,6 +880,7 @@
             </tbody>
           </table>
           </div>
+          </details>
         </section>
         <section class="card pf-train-detail-card" id="pf-train-detail">
           <div class="card-head-inline">
@@ -1124,6 +1127,44 @@
             </table>
           </div>
           {% endif %}
+          <div class="card-head-inline">
+            <div>
+              <h3>Daily Driver Analysis Statistics</h3>
+              <p>Daily unique drivers and cleaned PF entering cases at {{ pf_weekly_counselling_threshold }} KMPH and above for the stored last 7 days.</p>
+            </div>
+          </div>
+          <div class="summary-strip pf-summary-strip">
+            <span class="summary-chip">Unique Drivers {{ pf_daily_driver_statistics_unique_drivers }}</span>
+            <span class="summary-chip">Clean Cases {{ pf_daily_driver_statistics_case_count }}</span>
+          </div>
+          <div class="table-wrap">
+            <table class="employee-table paged" data-exportable="true" data-export-name="ssts_pf_daily_driver_statistics_{{ pf_weekly_counselling_start }}_to_{{ pf_weekly_counselling_end }}" data-export-title="SSTS PF Daily Driver Analysis Statistics" data-export-report-date="Date Range: {{ pf_weekly_counselling_start_label }} to {{ pf_weekly_counselling_end_label }} | Speed Range: {{ pf_weekly_counselling_threshold }} KMPH and above">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Unique Drivers Analyzed</th>
+                  <th>Clean PF Cases</th>
+                  <th>Trains</th>
+                  <th>Max PF Speed</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in pf_daily_driver_statistics_rows %}
+                <tr>
+                  <td>{{ row.report_date }}</td>
+                  <td class="crew-alert">{{ row.driver_count }}</td>
+                  <td class="pf-speed-alert">{{ row.case_count }}</td>
+                  <td>{{ row.train_count }}</td>
+                  <td class="pf-speed-alert">{{ row.max_pf_enter_speed }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                  <td colspan="5">No stored PF driver-analysis statistics found for this date range.</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
           <div class="card-head-inline">
             <div>
               <h3>Counselling Priority - Last 7 Days</h3>
@@ -1572,6 +1613,29 @@
   <script src="/static/sidebar-toggle.js?v={{ asset_ver }}"></script>
   <script>
     (() => {
+      const wirePfTableCollapses = () => {
+        const tables = document.querySelectorAll(
+          '.pf-analysis-grid table.employee-table, #pf-train-detail table.employee-table, #pf-daily-report table.employee-table, #pf-detailed-daily-report table.employee-table',
+        );
+        tables.forEach((table) => {
+          if (table.closest('details')) return;
+          const tableWrap = table.closest('.table-wrap');
+          if (!tableWrap || tableWrap.dataset.collapseBound) return;
+          tableWrap.dataset.collapseBound = '1';
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'pf-table-toggle';
+          button.textContent = 'Collapse table';
+          button.setAttribute('aria-expanded', 'true');
+          button.addEventListener('click', () => {
+            const collapsed = tableWrap.classList.toggle('is-collapsed');
+            button.textContent = collapsed ? 'Expand table' : 'Collapse table';
+            button.setAttribute('aria-expanded', String(!collapsed));
+          });
+          tableWrap.parentNode?.insertBefore(button, tableWrap);
+        });
+      };
+
       const wirePasswordGate = () => {
         document.querySelectorAll('[data-password-gated-form]').forEach((form) => {
           const passwordInput = form.querySelector('[data-password-gated-input]');
@@ -1592,9 +1656,13 @@
       };
 
       if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', wirePasswordGate);
+        document.addEventListener('DOMContentLoaded', () => {
+          wirePasswordGate();
+          wirePfTableCollapses();
+        });
       } else {
         wirePasswordGate();
+        wirePfTableCollapses();
       }
     })();
   </script>

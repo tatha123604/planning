@@ -487,6 +487,29 @@ button:hover { filter: brightness(1.05); }
     linear-gradient(160deg, rgba(29, 24, 17, 0.94), rgba(18, 20, 31, 0.95));
   border-color: rgba(255, 191, 108, 0.22);
 }
+.pf-table-collapse > summary {
+  cursor: pointer;
+  margin: 2px 0 10px;
+  color: #d9f5ff;
+  font-weight: 700;
+}
+.pf-table-toggle {
+  margin: 2px 0 10px;
+  padding: 7px 12px;
+  border: 1px solid rgba(123, 215, 255, 0.38);
+  border-radius: 8px;
+  background: rgba(18, 66, 94, 0.62);
+  color: #d9f5ff;
+  font-size: 12px;
+  font-weight: 700;
+}
+.pf-table-toggle:hover {
+  background: rgba(23, 94, 132, 0.78);
+  border-color: rgba(160, 231, 255, 0.6);
+}
+.table-wrap.is-collapsed {
+  display: none;
+}
 .ssts-online-section details > summary {
   background: linear-gradient(135deg, rgba(24, 80, 52, 0.9), rgba(19, 121, 88, 0.72));
   border-color: rgba(122, 239, 180, 0.32);

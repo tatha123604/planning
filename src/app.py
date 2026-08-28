@@ -3485,6 +3485,68 @@ def _build_pf_counselling_summary_rows(
     )
 
 
+def _build_pf_daily_driver_statistics(
+    detail_rows: list[dict[str, object]],
+) -> tuple[list[dict[str, object]], int, int]:
+    """Summarize unique PF-analysis drivers per stored report day."""
+    daily_stats: dict[str, dict[str, object]] = {}
+    seen_cases: set[tuple[str, tuple[str, str, str, str, str, str]]] = set()
+    for row in detail_rows:
+        report_date = str(row.get("report_date") or "").strip()
+        report_date_iso = str(row.get("report_date_iso") or "").strip()
+        if not report_date or not report_date_iso:
+            continue
+        driver_key = _pf_counselling_group_key(row)
+        if driver_key in {"ID:", "NAME:"}:
+            continue
+        case_key = (report_date_iso, _pf_row_signature(row))
+        if case_key in seen_cases:
+            continue
+        seen_cases.add(case_key)
+        summary = daily_stats.setdefault(
+            report_date_iso,
+            {
+                "report_date": report_date,
+                "report_date_iso": report_date_iso,
+                "drivers": set(),
+                "trains": set(),
+                "case_count": 0,
+                "max_pf_enter_speed": None,
+            },
+        )
+        drivers = summary["drivers"]
+        if isinstance(drivers, set):
+            drivers.add(driver_key)
+        train_no = str(row.get("train_no") or "").strip()
+        trains = summary["trains"]
+        if train_no and isinstance(trains, set):
+            trains.add(train_no)
+        summary["case_count"] = int(summary["case_count"]) + 1
+        speed = _pf_speed_value(row.get("pf_enter_speed"))
+        current_max = summary["max_pf_enter_speed"]
+        if speed is not None and (current_max is None or speed > current_max):
+            summary["max_pf_enter_speed"] = speed
+
+    stats_rows = [
+        {
+            "report_date": summary["report_date"],
+            "report_date_iso": report_date_iso,
+            "driver_count": len(summary["drivers"]),
+            "case_count": summary["case_count"],
+            "train_count": len(summary["trains"]),
+            "max_pf_enter_speed": _pf_numeric_display(summary["max_pf_enter_speed"]),
+        }
+        for report_date_iso, summary in daily_stats.items()
+    ]
+    stats_rows.sort(key=lambda row: str(row["report_date_iso"]), reverse=True)
+    unique_drivers = {
+        driver_key
+        for summary in daily_stats.values()
+        for driver_key in summary["drivers"]
+    }
+    return stats_rows, len(unique_drivers), sum(int(row["case_count"]) for row in stats_rows)
+
+
 def _build_ssts_pf_weekly_counselling_context(
     report_day: date,
     current_raw_context: dict[str, object] | None = None,
@@ -3537,6 +3599,9 @@ def _build_ssts_pf_weekly_counselling_context(
 
     detail_rows = _sort_pf_counselling_detail_rows(detail_rows)
     summary_rows = _build_pf_counselling_summary_rows(detail_rows)
+    daily_driver_statistics_rows, daily_driver_statistics_unique_drivers, daily_driver_statistics_case_count = (
+        _build_pf_daily_driver_statistics(detail_rows)
+    )
     missing_days = [
         day.strftime("%d-%m-%Y")
         for day in report_days
@@ -3553,6 +3618,9 @@ def _build_ssts_pf_weekly_counselling_context(
         "pf_weekly_counselling_error_rows": errors,
         "pf_weekly_counselling_loaded_days": ", ".join(sorted(loaded_days, key=_pf_display_date_sort_key)),
         "pf_weekly_counselling_missing_days": ", ".join(missing_days),
+        "pf_daily_driver_statistics_rows": daily_driver_statistics_rows,
+        "pf_daily_driver_statistics_unique_drivers": daily_driver_statistics_unique_drivers,
+        "pf_daily_driver_statistics_case_count": daily_driver_statistics_case_count,
     }
 
 
@@ -6775,6 +6843,9 @@ def _build_ssts_report_response(
         "pf_weekly_counselling_error_rows": [],
         "pf_weekly_counselling_loaded_days": "",
         "pf_weekly_counselling_missing_days": "",
+        "pf_daily_driver_statistics_rows": [],
+        "pf_daily_driver_statistics_unique_drivers": 0,
+        "pf_daily_driver_statistics_case_count": 0,
         "pf_analysis_summary_rows": [],
         "pf_analysis_selected_rows": [],
         "pf_analysis_selected_train": "",
