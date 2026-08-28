@@ -1302,14 +1302,24 @@
               </p>
             </div>
           </div>
+          <div class="smart-output-range">
+            <label for="smart-output-distance-range">Distance Range from {{ pf_smart_entry_distance_target }}m</label>
+            <select id="smart-output-distance-range" aria-label="Smart output distance range">
+              <option value="5">+/- 5m</option>
+              <option value="10">+/- 10m</option>
+              <option value="15">+/- 15m</option>
+              <option value="20">+/- 20m</option>
+              <option value="25" selected>+/- 25m</option>
+            </select>
+          </div>
           <div class="summary-strip pf-summary-strip">
             <span class="summary-chip">Speed Filter {{ pf_speed_threshold_label }}</span>
             <span class="summary-chip">Reference {{ pf_smart_entry_distance_target }}m +/- {{ pf_smart_entry_distance_tolerance }}m</span>
-            <span class="summary-chip">Matched Rows {{ pf_smart_entry_rows|length }}</span>
+            <span class="summary-chip" id="smart-output-match-count">Matched Rows {{ pf_smart_entry_rows|length }}</span>
           </div>
           <div class="table-wrap">
             {% set pf_smart_output_report_date = pf_smart_entry_rows[0].report_date if pf_smart_entry_rows else pf_report_day_label %}
-            <table class="employee-table paged" data-exportable="true" data-export-name="ssts_pf_smart_output_{{ pf_report_day }}_{{ pf_speed_threshold }}" data-export-title="SSTS Smart PF Output" data-export-report-date="Date: {{ pf_smart_output_report_date }} | Speed: {{ pf_speed_threshold_label }} KMPH | Distance: {{ pf_smart_entry_distance_target }}m +/- {{ pf_smart_entry_distance_tolerance }}m">
+            <table class="employee-table" data-exportable="true" data-export-name="ssts_pf_smart_output_{{ pf_report_day }}_{{ pf_speed_threshold }}" data-export-title="SSTS Smart PF Output" data-export-report-date="Date: {{ pf_smart_output_report_date }} | Speed: {{ pf_speed_threshold_label }} KMPH | Distance: {{ pf_smart_entry_distance_target }}m +/- {{ pf_smart_entry_distance_tolerance }}m">
               <thead>
                 <tr>
                   <th class="skip-pdf-col">Select</th>
@@ -1335,7 +1345,7 @@
               </thead>
               <tbody>
                 {% for row in pf_smart_entry_rows %}
-                <tr>
+                <tr data-smart-distance-delta="{{ row.pf_distance_delta }}">
                   <td class="skip-pdf-col">
                     <input type="checkbox" class="skip-pdf-checkbox" data-skip-pdf-row aria-label="Skip this row in PDF export" />
                   </td>
@@ -1363,7 +1373,7 @@
                   <td>{{ row.remarks }}</td>
                 </tr>
                 {% else %}
-                <tr>
+                <tr id="smart-output-empty-row">
                   <td colspan="19">No clean PF output matched the selected speed filter within {{ pf_smart_entry_distance_target }}m +/- {{ pf_smart_entry_distance_tolerance }}m.</td>
                 </tr>
                 {% endfor %}
@@ -1699,6 +1709,44 @@
         });
       };
 
+      const wireSmartOutputRange = () => {
+        const rangeSelect = document.getElementById('smart-output-distance-range');
+        const smartTable = document.querySelector('#pf-smart-output table.employee-table');
+        const matchCount = document.getElementById('smart-output-match-count');
+        if (!rangeSelect || !smartTable?.tBodies?.[0]) return;
+
+        const tbody = smartTable.tBodies[0];
+        const rows = Array.from(tbody.querySelectorAll('tr[data-smart-distance-delta]'));
+        let emptyRow = document.getElementById('smart-output-empty-row');
+        if (!emptyRow) {
+          emptyRow = document.createElement('tr');
+          emptyRow.id = 'smart-output-empty-row';
+          const cell = document.createElement('td');
+          cell.colSpan = 19;
+          cell.textContent = 'No clean PF output matched the selected speed filter and distance range.';
+          emptyRow.append(cell);
+          tbody.append(emptyRow);
+        }
+
+        const applyRange = () => {
+          const distanceRange = Number(rangeSelect.value);
+          let visibleRows = 0;
+          rows.forEach((row) => {
+            const distanceDelta = Number(row.dataset.smartDistanceDelta);
+            const visible = Number.isFinite(distanceDelta) && distanceDelta <= distanceRange;
+            row.hidden = !visible;
+            if (visible) visibleRows += 1;
+          });
+          emptyRow.hidden = visibleRows > 0;
+          if (matchCount) {
+            matchCount.textContent = `Matched Rows ${visibleRows}`;
+          }
+        };
+
+        rangeSelect.addEventListener('change', applyRange);
+        applyRange();
+      };
+
       const wirePasswordGate = () => {
         document.querySelectorAll('[data-password-gated-form]').forEach((form) => {
           const passwordInput = form.querySelector('[data-password-gated-input]');
@@ -1723,11 +1771,13 @@
           wirePasswordGate();
           wirePfCardCollapses();
           wirePfTableCollapses();
+          wireSmartOutputRange();
         });
       } else {
         wirePasswordGate();
         wirePfCardCollapses();
         wirePfTableCollapses();
+        wireSmartOutputRange();
       }
     })();
   </script>
