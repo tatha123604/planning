@@ -89,7 +89,7 @@
   };
 
   const buildSnapshot = (table, tableIndex, options = {}) => {
-    const { excludeMarkedPdfRows = false } = options;
+    const { excludeMarkedPdfRows = false, includeSelectedPdfRows = false } = options;
     const scopedReportDateInput = table.closest("section, .card, details")?.querySelector('[data-export-report-date-source="true"]');
     const reportDateInput = document.querySelector('input[name="report_date"]');
     const sourceReportDateInput = document.querySelector("#source-report-date");
@@ -104,8 +104,13 @@
     const headerSource = headerRows.length ? headerRows[headerRows.length - 1] : null;
     const rawHeaders = headerSource ? extractExpandedTexts(headerSource.cells) : [];
     const bodyRows = Array.from(table.tBodies || []).flatMap((tbody) => Array.from(tbody.rows || []));
-    const includedRows = bodyRows
+    const selectedPdfRows = includeSelectedPdfRows
+      ? bodyRows.filter((row) => row.querySelector('input[data-pdf-select-row]:checked'))
+      : [];
+    const candidateRows = selectedPdfRows.length ? selectedPdfRows : bodyRows;
+    const includedRows = candidateRows
       .filter((row) => row?.dataset?.filterHidden !== "true")
+      .filter((row) => row?.dataset?.smartDistanceHidden !== "true")
       .filter((row) => (
         !excludeMarkedPdfRows || !row.querySelector('input[data-skip-pdf-row]:checked')
       ));
@@ -306,7 +311,10 @@
     };
 
     pdfButton.addEventListener("click", async () => {
-      const snapshot = buildSnapshot(table, tableIndex, { excludeMarkedPdfRows: true });
+      const snapshot = buildSnapshot(table, tableIndex, {
+        excludeMarkedPdfRows: true,
+        includeSelectedPdfRows: true,
+      });
       const confirmed = window.confirm(
         `Generate PDF for "${snapshot.title}"?\nRows: ${snapshot.rows.length}`
       );
