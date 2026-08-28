@@ -1,6 +1,9 @@
 (() => {
   const DEFAULT_PAGE_SIZE = 10;
-  const isFilterHidden = (row) => row?.dataset?.filterHidden === "true";
+  const isFilterHidden = (row) => (
+    row?.dataset?.filterHidden === "true"
+    || row?.dataset?.smartDistanceHidden === "true"
+  );
 
   function normalizeText(value) {
     return String(value || "").replace(/\s+/g, " ").trim();
