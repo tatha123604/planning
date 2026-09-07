@@ -2383,6 +2383,7 @@ def _pf_hydrate_chart_links_in_result(result: dict[str, object]) -> dict[str, ob
         "pf_detailed_daily_report_rows",
         "pf_detailed_daily_spike_rows",
         "pf_gps_mapping_error_rows",
+        "pf_gps_mapping_summary_rows",
         "pf_weekly_counselling_detail_rows",
         "pf_analysis_summary_rows",
     ):
@@ -4552,6 +4553,48 @@ def _build_pf_geofence_mapping_error_rows(
     return error_rows
 
 
+def _build_pf_gps_mapping_summary_rows(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    """Summarize flagged station events into one actionable row per device/rake."""
+    summary_by_rake: dict[tuple[str, str], dict[str, object]] = {}
+    for row in rows:
+        rake_no = str(row.get("rake_no") or "").strip()
+        device_id = str(row.get("device_id") or "").strip()
+        key = (rake_no or "Unknown rake", device_id)
+        summary = summary_by_rake.setdefault(
+            key,
+            {
+                "rake_no": rake_no or "Unknown rake",
+                "device_id": device_id,
+                "train_numbers": set(),
+                "stations": set(),
+                "flagged_count": 0,
+                "max_score": 0,
+                "chart_link": str(row.get("chart_link") or ""),
+            },
+        )
+        train_no = str(row.get("train_no") or "").strip()
+        station = str(row.get("station") or "").strip()
+        if train_no:
+            summary["train_numbers"].add(train_no)
+        if station:
+            summary["stations"].add(station)
+        summary["flagged_count"] = int(summary["flagged_count"]) + 1
+        summary["max_score"] = max(int(summary["max_score"]), int(row.get("gps_error_score") or 0))
+    summary_rows: list[dict[str, object]] = []
+    for summary in summary_by_rake.values():
+        summary_rows.append(
+            {
+                **summary,
+                "train_numbers": ", ".join(sorted(summary["train_numbers"])),
+                "stations": ", ".join(sorted(summary["stations"])),
+            }
+        )
+    return sorted(
+        summary_rows,
+        key=lambda row: (-int(row["flagged_count"]), -int(row["max_score"]), str(row["rake_no"])),
+    )
+
+
 def _pf_run_level_spike_reason(
     rows: list[dict[str, object]],
     chart_points: list[dict[str, object]] | None,
@@ -5266,7 +5309,10 @@ def _build_ssts_pf_gps_mapping_result(
         ),
     )
     report_progress(96, f"Found {len(error_rows)} GPS mapping case(s).")
-    return {"pf_gps_mapping_error_rows": error_rows}
+    return {
+        "pf_gps_mapping_error_rows": error_rows,
+        "pf_gps_mapping_summary_rows": _build_pf_gps_mapping_summary_rows(error_rows),
+    }
 
 
 def _run_ssts_pf_gps_mapping_task(task_id: str, report_day: date) -> None:
@@ -7260,6 +7306,7 @@ def _build_ssts_report_response(
         "pf_detailed_daily_spike_rows": [],
         "pf_smart_entry_rows": [],
         "pf_gps_mapping_error_rows": [],
+        "pf_gps_mapping_summary_rows": [],
         "pf_gps_mapping_status": "idle",
         "pf_gps_mapping_task_id": pf_gps_task_id or "",
         "pf_gps_mapping_message": "",
@@ -7348,6 +7395,7 @@ def _build_ssts_report_response(
             if gps_task_payload.get("status") == "completed" and isinstance(gps_task_payload.get("result"), dict):
                 gps_result = _pf_hydrate_chart_links_in_result(gps_task_payload["result"])
                 pf_context["pf_gps_mapping_error_rows"] = gps_result.get("pf_gps_mapping_error_rows", [])
+                pf_context["pf_gps_mapping_summary_rows"] = gps_result.get("pf_gps_mapping_summary_rows", [])
         elif pf_task_id and parsed_pf_day is not None:
             try:
                 rebuilt_result = _build_ssts_pf_speed_analysis_result(pf_day_value, pf_speed_threshold_value)

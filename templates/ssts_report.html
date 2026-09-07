@@ -1393,9 +1393,56 @@
               <button type="submit" id="pf-gps-analysis-button" {% if not pf_analysis_task_id or pf_analysis_status != 'completed' %}disabled{% endif %}>GPS Mapping Check</button>
             </form>
           </div>
-          {% if pf_gps_mapping_status in ['pending', 'running'] %}
-          <p class="hint">{{ pf_gps_mapping_message or 'Checking all GPS tracks...' }}</p>
-          {% endif %}
+          <div
+            class="pf-progress-panel {% if pf_gps_mapping_status not in ['pending', 'running'] %}is-hidden{% endif %}"
+            id="pf-gps-progress-panel"
+            data-status="{{ pf_gps_mapping_status }}"
+            data-task-id="{{ pf_gps_mapping_task_id }}"
+          >
+            <div class="pf-progress-head">
+              <strong>GPS Mapping Check Running</strong>
+              <span id="pf-gps-progress-label">{{ pf_gps_mapping_message or 'Checking all GPS tracks...' }}</span>
+            </div>
+            <div class="pf-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+              <span id="pf-gps-progress-fill" style="width: {% if pf_gps_mapping_status == 'completed' %}100{% else %}2{% endif %}%;"></span>
+            </div>
+          </div>
+          <div class="card-head-inline">
+            <div>
+              <h3>Suspected Rakes at a Glance</h3>
+              <p>One row per device/rake, grouped from the flagged station events below.</p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="employee-table paged" data-exportable="true" data-export-name="ssts_pf_gps_mapping_rake_summary_{{ pf_report_day }}" data-export-title="SSTS PF Suspected GPS Mapping Rakes" data-export-report-date="Date: {{ pf_report_day_label }}">
+              <thead>
+                <tr>
+                  <th>Chart</th>
+                  <th>Rake No</th>
+                  <th>Device ID</th>
+                  <th>Train No(s)</th>
+                  <th>Affected Station(s)</th>
+                  <th>Flagged Cases</th>
+                  <th>Highest Mismatch</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in pf_gps_mapping_summary_rows %}
+                <tr>
+                  <td>{% if row.chart_link %}<a class="ghost small" href="{{ row.chart_link }}" target="_blank" rel="noreferrer">Open Chart</a>{% endif %}</td>
+                  <td class="crew-alert">{{ row.rake_no }}</td>
+                  <td>{{ row.device_id }}</td>
+                  <td>{{ row.train_numbers }}</td>
+                  <td><span class="station-highlight">{{ row.stations }}</span></td>
+                  <td class="crew-alert">{{ row.flagged_count }}</td>
+                  <td>{{ row.max_score }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7">Run GPS Mapping Check to list suspected rakes.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
           <div class="summary-strip pf-summary-strip">
             <span class="summary-chip">Flagged Rows {{ pf_gps_mapping_error_rows|length }}</span>
             <span class="summary-chip">Rule: station track offset and 600m / 265m / 100m profile conflict</span>
@@ -1468,6 +1515,9 @@
       const detailedPanel = document.getElementById('pf-detailed-progress-panel');
       const detailedProgressFill = document.getElementById('pf-detailed-progress-fill');
       const detailedProgressLabel = document.getElementById('pf-detailed-progress-label');
+      const gpsPanel = document.getElementById('pf-gps-progress-panel');
+      const gpsProgressFill = document.getElementById('pf-gps-progress-fill');
+      const gpsProgressLabel = document.getElementById('pf-gps-progress-label');
       const forms = [
         document.getElementById('pf-analysis-form'),
         document.getElementById('pf-daily-report-form'),
@@ -1508,6 +1558,17 @@
 
       const showPanels = () => {
         panels.forEach((currentPanel) => currentPanel.classList.remove('is-hidden'));
+      };
+
+      const setGpsProgress = (percent, message) => {
+        if (!gpsPanel || !gpsProgressFill || !gpsProgressLabel) return;
+        const safePercent = Math.max(0, Math.min(100, Number(percent || 0)));
+        gpsPanel.classList.remove('is-hidden');
+        gpsProgressFill.style.width = `${safePercent}%`;
+        gpsPanel.querySelector('.pf-progress-bar')?.setAttribute('aria-valuenow', String(safePercent));
+        if (message) {
+          gpsProgressLabel.textContent = message;
+        }
       };
 
       const stopPolling = () => {
@@ -1645,14 +1706,22 @@
           if (!response.ok) {
             throw new Error(payload.detail || 'Could not read PF analysis status.');
           }
-          setProgress(payload.progress, payload.message);
+          if (sourceForm?.id === 'pf-gps-analysis-form') {
+            setGpsProgress(payload.progress, payload.message);
+          } else {
+            setProgress(payload.progress, payload.message);
+          }
           if (payload.status === 'completed') {
             navigateToResult(getResultUrl(sourceForm, taskId, resultUrl || payload.result_url));
             return;
           }
           if (payload.status === 'error') {
             setButtonState(activeButton, false, getButtonLabel(activeButton));
-            setProgressMessage(payload.message || 'Analysis failed.');
+            if (sourceForm?.id === 'pf-gps-analysis-form') {
+              setGpsProgress(payload.progress, payload.message || 'GPS mapping check failed.');
+            } else {
+              setProgressMessage(payload.message || 'Analysis failed.');
+            }
             return;
           }
           pollTimer = window.setTimeout(
@@ -1672,7 +1741,11 @@
             return;
           }
           setButtonState(activeButton, false, getButtonLabel(activeButton));
-          setProgressMessage(message);
+          if (sourceForm?.id === 'pf-gps-analysis-form') {
+            setGpsProgress(0, message);
+          } else {
+            setProgressMessage(message);
+          }
         }
       };
 
@@ -1682,8 +1755,12 @@
           stopPolling();
           const button = form.querySelector('button[type="submit"]');
           setButtonState(button, true, 'Starting...');
-          showPanels();
-          setProgress(6, 'Starting PF analysis...');
+          if (form.id === 'pf-gps-analysis-form') {
+            setGpsProgress(2, 'Starting GPS mapping check...');
+          } else {
+            showPanels();
+            setProgress(6, 'Starting PF analysis...');
+          }
           try {
             const { response, payload } = await fetchJsonWithRetry(form.action, {
               method: 'POST',
@@ -1714,6 +1791,16 @@
         pollStatus(initialTaskId, getResultUrl(initialForm, initialTaskId), initialButton, initialForm);
       }
 
+      const initialGpsTaskId = gpsPanel?.dataset.taskId || '';
+      const initialGpsStatus = gpsPanel?.dataset.status || '';
+      if (initialGpsTaskId && (initialGpsStatus === 'pending' || initialGpsStatus === 'running')) {
+        const gpsForm = document.getElementById('pf-gps-analysis-form');
+        const gpsButton = buttonByFormId['pf-gps-analysis-form'];
+        setButtonState(gpsButton, true, 'Running...');
+        setGpsProgress(2, gpsProgressLabel?.textContent || 'Checking all GPS tracks...');
+        pollStatus(initialGpsTaskId, getResultUrl(gpsForm, initialGpsTaskId), gpsButton, gpsForm);
+      }
+
       document.querySelectorAll('[data-password-gated-form]').forEach((form) => {
         const passwordInput = form.querySelector('[data-password-gated-input]');
         const submitButton = form.querySelector('[data-password-gated-button]');
@@ -1737,7 +1824,7 @@
     (() => {
       const wirePfTableCollapses = () => {
         const tables = document.querySelectorAll(
-          '.pf-analysis-grid table.employee-table, #pf-train-detail table.employee-table, #pf-daily-report table.employee-table, #pf-detailed-daily-report table.employee-table, #pf-smart-output table.employee-table',
+          '.pf-analysis-grid table.employee-table, #pf-train-detail table.employee-table, #pf-daily-report table.employee-table, #pf-detailed-daily-report table.employee-table, #pf-smart-output table.employee-table, #pf-gps-mapping-errors table.employee-table',
         );
         tables.forEach((table) => {
           if (table.closest('details')) return;
