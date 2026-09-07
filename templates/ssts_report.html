@@ -1385,12 +1385,20 @@
           <div class="card-head-inline">
             <div>
               <h2>GPS Mapping Error Review</h2>
-              <p>Probable GPS-to-platform mapping mismatches found from contradictory approach-speed references. These rows remain in the normal output and need chart verification before action.</p>
+              <p>Probable GPS-to-platform mapping mismatches found from the station geofence's cross-track baseline and contradictory approach-speed references. These rows remain in the normal output and need chart verification before action.</p>
             </div>
+            <form method="post" action="/ssts-report/pf-gps-analysis/start" id="pf-gps-analysis-form">
+              <input type="hidden" name="pf_day" value="{{ pf_report_day }}" />
+              <input type="hidden" name="pf_task_id" value="{{ pf_analysis_task_id }}" />
+              <button type="submit" id="pf-gps-analysis-button" {% if not pf_analysis_task_id or pf_analysis_status != 'completed' %}disabled{% endif %}>GPS Mapping Check</button>
+            </form>
           </div>
+          {% if pf_gps_mapping_status in ['pending', 'running'] %}
+          <p class="hint">{{ pf_gps_mapping_message or 'Checking all GPS tracks...' }}</p>
+          {% endif %}
           <div class="summary-strip pf-summary-strip">
             <span class="summary-chip">Flagged Rows {{ pf_gps_mapping_error_rows|length }}</span>
-            <span class="summary-chip">Rule: 600m / 265m / 100m profile conflict</span>
+            <span class="summary-chip">Rule: station track offset and 600m / 265m / 100m profile conflict</span>
           </div>
           <div class="table-wrap">
             <table class="employee-table paged" data-exportable="true" data-export-name="ssts_pf_gps_mapping_review_{{ pf_report_day }}" data-export-title="SSTS PF GPS Mapping Error Review" data-export-report-date="Date: {{ pf_report_day_label }}">
@@ -1411,6 +1419,8 @@
                   <th>600m</th>
                   <th>265m</th>
                   <th>100m</th>
+                  <th>Lateral Offset</th>
+                  <th>Baseline Samples</th>
                   <th>Mismatch Score</th>
                   <th>Detection Reason</th>
                 </tr>
@@ -1433,11 +1443,13 @@
                   <td>{{ row.speed_at_600m }}</td>
                   <td>{{ row.speed_at_265m }}</td>
                   <td>{{ row.speed_at_100m }}</td>
-                  <td>{{ row.gps_error_score }} KMPH</td>
+                  <td>{% if row.gps_lateral_offset_m is defined %}{{ row.gps_lateral_offset_m }}m{% endif %}</td>
+                  <td>{{ row.gps_baseline_sample_count or '' }}</td>
+                  <td>{{ row.gps_error_score }}</td>
                   <td>{{ row.gps_error_reason }}</td>
                 </tr>
                 {% else %}
-                <tr><td colspan="17">No high-confidence GPS mapping mismatch was detected for this analysis.</td></tr>
+                <tr><td colspan="19">No high-confidence GPS mapping mismatch was detected for this analysis.</td></tr>
                 {% endfor %}
               </tbody>
             </table>
@@ -1460,6 +1472,7 @@
         document.getElementById('pf-analysis-form'),
         document.getElementById('pf-daily-report-form'),
         document.getElementById('pf-detailed-report-form'),
+        document.getElementById('pf-gps-analysis-form'),
       ].filter(Boolean);
       if (!forms.length || !panel || !progressFill || !progressLabel) return;
 
@@ -1474,6 +1487,7 @@
         'pf-analysis-form': document.getElementById('pf-analysis-button'),
         'pf-daily-report-form': document.getElementById('pf-daily-report-button'),
         'pf-detailed-report-form': document.getElementById('pf-detailed-report-button'),
+        'pf-gps-analysis-form': document.getElementById('pf-gps-analysis-button'),
       };
 
       const setProgress = (percent, message) => {
@@ -1515,6 +1529,7 @@
         if (!button) return 'Analysis';
         if (button.id === 'pf-daily-report-button') return 'Load Daily Report';
         if (button.id === 'pf-detailed-report-button') return 'Detailed Analysis';
+        if (button.id === 'pf-gps-analysis-button') return 'GPS Mapping Check';
         return 'Analysis';
       };
 
@@ -1524,6 +1539,9 @@
         }
         if (form?.id === 'pf-detailed-report-form') {
           return '#pf-detailed-daily-report';
+        }
+        if (form?.id === 'pf-gps-analysis-form') {
+          return '#pf-gps-mapping-errors';
         }
         return '';
       };
@@ -1567,6 +1585,8 @@
           anchor = 'pf-daily-report';
         } else if (form?.id === 'pf-detailed-report-form') {
           anchor = 'pf-detailed-daily-report';
+        } else if (form?.id === 'pf-gps-analysis-form') {
+          anchor = 'pf-gps-mapping-errors';
         }
         return `/ssts-report/pf-analysis/start?pf_day=${dayValue}&pf_speed_threshold=${thresholdValue}${anchor ? `&anchor=${encodeURIComponent(anchor)}` : ''}`;
       };

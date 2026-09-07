@@ -1165,6 +1165,7 @@ SSTS_API_DEVICE_URL = f"{SSTS_API_BASE_URL}/device"
 SSTS_API_TRAINS_REPORT_URL = f"{SSTS_API_BASE_URL}/train/tr/reportforperiod"
 SSTS_API_PUNCT_URL = f"{SSTS_API_BASE_URL}/timetable/tc/punct"
 SSTS_API_POSITIONS_URL = f"{SSTS_API_BASE_URL}/timetable/tc/positions"
+SSTS_API_GEOFENCES_URL = f"{SSTS_API_BASE_URL}/geofences/"
 SSTS_API_CREW_URL = f"{SSTS_API_BASE_URL}/crew"
 SSTS_API_SHED_NOTICE_URL = f"{SSTS_API_BASE_URL}/shednotice"
 SSTS_API_USER = os.getenv("SSTS_API_USER", "srdeeopsdah@gmail.com")
@@ -1212,6 +1213,7 @@ _SSTS_PF_ANALYSIS_TASKS: dict[str, dict[str, object]] = {}
 _SSTS_PF_ANALYSIS_LOCK = threading.Lock()
 _SSTS_CREW_CACHE: tuple[datetime, dict[str, str]] | None = None
 _SSTS_CREW_ID_NAME_CACHE: tuple[datetime, dict[str, str]] | None = None
+_SSTS_GEOFENCE_CACHE: tuple[datetime, dict[str, list[tuple[float, float]]]] | None = None
 _SSTS_SHED_NOTICE_CACHE: dict[str, tuple[datetime, dict[str, list[dict[str, str]]]]] = {}
 _SSTS_BACKGROUND_SYNC_STOP = threading.Event()
 _SSTS_BACKGROUND_SYNC_THREAD: threading.Thread | None = None
@@ -2667,6 +2669,46 @@ def _fetch_ssts_positions(source: dict[str, object], token: str) -> list[dict[st
     if not isinstance(response, list):
         return []
     return [point for point in response if isinstance(point, dict)]
+
+
+def _fetch_ssts_geofence_polygons(token: str) -> dict[str, list[tuple[float, float]]]:
+    """Return station geofence outlines as (longitude, latitude) coordinates."""
+    global _SSTS_GEOFENCE_CACHE
+    now_utc = _utc_now()
+    if _SSTS_GEOFENCE_CACHE is not None:
+        cached_at, cached_polygons = _SSTS_GEOFENCE_CACHE
+        if (now_utc - cached_at) < timedelta(hours=12):
+            return dict(cached_polygons)
+    response = _ssts_get_json(SSTS_API_GEOFENCES_URL, headers={"Authorization": token})
+    polygons: dict[str, list[tuple[float, float]]] = {}
+    if isinstance(response, list):
+        for item in response:
+            if not isinstance(item, dict):
+                continue
+            station = _normalize_pf_station(item.get("name"))
+            raw_area = item.get("area")
+            if not station or not isinstance(raw_area, str):
+                continue
+            try:
+                geometry = json.loads(raw_area).get("geometry", {})
+                coordinates = geometry.get("coordinates", [])
+                if geometry.get("type") == "Polygon":
+                    coordinates = coordinates[0] if coordinates else []
+                elif geometry.get("type") == "MultiPolygon":
+                    coordinates = coordinates[0][0] if coordinates and coordinates[0] else []
+                else:
+                    continue
+                polygon = [
+                    (float(point[0]), float(point[1]))
+                    for point in coordinates
+                    if isinstance(point, list) and len(point) >= 2
+                ]
+            except (TypeError, ValueError, json.JSONDecodeError, IndexError):
+                continue
+            if len(polygon) >= 3:
+                polygons[station] = polygon
+    _SSTS_GEOFENCE_CACHE = (now_utc, polygons)
+    return dict(polygons)
 
 
 def _normalize_pf_crew_name(value: object) -> str:
@@ -4386,6 +4428,130 @@ def _build_pf_gps_mapping_error_rows(
     )
 
 
+def _pf_median(values: list[float]) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    middle = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[middle]
+    return (ordered[middle - 1] + ordered[middle]) / 2
+
+
+def _pf_geofence_cross_track_axis(
+    polygon: list[tuple[float, float]],
+) -> tuple[float, float, float, float, float, float] | None:
+    """Return a local metre projection and the geofence's short-axis vector."""
+    points = polygon[:-1] if len(polygon) > 3 and polygon[0] == polygon[-1] else polygon
+    if len(points) < 3:
+        return None
+    center_lon = sum(point[0] for point in points) / len(points)
+    center_lat = sum(point[1] for point in points) / len(points)
+    metres_per_lon = 111_320 * math.cos(math.radians(center_lat))
+    metres_per_lat = 110_540.0
+    offsets = [
+        ((longitude - center_lon) * metres_per_lon, (latitude - center_lat) * metres_per_lat)
+        for longitude, latitude in points
+    ]
+    xx = sum(x * x for x, _ in offsets)
+    yy = sum(y * y for _, y in offsets)
+    xy = sum(x * y for x, y in offsets)
+    if xx + yy <= 0:
+        return None
+    # Principal direction follows the long edge of the station geofence.
+    angle = 0.5 * math.atan2(2 * xy, xx - yy)
+    cross_x = -math.sin(angle)
+    cross_y = math.cos(angle)
+    return center_lon, center_lat, metres_per_lon, metres_per_lat, cross_x, cross_y
+
+
+def _pf_station_cross_track_offset(
+    row: dict[str, object],
+    train_rows: list[dict[str, object]],
+    chart_points: list[dict[str, object]],
+    axis: tuple[float, float, float, float, float, float],
+) -> float | None:
+    if not chart_points:
+        return None
+    start_pos = _coerce_int(row.get("start_pos"))
+    end_pos = _coerce_int(row.get("end_pos"))
+    if start_pos is None or end_pos is None:
+        return None
+    normalized_rows, start_pos, end_pos = _pf_normalize_station_windows_to_chart(
+        train_rows,
+        chart_points,
+        len(chart_points),
+        str(row.get("station") or ""),
+        start_pos,
+        end_pos,
+    )
+    # The selected row can have duplicate station codes. Re-use its normalized
+    # window only when the matching station event is present.
+    if normalized_rows and start_pos is None:
+        return None
+    if start_pos is None or end_pos is None:
+        return None
+    start_index = max(0, min(start_pos, end_pos) - 3)
+    end_index = min(len(chart_points) - 1, max(start_pos, end_pos) + 3)
+    center_lon, center_lat, metres_per_lon, metres_per_lat, cross_x, cross_y = axis
+    offsets: list[float] = []
+    for point in chart_points[start_index : end_index + 1]:
+        try:
+            longitude = float(point.get("longitude"))
+            latitude = float(point.get("latitude"))
+        except (AttributeError, TypeError, ValueError):
+            continue
+        x = (longitude - center_lon) * metres_per_lon
+        y = (latitude - center_lat) * metres_per_lat
+        offsets.append((x * cross_x) + (y * cross_y))
+    return _pf_median(offsets)
+
+
+def _build_pf_geofence_mapping_error_rows(
+    rows_by_train: dict[str, list[dict[str, object]]],
+    chart_points_by_train: dict[str, list[dict[str, object]]],
+    geofence_polygons: dict[str, list[tuple[float, float]]],
+) -> list[dict[str, object]]:
+    """Flag train passes whose GPS trace is laterally off the station baseline."""
+    samples_by_station: dict[str, list[tuple[dict[str, object], float]]] = {}
+    for train_no, train_rows in rows_by_train.items():
+        chart_points = chart_points_by_train.get(train_no, [])
+        for row in train_rows:
+            station = _normalize_pf_station(row.get("station"))
+            axis = _pf_geofence_cross_track_axis(geofence_polygons.get(station, []))
+            if not station or axis is None:
+                continue
+            offset = _pf_station_cross_track_offset(row, train_rows, chart_points, axis)
+            if offset is not None:
+                samples_by_station.setdefault(station, []).append((row, offset))
+
+    error_rows: list[dict[str, object]] = []
+    for station, samples in samples_by_station.items():
+        # A baseline requires several independent train passes at the station.
+        if len(samples) < 6:
+            continue
+        baseline = _pf_median([offset for _, offset in samples])
+        if baseline is None:
+            continue
+        deviations = [abs(offset - baseline) for _, offset in samples]
+        median_deviation = _pf_median(deviations) or 0.0
+        threshold = max(60.0, median_deviation * 4.0)
+        for row, offset in samples:
+            deviation = abs(offset - baseline)
+            if deviation < threshold:
+                continue
+            error_row = dict(row)
+            error_row["gps_error_score"] = int(round(deviation))
+            error_row["gps_lateral_offset_m"] = int(round(offset - baseline))
+            error_row["gps_baseline_sample_count"] = len(samples)
+            error_row["gps_error_reason"] = (
+                f"GPS track is {deviation:.0f}m from the {station} cross-track baseline "
+                f"across {len(samples)} train passes."
+            )
+            error_rows.append(error_row)
+    return error_rows
+
+
 def _pf_run_level_spike_reason(
     rows: list[dict[str, object]],
     chart_points: list[dict[str, object]] | None,
@@ -4937,7 +5103,9 @@ def _build_ssts_pf_speed_analysis_result(
         detailed_detail_rows_by_train,
         speed_threshold,
     )
-    pf_gps_mapping_error_rows = _build_pf_gps_mapping_error_rows(all_rows_by_train)
+    # GPS mapping is intentionally a separate on-demand job. It fetches every
+    # train track, while speed analysis needs charts only for 40+ candidates.
+    pf_gps_mapping_error_rows: list[dict[str, object]] = []
     try:
         _save_ssts_pf_counselling_history(
             report_day,
@@ -5027,6 +5195,99 @@ def _run_ssts_pf_analysis_task(task_id: str, report_day: date, speed_threshold: 
             status="error",
             progress=100,
             message=f"Analysis failed: {exc}",
+            error=str(exc),
+        )
+
+
+def _build_ssts_pf_gps_mapping_result(
+    report_day: date,
+    progress_callback: Callable[[int, str], None] | None = None,
+) -> dict[str, object]:
+    def report_progress(percent: int, message: str) -> None:
+        if progress_callback is not None:
+            progress_callback(percent, message)
+
+    raw_context = build_ssts_pf_entering_context(report_day)
+    token = fetch_ssts_token()
+    rows_by_train: dict[str, list[dict[str, object]]] = {}
+    for row in raw_context.get("pf_report_rows", []):
+        if not isinstance(row, dict):
+            continue
+        train_no = str(row.get("train_no") or "").strip()
+        if train_no:
+            rows_by_train.setdefault(train_no, []).append(dict(row))
+    for train_rows in rows_by_train.values():
+        train_rows.sort(
+            key=lambda row: (
+                999999 if row.get("srl_no") in ("", None) else int(row.get("srl_no") or 0),
+                str(row.get("station") or ""),
+            )
+        )
+
+    chart_points_by_train: dict[str, list[dict[str, object]]] = {train_no: [] for train_no in rows_by_train}
+    total_trains = len(rows_by_train)
+    report_progress(8, f"Loading station geofences and GPS tracks for {total_trains} trains...")
+    with ThreadPoolExecutor(max_workers=6) as executor:
+        future_map = {
+            executor.submit(_fetch_ssts_positions, train_rows[0], token): train_no
+            for train_no, train_rows in rows_by_train.items()
+            if train_rows
+        }
+        for completed_count, future in enumerate(as_completed(future_map), start=1):
+            train_no = future_map[future]
+            try:
+                chart_points_by_train[train_no] = future.result()
+            except (urlerror.URLError, RuntimeError, ValueError, json.JSONDecodeError):
+                chart_points_by_train[train_no] = []
+            report_progress(
+                8 + int((completed_count / max(1, total_trains)) * 76),
+                f"Checked GPS tracks for {completed_count}/{total_trains} trains...",
+            )
+
+    profile_error_rows = _build_pf_gps_mapping_error_rows(rows_by_train)
+    geofence_polygons = _fetch_ssts_geofence_polygons(token)
+    geofence_error_rows = _build_pf_geofence_mapping_error_rows(
+        rows_by_train,
+        chart_points_by_train,
+        geofence_polygons,
+    )
+    errors_by_signature: dict[tuple[str, str, str, str, str, str], dict[str, object]] = {}
+    for error_row in profile_error_rows + geofence_error_rows:
+        signature = _pf_row_signature(error_row)
+        existing = errors_by_signature.get(signature)
+        if existing is None or int(error_row.get("gps_error_score") or 0) > int(existing.get("gps_error_score") or 0):
+            errors_by_signature[signature] = error_row
+    error_rows = sorted(
+        errors_by_signature.values(),
+        key=lambda row: (
+            -int(row.get("gps_error_score") or 0),
+            str(row.get("train_no") or ""),
+            str(row.get("station") or ""),
+        ),
+    )
+    report_progress(96, f"Found {len(error_rows)} GPS mapping case(s).")
+    return {"pf_gps_mapping_error_rows": error_rows}
+
+
+def _run_ssts_pf_gps_mapping_task(task_id: str, report_day: date) -> None:
+    try:
+        def push_progress(percent: int, message: str) -> None:
+            _set_ssts_pf_analysis_task(task_id, status="running", progress=percent, message=message)
+
+        result = _build_ssts_pf_gps_mapping_result(report_day, push_progress)
+        _set_ssts_pf_analysis_task(
+            task_id,
+            status="completed",
+            progress=100,
+            message="GPS mapping check complete.",
+            result=result,
+        )
+    except Exception as exc:
+        _set_ssts_pf_analysis_task(
+            task_id,
+            status="error",
+            progress=100,
+            message=f"GPS mapping check failed: {exc}",
             error=str(exc),
         )
 
@@ -6955,6 +7216,7 @@ def _build_ssts_report_response(
     pf_day: str | None = None,
     pf_speed_threshold: str | None = None,
     pf_task_id: str | None = None,
+    pf_gps_task_id: str | None = None,
     pf_train: str | None = None,
     pf_detail_mode: str | None = None,
     junk_cleanup_notice: str = "",
@@ -6998,6 +7260,9 @@ def _build_ssts_report_response(
         "pf_detailed_daily_spike_rows": [],
         "pf_smart_entry_rows": [],
         "pf_gps_mapping_error_rows": [],
+        "pf_gps_mapping_status": "idle",
+        "pf_gps_mapping_task_id": pf_gps_task_id or "",
+        "pf_gps_mapping_message": "",
         "pf_smart_entry_distance_target": SSTS_PF_SMART_ENTRY_DISTANCE_TARGET_M,
         "pf_smart_entry_distance_tolerance": SSTS_PF_SMART_ENTRY_DISTANCE_TOLERANCE_M,
         "pf_weekly_counselling_start": (pf_day_value - timedelta(days=SSTS_PF_COUNSELLING_LOOKBACK_DAYS - 1)).isoformat(),
@@ -7075,6 +7340,14 @@ def _build_ssts_report_response(
                         pf_context["pf_analysis_selected_rows"] = selected_rows if isinstance(selected_rows, list) else []
             elif task_payload.get("status") == "error":
                 pf_context["pf_report_error"] = str(task_payload.get("message") or "PF analysis failed.")
+        gps_task_payload = _get_ssts_pf_analysis_task(pf_gps_task_id)
+        if gps_task_payload:
+            pf_context["pf_gps_mapping_status"] = str(gps_task_payload.get("status") or "idle")
+            pf_context["pf_gps_mapping_task_id"] = pf_gps_task_id or ""
+            pf_context["pf_gps_mapping_message"] = str(gps_task_payload.get("message") or "")
+            if gps_task_payload.get("status") == "completed" and isinstance(gps_task_payload.get("result"), dict):
+                gps_result = _pf_hydrate_chart_links_in_result(gps_task_payload["result"])
+                pf_context["pf_gps_mapping_error_rows"] = gps_result.get("pf_gps_mapping_error_rows", [])
         elif pf_task_id and parsed_pf_day is not None:
             try:
                 rebuilt_result = _build_ssts_pf_speed_analysis_result(pf_day_value, pf_speed_threshold_value)
@@ -7149,6 +7422,7 @@ def ssts_report_page(
     pf_day: str | None = None,
     pf_speed_threshold: str | None = None,
     pf_task_id: str | None = None,
+    pf_gps_task_id: str | None = None,
     pf_train: str | None = None,
     pf_detail_mode: str | None = None,
     session: Session = Depends(get_session),
@@ -7165,6 +7439,7 @@ def ssts_report_page(
         pf_day=pf_day,
         pf_speed_threshold=pf_speed_threshold,
         pf_task_id=pf_task_id,
+        pf_gps_task_id=pf_gps_task_id,
         pf_train=pf_train,
         pf_detail_mode=pf_detail_mode,
     )
@@ -7348,6 +7623,22 @@ def _queue_ssts_pf_analysis(report_day: date, speed_threshold: int) -> str:
         result=None,
     )
     worker = threading.Thread(target=_run_ssts_pf_analysis_task, args=(task_id, report_day, speed_threshold), daemon=True)
+    worker.start()
+    return task_id
+
+
+def _queue_ssts_pf_gps_mapping_analysis(report_day: date, base_task_id: str) -> str:
+    task_id = uuid4().hex
+    _set_ssts_pf_analysis_task(
+        task_id,
+        status="pending",
+        progress=2,
+        message="Queued for GPS mapping check...",
+        report_day=report_day.isoformat(),
+        base_task_id=base_task_id,
+        result=None,
+    )
+    worker = threading.Thread(target=_run_ssts_pf_gps_mapping_task, args=(task_id, report_day), daemon=True)
     worker.start()
     return task_id
 
@@ -8733,6 +9024,31 @@ def _employees_match_smart_merge(left: Employee, right: Employee) -> bool:
     has_complementary_identifier = (
         (bool(left_crew) != bool(right_crew))
         or (bool(left_hrms) != bool(right_hrms))
+    )
+
+
+@app.post("/ssts-report/pf-gps-analysis/start")
+async def start_ssts_pf_gps_mapping_analysis(
+    pf_day: str = Form(...),
+    pf_task_id: str = Form(...),
+):
+    report_day = _parse_report_date(pf_day)
+    base_task = _get_ssts_pf_analysis_task(pf_task_id)
+    if report_day is None or not base_task or base_task.get("status") != "completed":
+        raise HTTPException(status_code=400, detail="Run Speed Analysis before starting the GPS mapping check.")
+    task_id = _queue_ssts_pf_gps_mapping_analysis(report_day, pf_task_id)
+    speed_threshold = _parse_pf_speed_threshold(base_task.get("speed_threshold"))
+    return JSONResponse(
+        {
+            "task_id": task_id,
+            "status": "pending",
+            "status_url": f"/ssts-report/pf-analysis/status?task_id={task_id}",
+            "result_url": (
+                f"/ssts-report?report_tab=pf_entering&pf_task_id={pf_task_id}"
+                f"&pf_gps_task_id={task_id}&pf_day={report_day.isoformat()}"
+                f"&pf_speed_threshold={speed_threshold}#pf-gps-mapping-errors"
+            ),
+        }
     )
     return has_complementary_identifier
 
