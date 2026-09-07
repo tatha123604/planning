@@ -1381,6 +1381,68 @@
             </table>
           </div>
         </section>
+        <section class="card pf-train-detail-card" id="pf-gps-mapping-errors">
+          <div class="card-head-inline">
+            <div>
+              <h2>GPS Mapping Error Review</h2>
+              <p>Probable GPS-to-platform mapping mismatches found from contradictory approach-speed references. These rows remain in the normal output and need chart verification before action.</p>
+            </div>
+          </div>
+          <div class="summary-strip pf-summary-strip">
+            <span class="summary-chip">Flagged Rows {{ pf_gps_mapping_error_rows|length }}</span>
+            <span class="summary-chip">Rule: 600m / 265m / 100m profile conflict</span>
+          </div>
+          <div class="table-wrap">
+            <table class="employee-table paged" data-exportable="true" data-export-name="ssts_pf_gps_mapping_review_{{ pf_report_day }}" data-export-title="SSTS PF GPS Mapping Error Review" data-export-report-date="Date: {{ pf_report_day_label }}">
+              <thead>
+                <tr>
+                  <th>Chart</th>
+                  <th>Date</th>
+                  <th>Train No</th>
+                  <th>Rake No</th>
+                  <th>Crew Name</th>
+                  <th>ORG</th>
+                  <th>DEST</th>
+                  <th>Station</th>
+                  <th>Stop Time</th>
+                  <th>Geofence Speed</th>
+                  <th>PF Speed</th>
+                  <th>PF Distance</th>
+                  <th>600m</th>
+                  <th>265m</th>
+                  <th>100m</th>
+                  <th>Mismatch Score</th>
+                  <th>Detection Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in pf_gps_mapping_error_rows %}
+                <tr>
+                  <td>{% if row.chart_link %}<a class="ghost small" href="{{ row.chart_link }}" target="_blank" rel="noreferrer">Open Chart</a>{% endif %}</td>
+                  <td>{{ row.report_date }}</td>
+                  <td class="crew-alert">{{ row.train_no }}</td>
+                  <td>{{ row.rake_no }}</td>
+                  <td class="crew-alert">{{ row.crew_name }}</td>
+                  <td>{{ row.org }}</td>
+                  <td>{{ row.dest }}</td>
+                  <td class="crew-alert"><span class="station-highlight">{{ row.station }}</span></td>
+                  <td>{{ row.stop_time }}</td>
+                  <td>{{ row.geofence_enter_speed }}</td>
+                  <td class="pf-speed-alert">{{ row.pf_enter_speed }}</td>
+                  <td>{{ row.pf_distance }}</td>
+                  <td>{{ row.speed_at_600m }}</td>
+                  <td>{{ row.speed_at_265m }}</td>
+                  <td>{{ row.speed_at_100m }}</td>
+                  <td>{{ row.gps_error_score }} KMPH</td>
+                  <td>{{ row.gps_error_reason }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="17">No high-confidence GPS mapping mismatch was detected for this analysis.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </section>
         {% endif %}
       </section>
       {% endif %}

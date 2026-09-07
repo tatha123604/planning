@@ -2380,6 +2380,7 @@ def _pf_hydrate_chart_links_in_result(result: dict[str, object]) -> dict[str, ob
         "pf_daily_report_rows",
         "pf_detailed_daily_report_rows",
         "pf_detailed_daily_spike_rows",
+        "pf_gps_mapping_error_rows",
         "pf_weekly_counselling_detail_rows",
         "pf_analysis_summary_rows",
     ):
@@ -4296,6 +4297,95 @@ def _build_pf_smart_entry_rows(
     )
 
 
+def _pf_gps_mapping_error_reason(row: dict[str, object]) -> tuple[str, int] | None:
+    """Return only high-confidence station approach contradictions for GPS review.
+
+    SSTS does not provide railway-centreline geometry in the PF endpoint, so a
+    point cannot be labelled off-track directly. These rules instead isolate
+    cases where the GPS-derived PF reference is inconsistent with its nearby
+    distance references.
+    """
+    pf_speed = _pf_speed_value(row.get("pf_enter_speed"))
+    geofence_speed = _pf_speed_value(row.get("geofence_enter_speed"))
+    speed_600m = _pf_speed_value(row.get("speed_at_600m"))
+    speed_265m = _pf_speed_value(row.get("speed_at_265m"))
+    speed_100m = _pf_speed_value(row.get("speed_at_100m"))
+    pf_distance = _pf_speed_value(row.get("pf_distance"))
+    stop_seconds = _parse_hms_seconds(row.get("stop_time"))
+
+    # A train approaching a scheduled stop should not gain a large amount of
+    # speed between 600m and the PF reference, then lose it again by 100m.
+    if (
+        pf_speed is not None
+        and speed_600m is not None
+        and speed_265m is not None
+        and speed_100m is not None
+        and pf_distance is not None
+        and 200 <= pf_distance <= 330
+        and stop_seconds is not None
+        and stop_seconds >= 30
+    ):
+        approach_rise = speed_265m - speed_600m
+        pre_stop_drop = speed_265m - speed_100m
+        if speed_265m >= 45 and approach_rise >= 18 and pre_stop_drop >= 18:
+            severity = int(max(approach_rise, pre_stop_drop))
+            return (
+                "GPS distance profile rises sharply toward 265m then drops before the stop "
+                f"(600m {speed_600m:.0f}, 265m {speed_265m:.0f}, 100m {speed_100m:.0f} KMPH).",
+                severity,
+            )
+
+    # A large PF/geofence difference together with a high 100m speed is a
+    # second independent signal that the mapped PF reference is displaced.
+    if (
+        pf_speed is not None
+        and geofence_speed is not None
+        and speed_100m is not None
+        and pf_distance is not None
+        and 200 <= pf_distance <= 330
+        and stop_seconds is not None
+        and stop_seconds >= 30
+        and pf_speed >= 50
+        and (pf_speed - geofence_speed) >= 25
+        and (pf_speed - speed_100m) >= 20
+    ):
+        severity = int(max(pf_speed - geofence_speed, pf_speed - speed_100m))
+        return (
+            "PF reference conflicts with both geofence and 100m speed "
+            f"(PF {pf_speed:.0f}, geofence {geofence_speed:.0f}, 100m {speed_100m:.0f} KMPH).",
+            severity,
+        )
+    return None
+
+
+def _build_pf_gps_mapping_error_rows(
+    rows_by_train: dict[str, list[dict[str, object]]],
+) -> list[dict[str, object]]:
+    """Build a review list without changing the normal PF speed output."""
+    error_rows: list[dict[str, object]] = []
+    for train_rows in rows_by_train.values():
+        for row in train_rows:
+            if _pf_is_through_station_row(row):
+                continue
+            detected = _pf_gps_mapping_error_reason(row)
+            if detected is None:
+                continue
+            reason, severity = detected
+            error_row = dict(row)
+            error_row["gps_error_reason"] = reason
+            error_row["gps_error_score"] = severity
+            error_rows.append(error_row)
+    return sorted(
+        error_rows,
+        key=lambda row: (
+            -int(row.get("gps_error_score") or 0),
+            str(row.get("train_no") or ""),
+            999999 if row.get("srl_no") in ("", None) else int(row.get("srl_no") or 0),
+            str(row.get("station") or ""),
+        ),
+    )
+
+
 def _pf_run_level_spike_reason(
     rows: list[dict[str, object]],
     chart_points: list[dict[str, object]] | None,
@@ -4847,6 +4937,7 @@ def _build_ssts_pf_speed_analysis_result(
         detailed_detail_rows_by_train,
         speed_threshold,
     )
+    pf_gps_mapping_error_rows = _build_pf_gps_mapping_error_rows(all_rows_by_train)
     try:
         _save_ssts_pf_counselling_history(
             report_day,
@@ -4881,6 +4972,7 @@ def _build_ssts_pf_speed_analysis_result(
         "pf_detailed_daily_spike_count": len(suspected_spike_rows),
         "pf_detailed_daily_spike_rows": suspected_spike_rows,
         "pf_smart_entry_rows": pf_smart_entry_rows,
+        "pf_gps_mapping_error_rows": pf_gps_mapping_error_rows,
         "pf_smart_entry_distance_target": SSTS_PF_SMART_ENTRY_DISTANCE_TARGET_M,
         "pf_smart_entry_distance_tolerance": SSTS_PF_SMART_ENTRY_DISTANCE_TOLERANCE_M,
         "pf_analysis_summary_rows": summary_rows,
@@ -6905,6 +6997,7 @@ def _build_ssts_report_response(
         "pf_detailed_daily_spike_count": 0,
         "pf_detailed_daily_spike_rows": [],
         "pf_smart_entry_rows": [],
+        "pf_gps_mapping_error_rows": [],
         "pf_smart_entry_distance_target": SSTS_PF_SMART_ENTRY_DISTANCE_TARGET_M,
         "pf_smart_entry_distance_tolerance": SSTS_PF_SMART_ENTRY_DISTANCE_TOLERANCE_M,
         "pf_weekly_counselling_start": (pf_day_value - timedelta(days=SSTS_PF_COUNSELLING_LOOKBACK_DAYS - 1)).isoformat(),
