@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RTIS | SDAH Crew Analysis</title>
+  <title>{% block title %}RTIS{% endblock %} | SDAH Crew Analysis</title>
   <link rel="stylesheet" href="/static/style.css" />
   <link rel="icon" type="image/svg+xml" href="/static/indian-railways-mark.svg" />
 </head>
@@ -38,8 +38,9 @@
     </aside>
 
     <main class="content">
+      {% block content %}
       <header><div><h1>RTIS</h1><p>Division-wise Excel uploads and H, J, K events.</p></div>
-        <div class="header-actions"><a class="ghost small" href="/ssts-report?report_tab=pf_entering">SSTS PF analysis</a><a class="ghost small" href="/logout">Logout</a></div>
+        <div class="header-actions"><a class="ghost small" href="/rtis/output">Output</a><a class="ghost small" href="/ssts-report?report_tab=pf_entering">SSTS PF analysis</a><a class="ghost small" href="/logout">Logout</a></div>
       </header>
       <nav class="report-tabs" aria-label="RTIS analysis type">
         {% for key, label in analysis_types.items() %}<a class="report-tab {{ 'active' if analysis == key else '' }}" {% if analysis == key %}aria-current="page"{% endif %} href="/rtis?{{ switch_query }}&analysis={{ key }}">{{ label }}</a>{% endfor %}
@@ -50,14 +51,20 @@
       {% if notice %}<section class="card" role="status"><p>{{ notice }}</p></section>{% endif %}
       <section class="card">
         <h2>Upload RTIS Excel</h2>
-        <form method="post" action="/rtis/upload" enctype="multipart/form-data" class="rtis-form" id="rtis-upload-form">
-          <input type="hidden" name="analysis" value="{{ analysis }}" />
-          <label>Division<select name="division" required>{% for code in divisions %}<option value="{{ code }}" {{ 'selected' if code == division else '' }}>{{ code }}</option>{% endfor %}</select></label>
-          <label class="rtis-file">Excel files<input type="file" name="files" accept=".xlsx" multiple required /></label>
-          <button type="submit" id="rtis-upload-button">Upload files</button>
-        </form>
-        <p class="hint">Up to 10 files, 20 MB each. Division Code in every row must match your selection. Original files and all event types are saved; the view below focuses on H, J and K.</p>
+        <div class="rtis-upload-grid">
+          {% for code in divisions %}
+          <form method="post" action="/rtis/upload" enctype="multipart/form-data" class="rtis-upload-form" aria-labelledby="rtis-upload-label-{{ code }}">
+            <input type="hidden" name="analysis" value="{{ analysis }}" />
+            <input type="hidden" name="division" value="{{ code }}" />
+            <label id="rtis-upload-label-{{ code }}" for="rtis-files-{{ code }}">{{ code }}</label>
+            <input type="file" id="rtis-files-{{ code }}" name="files" accept=".xlsx" multiple required aria-describedby="rtis-upload-hint" />
+            <button type="submit">Upload {{ code }}</button>
+          </form>
+          {% endfor %}
+        </div>
+        <p class="hint" id="rtis-upload-hint">Choose .xlsx files under the matching division, then use its upload button. Up to 10 files per upload, {{ max_upload_mb }} MB each. Division Code in every row must match the input's division. Original files and all event types are saved; the view below focuses on H, J and K.</p>
         <p class="hint">Previously imported events are skipped. The original Excel file remains available in upload history.</p>
+        <a class="ghost small" href="/rtis/output">Output</a>
       </section>
       <section class="card">
         <h2>{{ analysis_types[analysis] }} — {{ division }}</h2>
@@ -90,22 +97,33 @@
         {% else %}<tr><td colspan="6">No files uploaded for {{ division }} yet.</td></tr>{% endfor %}
         </tbody></table></div>
       </section>
+      {% endblock %}
     </main>
   </div>
   <style>
     .rtis-form {display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;margin:16px 0;}
     .rtis-form label {display:flex;flex-direction:column;gap:8px;min-width:150px;}
-    .rtis-form .rtis-file {flex:1;min-width:220px;}
-    .rtis-form input[type=file] {max-width:100%;}
+    .rtis-upload-grid {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:16px;margin:16px 0;}
+    .rtis-upload-form {display:flex;flex-direction:column;gap:12px;min-width:0;padding:16px;border:1px solid var(--card-border);border-radius:12px;background:rgba(255,255,255,0.03);}
+    .rtis-upload-form label {font-size:1.1rem;font-weight:800;}
+    .rtis-upload-form input[type=file] {width:100%;min-width:0;}
+    .rtis-upload-form button:disabled {cursor:wait;opacity:0.7;}
     .rtis-counts {margin:16px 0 8px;}
     .table-wrap {margin-top:16px;}
     .rtis-form + .hint {margin-bottom:8px;}
+    @media (max-width:640px) {
+      .content > header .header-actions .ghost {flex:0 0 auto;min-height:40px;display:flex;align-items:center;justify-content:center;}
+    }
   </style>
   <script>
-    document.getElementById('rtis-upload-form').addEventListener('submit', function () {
-      const button = document.getElementById('rtis-upload-button');
-      button.disabled = true; button.textContent = 'Uploading…';
+    document.querySelectorAll('.rtis-upload-form').forEach(function (form) {
+      form.addEventListener('submit', function () {
+        const button = form.querySelector('button[type="submit"]');
+        button.disabled = true; button.textContent = 'Uploading…';
+      });
     });
   </script>
+  <script src="/static/sidebar-toggle.js"></script>
+  {% block extra_scripts %}{% endblock %}
 </body>
 </html>

@@ -1,0 +1,46 @@
+{% extends "rtis.html" %}
+{% block title %}RTIS Output{% endblock %}
+{% block content %}
+<header>
+  <div><h1>RTIS Output</h1><p>Combined data from SDAH, HWH, ASN and MLDT.</p></div>
+  <div class="header-actions"><a class="ghost small" href="/rtis">Back to RTIS</a><a class="ghost small" href="/logout">Logout</a></div>
+</header>
+<section class="card">
+  <h2>All divisions</h2>
+  <p><strong>{{ '{:,}'.format(total) }}</strong> saved events. All event types, train types and dates are included. Previously skipped duplicate events are excluded.</p>
+  <div class="rtis-form" aria-label="Events by division">
+    {% for code in divisions %}<span><strong>{{ code }}</strong>: {{ '{:,}'.format(counts.get(code, 0)) }}</span>{% endfor %}
+  </div>
+  <div class="table-export-bar">
+    <span class="table-export-label">Table Export</span>
+    <span class="table-export-status" id="rtis-export-status" role="status" aria-live="polite"></span>
+    <div class="table-export-actions">
+      <button type="button" class="ghost small table-export-button table-export-button-pdf" data-rtis-export="pdf">Generate PDF</button>
+      <button type="button" class="ghost small table-export-button table-export-button-excel" data-rtis-export="xlsx">Download Excel</button>
+    </div>
+  </div>
+  <p class="hint">Both downloads include all {{ '{:,}'.format(total) }} events across every page, using the original Excel headers. Source serial numbers and train identifiers are preserved.</p>
+  <div class="rtis-form" aria-label="Output pagination">
+    <span>Rows {{ '{:,}'.format(first_row) }}–{{ '{:,}'.format(last_row) }} of {{ '{:,}'.format(total) }} · Page {{ page }} of {{ pages }}</span>
+    {% if page > 1 %}<a class="ghost small" href="/rtis/output?page={{ page - 1 }}">Previous</a>{% endif %}
+    {% if page < pages %}<a class="ghost small" href="/rtis/output?page={{ page + 1 }}">Next</a>{% endif %}
+    <form action="/rtis/output" method="get" class="rtis-form" style="margin:0">
+      <label for="output-page">Page<input id="output-page" type="number" name="page" value="{{ page }}" min="1" max="{{ pages }}" style="width:100px" /></label>
+      <button type="submit">Go</button>
+    </form>
+  </div>
+  <div class="table-wrap" style="max-height:70vh;overflow:auto" tabindex="0" role="region" aria-label="Combined RTIS data">
+    <table id="rtis-output-table" style="white-space:nowrap">
+      <thead><tr>{% for header in headers %}<th>{{ header }}</th>{% endfor %}</tr></thead>
+      <tbody>
+        {% for row in rows %}<tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>
+        {% else %}<tr><td colspan="{{ headers|length }}">No RTIS data uploaded yet. Upload files in RTIS to see the combined output.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
+{% block extra_scripts %}
+<style>#rtis-output-table th {text-transform:none;position:sticky;top:0;background:#102039;z-index:1;}</style>
+<script src="/static/rtis-output.js"></script>
+{% endblock %}

@@ -3,6 +3,7 @@
 Run: python scripts/test_rtis.py [path/to/RTIS_export.xlsx]
 """
 from collections import Counter
+from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 import sys
@@ -13,6 +14,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from openpyxl import load_workbook
+from pypdf import PdfReader
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, create_engine, select
 
@@ -152,6 +155,81 @@ class RtisTests(unittest.TestCase):
         self.assertIn('1 matching events', self.client.get('/rtis?speed=50&analysis=goods&day=2026-09-14').text)
         self.assertIn('9 matching events', self.client.get('/rtis?day=2026-09-14').text)
         self.assertEqual(self.client.get('/rtis?speed=35').status_code, 400)
+
+    def _import_output_examples(self):
+        for division, event, train in [('SDAH', 'A', '00441'), ('HWH', 'D', 'AB123'),
+                                       ('ASN', 'R', ''), ('MLDT', 'K', '=1+1')]:
+            import_rtis(self.session, division + '.xlsx',
+                        workbook(division=division, event=event, train=train), division)
+        for index in range(101):
+            import_rtis(self.session, f'event{index}.xlsx',
+                        workbook(serial=str(index + 2), time=f'2026-09-15 {index//60:02}:{index%60:02}:00'), 'SDAH')
+
+    def test_output_combines_all_divisions_types_and_dates_with_pagination(self):
+        self._import_output_examples()
+        first = self.client.get('/rtis/output')
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(first.context['headers'], HEADERS)
+        self.assertEqual(first.context['total'], 105)
+        self.assertEqual(len(first.context['rows']), 100)
+        self.assertEqual([row[9] for row in first.context['rows'][:4]], ['SDAH', 'HWH', 'ASN', 'MLDT'])
+        self.assertEqual([row[7] for row in first.context['rows'][:4]], ['A', 'D', 'R', 'K'])
+        self.assertEqual([row[11] for row in first.context['rows'][:4]], ['00441', 'AB123', '', '=1+1'])
+        last = self.client.get('/rtis/output?page=999')
+        self.assertEqual(last.context['page'], 2)
+        self.assertEqual(len(last.context['rows']), 5)
+        self.assertEqual(last.context['last_row'], 105)
+
+    def test_output_excel_contains_all_pages_and_preserves_source_values(self):
+        self._import_output_examples()
+        response = self.client.get('/rtis/output.xlsx')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('attachment;', response.headers['content-disposition'])
+        book = load_workbook(BytesIO(response.content))
+        sheet = book.active
+        self.assertEqual(tuple(cell.value for cell in sheet[1]), HEADERS)
+        self.assertEqual(sheet.max_row, 106)
+        self.assertEqual(sheet['L2'].value, '00441')
+        self.assertEqual(sheet['L2'].data_type, 's')
+        self.assertEqual(sheet['L5'].value, '=1+1')
+        self.assertEqual(sheet['L5'].data_type, 's')
+        self.assertEqual(sheet['I2'].value, 0)
+        self.assertEqual(sheet['G2'].value, datetime(2026, 9, 14, 10))
+        self.assertEqual(sheet.freeze_panes, 'A2')
+        self.assertEqual(sheet.auto_filter.ref, 'A1:M106')
+        self.assertEqual({sheet.cell(row, 10).value for row in range(2, 107)}, {'SDAH', 'HWH', 'ASN', 'MLDT'})
+        book.close()
+
+    def test_output_pdf_contains_all_pages_and_repeats_headers(self):
+        self._import_output_examples()
+        response = self.client.get('/rtis/output.pdf')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers['content-type'], 'application/pdf')
+        pdf = PdfReader(BytesIO(response.content))
+        self.assertGreater(len(pdf.pages), 1)
+        for page in pdf.pages:
+            text = ' '.join(page.extract_text().split())
+            self.assertIn('Rows: 105', text)
+            self.assertIn('Page:', text)
+            for header in HEADERS:
+                self.assertIn(header, text)
+        first = pdf.pages[0].extract_text()
+        self.assertIn('00441', first)
+        self.assertIn('AB123', first)
+        self.assertIn('=1+1', first)
+        self.assertIn('2026-09-15', pdf.pages[-1].extract_text())
+        self.assertGreater(float(pdf.pages[0].mediabox.width), float(pdf.pages[0].mediabox.height))
+
+    def test_empty_output_and_exports(self):
+        response = self.client.get('/rtis/output')
+        self.assertIn('No RTIS data uploaded yet', response.text)
+        self.assertEqual(response.context['total'], 0)
+        book = load_workbook(BytesIO(self.client.get('/rtis/output.xlsx').content))
+        self.assertEqual(book.active.max_row, 1)
+        book.close()
+        pdf = PdfReader(BytesIO(self.client.get('/rtis/output.pdf').content))
+        self.assertEqual(len(pdf.pages), 1)
+        self.assertIn('No rows available.', ' '.join(pdf.pages[0].extract_text().split()))
 
 
 if __name__ == '__main__':

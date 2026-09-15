@@ -21,11 +21,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import Field, SQLModel, Session, select
 
 from .db import get_session
+from .rtis_exports import build_rtis_excel, build_rtis_pdf
 
 DIVISIONS = ("SDAH", "HWH", "ASN", "MLDT")
 FOCUS_EVENTS = ("H", "J", "K")
 ANALYSIS_TYPES = {"passenger": "Passenger Train Analysis", "goods": "Goods Train Analysis"}
-MAX_BYTES = 20 * 1024 * 1024
+MAX_UPLOAD_MB = 25
+MAX_BYTES = MAX_UPLOAD_MB * 1024 * 1024
 NS = {"s": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
 HEADERS = ("Sr.No.", "Device Id", "Loco No.", "Latitude", "Longitude", "Station",
            "Event Time", "Event Type", "Speed", "Division Code", "Reporting Time",
@@ -182,7 +184,7 @@ def import_rtis(session: Session, filename: str, content: bytes, division: str) 
     if not filename.lower().endswith(".xlsx"):
         raise ValueError("Upload an .xlsx file.")
     if len(content) > MAX_BYTES:
-        raise ValueError("Each file must be 20 MB or smaller.")
+        raise ValueError(f"Each file must be {MAX_UPLOAD_MB} MB or smaller.")
     if division not in DIVISIONS:
         raise ValueError("Choose SDAH, HWH, ASN or MLDT.")
     digest = sha256(content).hexdigest()
@@ -254,6 +256,7 @@ def rtis_page(request: Request, division: str = "SDAH", day: str = "", event: st
                            .order_by(RtisUpload.id.desc()).limit(50)).all()
     return templates.TemplateResponse(request=request, name="rtis.html", context={
         "active_page": "rtis", "divisions": DIVISIONS, "division": division, "day": day,
+        "max_upload_mb": MAX_UPLOAD_MB,
         "event": event, "counts": counts, "rows": rows, "total": total, "history": history,
         "page": page, "pages": pages,
         "analysis": analysis, "analysis_types": ANALYSIS_TYPES, "view": view,
@@ -295,3 +298,52 @@ def rtis_download(upload_id: int, session: Session = Depends(get_session)):
     return Response(content=upload.content,
                     media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     headers={"Content-Disposition": f'attachment; filename="RTIS_{upload.division}_{upload.id}.xlsx"'})
+
+
+def _output_values(raw: str) -> list[str]:
+    source = json.loads(raw)
+    return [source.get(header, "") for header in HEADERS]
+
+
+def output_rows(session: Session):
+    """Read saved source fields in a stable order without loading workbook blobs."""
+    sources = session.exec(select(RtisEvent.source).order_by(RtisEvent.id)
+                           .execution_options(yield_per=1000))
+    for raw in sources:
+        yield _output_values(raw)
+
+
+@router.get("/rtis/output")
+def rtis_output(request: Request, page: int = 1, session: Session = Depends(get_session)):
+    counts = dict(session.exec(select(RtisEvent.division, func.count())
+                              .group_by(RtisEvent.division)).all())
+    total = sum(counts.values())
+    pages = max(1, (total + 99) // 100)
+    page = min(max(1, page), pages)
+    sources = session.exec(select(RtisEvent.source).order_by(RtisEvent.id)
+                           .offset((page - 1) * 100).limit(100)).all()
+    return templates.TemplateResponse(request=request, name="rtis_output.html", context={
+        "active_page": "rtis", "headers": HEADERS, "divisions": DIVISIONS,
+        "counts": counts, "total": total, "page": page, "pages": pages,
+        "first_row": (page - 1) * 100 + 1 if total else 0,
+        "last_row": min(page * 100, total),
+        "rows": [_output_values(raw) for raw in sources],
+    })
+
+
+@router.get("/rtis/output.xlsx")
+def rtis_output_excel(session: Session = Depends(get_session)):
+    return Response(
+        content=build_rtis_excel(HEADERS, output_rows(session)),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="rtis_merged_output.xlsx"'},
+    )
+
+
+@router.get("/rtis/output.pdf")
+def rtis_output_pdf(session: Session = Depends(get_session)):
+    return Response(
+        content=build_rtis_pdf(HEADERS, output_rows(session)),
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="rtis_merged_output.pdf"'},
+    )

@@ -58,7 +58,9 @@ The cell prints a public URL like `https://xxxx.ngrok.io`; open it to use the ap
 ## RTIS uploads
 
 The sidebar RTIS tab (`/rtis`) accepts division-wise `.xlsx` exports for SDAH,
-HWH, ASN and MLDT. Select the division, upload up to 10 files (20 MB each), then
+HWH, ASN and MLDT. Each division has its own labeled Excel file input and upload
+button. Choose files under the matching division and upload up to 10 files
+(25 MB each) per upload, then
 filter H/J/K events by event date. Passenger Train Analysis is the default; Goods
 Train Analysis is a separate option. Following the user's rule, digit-only train
 numbers are passenger trains, while numbers containing both letters and digits
@@ -79,9 +81,20 @@ the first imported event is retained. J and K remain source codes pending a
 confirmed definition. Event dates come from cell values, not the filename.
 
 Restart the app after installing this change; its normal startup creates the
-RTIS tables. Tests use an isolated database: install `httpx` in the development
+RTIS tables. Tests use an isolated database: install `httpx` and `pypdf` in the development
 environment and run `python scripts/test_rtis.py`. Optionally pass the supplied
 `RTIS_Events_SDAH_2026-09-14.xlsx` path to exercise the reference export too.
+
+### Combined RTIS output
+
+Click **Output** on RTIS to view `/rtis/output`: one table containing all saved
+events from SDAH, HWH, ASN and MLDT, including all event types, train types and
+dates. The 13 original Excel headers and source serial numbers are retained.
+Existing import deduplication still applies. The browser shows 100 rows per page.
+**Generate PDF** and **Download Excel** export the entire combined dataset,
+including every page. Excel keeps train/device/loco identifiers as text and
+provides a frozen header and filters. PDF uses landscape A3 pages with repeated
+headers and page numbers. These routes require the same login as the rest of RTIS.
 
 ## Customize
 - Edit `config/requirements.json` to change required numbers (used for seeding).
