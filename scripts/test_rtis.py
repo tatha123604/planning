@@ -1,0 +1,158 @@
+"""RTIS import and route checks against an isolated database.
+
+Run: python scripts/test_rtis.py [path/to/RTIS_export.xlsx]
+"""
+from collections import Counter
+from io import BytesIO
+from pathlib import Path
+import sys
+import unittest
+from zipfile import ZipFile
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from sqlalchemy.pool import StaticPool
+from sqlmodel import Session, create_engine, select
+
+from src.rtis import (HEADERS, RtisEvent, RtisUpload, get_session,
+                      import_rtis, parse_rtis, router)
+
+REFERENCE = Path(sys.argv.pop()) if len(sys.argv) > 1 and sys.argv[-1].endswith('.xlsx') else None
+
+
+def workbook(division='SDAH', speed='0', event='H', time='2026-09-14 10:00:00', serial='1', formula=False, train='00441'):
+    from xml.sax.saxutils import escape
+    values = [serial, '12', '22364', '22.76', '88.37', 'BP', time, event,
+              speed, division, '2026-09-14 10:00:02', train, '2026-09-14']
+    def row(number, items):
+        cells = []
+        for i, value in enumerate(items):
+            inner = '<f>1+1</f><v>2</v>' if formula and number == 2 and i == 8 else f'<is><t>{escape(value)}</t></is>'
+            cells.append(f'<c r="{chr(65+i)}{number}" t="inlineStr">{inner}</c>')
+        return f'<row r="{number}">' + ''.join(cells) + '</row>'
+    stream = BytesIO()
+    with ZipFile(stream, 'w') as archive:
+        archive.writestr('xl/workbook.xml', '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Events" sheetId="1" r:id="rId1"/></sheets></workbook>')
+        archive.writestr('xl/_rels/workbook.xml.rels', '<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>')
+        archive.writestr('xl/worksheets/sheet1.xml', '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>' + row(1, HEADERS) + row(2, values) + '</sheetData></worksheet>')
+    return stream.getvalue()
+
+
+class RtisTests(unittest.TestCase):
+    def setUp(self):
+        self.engine = create_engine('sqlite://', connect_args={'check_same_thread': False}, poolclass=StaticPool)
+        RtisUpload.__table__.create(self.engine)
+        RtisEvent.__table__.create(self.engine)
+        self.session = Session(self.engine)
+        self.app = FastAPI()
+        self.app.include_router(router)
+        self.app.dependency_overrides[get_session] = lambda: self.session
+        self.client = TestClient(self.app)
+
+    def tearDown(self):
+        self.client.close()
+        self.session.close()
+        self.engine.dispose()
+
+    def test_division_validation_and_atomic_failure(self):
+        for division in ('SDAH', 'HWH', 'ASN', 'MLDT'):
+            import_rtis(self.session, 'report.xlsx', workbook(division=division), division)
+        with self.assertRaisesRegex(ValueError, 'expected HWH'):
+            import_rtis(self.session, 'bad.xlsx', workbook(), 'HWH')
+        self.assertEqual(len(self.session.exec(select(RtisUpload)).all()), 4)
+
+    def test_duplicate_file_and_overlapping_exports(self):
+        content = workbook()
+        import_rtis(self.session, 'report.xlsx', content, 'SDAH')
+        self.assertIn('Already uploaded', import_rtis(self.session, 'copy.xlsx', content, 'SDAH'))
+        self.assertIn('0 new events', import_rtis(self.session, 'overlap.xlsx', workbook(serial='88'), 'SDAH'))
+        self.assertEqual(len(self.session.exec(select(RtisEvent)).all()), 1)
+
+    def test_identifiers_blank_zero_and_excel_dates(self):
+        row = parse_rtis(workbook(), 'SDAH')[0]
+        self.assertEqual(row['train'], '00441')
+        self.assertEqual(row['speed'], 0)
+        self.assertIsNone(parse_rtis(workbook(speed=''), 'SDAH')[0]['speed'])
+        self.assertEqual(parse_rtis(workbook(time='46279.5'), 'SDAH')[0]['event_time'].isoformat(), '2026-09-14T12:00:00')
+
+    def test_invalid_files_are_not_saved(self):
+        for content in (b'not a workbook', workbook(speed='nan'), workbook(time='bad'), workbook(formula=True)):
+            with self.assertRaises(ValueError):
+                import_rtis(self.session, 'bad.xlsx', content, 'SDAH')
+        self.assertEqual(self.session.exec(select(RtisUpload)).all(), [])
+
+    def test_upload_filters_history_download_and_errors(self):
+        files = [('files', ('one.xlsx', workbook(event='H'))), ('files', ('two.xlsx', workbook(event='J')))]
+        response = self.client.post('/rtis/upload', data={'division': 'SDAH'}, files=files)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('2 matching events', response.text)
+        self.assertIn('00441', response.text)
+        self.assertIn('one.xlsx', response.text)
+        self.assertIn('1 matching events', self.client.get('/rtis?event=J&day=2026-09-14').text)
+        self.assertIn('0 matching events', self.client.get('/rtis?day=2026-09-15').text)
+        self.assertIn('0 matching events', self.client.get('/rtis?division=HWH').text)
+        self.assertEqual(self.client.get('/rtis?division=BAD').status_code, 400)
+        self.assertEqual(self.client.get('/rtis?day=invalid').status_code, 400)
+        original = self.session.get(RtisUpload, 1).content
+        self.assertEqual(self.client.get('/rtis/uploads/1/download').content, original)
+        self.assertEqual(self.client.get('/rtis/uploads/999/download').status_code, 404)
+        failure = self.client.post('/rtis/upload', data={'division':'HWH'}, files={'files':('bad.xlsx', workbook())})
+        self.assertIn('Not saved:', failure.text)
+
+    def test_pagination_and_nonfocus_retention(self):
+        for i in range(101):
+            import_rtis(self.session, f'{i}.xlsx', workbook(time=f'2026-09-14 {i//60:02}:{i%60:02}:00'), 'SDAH')
+        import_rtis(self.session, 'arrival.xlsx', workbook(event='A'), 'SDAH')
+        self.assertEqual(len(self.session.exec(select(RtisEvent)).all()), 102)
+        self.assertIn('101 matching events', self.client.get('/rtis').text)
+        self.assertIn('Page 2 of 2', self.client.get('/rtis?page=2').text)
+
+    @unittest.skipUnless(REFERENCE, 'No reference workbook supplied')
+    def test_actual_export_with_invalid_fills(self):
+        content = REFERENCE.read_bytes()
+        records = parse_rtis(content, 'SDAH')
+        self.assertEqual(Counter(r['event_type'] for r in records), {'A':377, 'D':419, 'H':1464, 'J':940, 'K':933, 'R':923})
+        import_rtis(self.session, REFERENCE.name, content, 'SDAH')
+        response = self.client.get('/rtis?day=2026-09-14')
+        self.assertEqual(response.status_code, 200)
+        passenger_count = sum(r['event_type'] in ('H','J','K') and r['train'].isascii() and r['train'].isdigit() for r in records)
+        self.assertIn(f'{passenger_count} matching events', response.text)
+
+    def test_train_type_rule_and_selection_persistence(self):
+        trains = ['12345', '00441', 'AB123', '123ab', '', 'GOODS', '12-34', 'A/12']
+        for i, train in enumerate(trains):
+            import_rtis(self.session, f'{i}.xlsx', workbook(train=train, time=f'2026-09-14 10:{i:02}:00'), 'SDAH')
+        passenger = self.client.get('/rtis')
+        self.assertIn('2 matching events', passenger.text)
+        goods = self.client.get('/rtis?analysis=goods&day=2026-09-14')
+        self.assertIn('3 matching events', goods.text)
+        self.assertIn('Goods Train Analysis — SDAH', goods.text)
+        self.assertIn('name="analysis" value="goods"', goods.text)
+        self.assertIn('division=HWH&day=2026-09-14&amp;event=HJK&amp;analysis=goods', goods.text)
+        self.assertIn('3 matching events', self.client.get('/rtis?view=unclassified').text)
+        self.assertEqual(self.client.get('/rtis?analysis=invalid').status_code, 400)
+        uploaded = self.client.post('/rtis/upload', data={'division':'SDAH', 'analysis':'goods'},
+                                    files={'files': ('goods.xlsx', workbook(train='BC123', event='K'))})
+        self.assertIn('analysis=goods', str(uploaded.url))
+        self.assertIn('4 matching events', uploaded.text)
+
+    def test_speed_thresholds_date_and_train_type(self):
+        for i, speed in enumerate(['', '0', '29.9', '30', '39.9', '40', '49.9', '50', '60']):
+            import_rtis(self.session, f'speed{i}.xlsx', workbook(speed=speed, time=f'2026-09-14 10:{i:02}:00'), 'SDAH')
+        import_rtis(self.session, 'nextday.xlsx', workbook(speed='60', time='2026-09-15 00:00:00'), 'SDAH')
+        import_rtis(self.session, 'goods.xlsx', workbook(speed='50', train='AB123', event='K'), 'SDAH')
+        for threshold, count in [('30', 6), ('40', 4), ('50', 2)]:
+            response = self.client.get(f'/rtis?speed={threshold}&day=2026-09-14')
+            self.assertEqual(response.status_code, 200)
+            self.assertIn(f'{count} matching events', response.text)
+            self.assertIn(f'value="{threshold}" selected', response.text)
+            self.assertIn(f'speed={threshold}&analysis=goods', response.text)
+        self.assertIn('1 matching events', self.client.get('/rtis?speed=50&analysis=goods&day=2026-09-14').text)
+        self.assertIn('9 matching events', self.client.get('/rtis?day=2026-09-14').text)
+        self.assertEqual(self.client.get('/rtis?speed=35').status_code, 400)
+
+
+if __name__ == '__main__':
+    unittest.main()

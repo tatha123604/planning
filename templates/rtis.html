@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RTIS | SDAH Crew Analysis</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="icon" type="image/svg+xml" href="/static/indian-railways-mark.svg" />
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <img class="brand-mark" src="/static/indian-railways-mark.svg" alt="Indian Railways" />
+        <span>SDAH Crew Analysis</span>
+      </div>
+      <nav class="side-links">
+        <a class="{{ 'active' if active_page == 'dashboard' else '' }}" href="/">Dashboard</a>
+        <a class="{{ 'active' if active_page == 'employees' else '' }}" href="/employees">Employees</a>
+        <a class="{{ 'active' if active_page == 'uploads' else '' }}" href="/uploads">Uploads</a>
+        <a class="{{ 'active' if active_page == 'cli' else '' }}" href="/cli">CLI</a>
+        <a class="{{ 'active' if active_page == 'cli_distribution_planner' else '' }}" href="/cli-distribution-planner">CLI Distribution Planner (Experimental)</a>
+        <a class="{{ 'active' if active_page == 'top_performer' else '' }}" href="/top-performer">Top Performer</a>
+        <details class="side-group" {% if active_page in ['cli_matrix', 'non_continuous_duty', 'sub_non_continuous_duty'] %}open{% endif %}>
+          <summary>CMS REPORTS</summary>
+          <div class="side-sub-links">
+            <a class="{{ 'active' if active_page == 'cli_matrix' else '' }}" href="/cli-matrix">CLI Matrix</a>
+            <a class="{{ 'active' if active_page == 'non_continuous_duty' else '' }}" href="/non-continuous-duty">NON SUB NON CONT DUTY</a>
+            <a class="{{ 'active' if active_page == 'sub_non_continuous_duty' else '' }}" href="/sub-non-continuous-duty">SUB NON CONT DUTY</a>
+          </div>
+        </details>
+        <a class="{{ 'active' if active_page == 'requirements' else '' }}" href="/requirements">Requirements</a>
+        <a class="{{ 'active' if active_page == 'reports' else '' }}" href="/reports">Reports</a>
+        <a class="{{ 'active' if active_page == 'ssts_report' else '' }}" href="/ssts-report">SSTS Report</a>
+        <a class="{{ 'active' if active_page == 'rtis' else '' }}" href="/rtis">RTIS</a>
+      </nav>
+      <div class="hierarchy">Division-wise RTIS events</div>
+    </aside>
+
+    <main class="content">
+      <header><div><h1>RTIS</h1><p>Division-wise Excel uploads and H, J, K events.</p></div>
+        <div class="header-actions"><a class="ghost small" href="/ssts-report?report_tab=pf_entering">SSTS PF analysis</a><a class="ghost small" href="/logout">Logout</a></div>
+      </header>
+      <nav class="report-tabs" aria-label="RTIS analysis type">
+        {% for key, label in analysis_types.items() %}<a class="report-tab {{ 'active' if analysis == key else '' }}" {% if analysis == key %}aria-current="page"{% endif %} href="/rtis?{{ switch_query }}&analysis={{ key }}">{{ label }}</a>{% endfor %}
+      </nav>
+      <nav class="report-tabs" aria-label="RTIS divisions">
+        {% for code in divisions %}<a class="report-tab {{ 'active' if division == code else '' }}" href="/rtis?division={{ code }}&{{ division_query }}">{{ code }}</a>{% endfor %}
+      </nav>
+      {% if notice %}<section class="card" role="status"><p>{{ notice }}</p></section>{% endif %}
+      <section class="card">
+        <h2>Upload RTIS Excel</h2>
+        <form method="post" action="/rtis/upload" enctype="multipart/form-data" class="rtis-form" id="rtis-upload-form">
+          <input type="hidden" name="analysis" value="{{ analysis }}" />
+          <label>Division<select name="division" required>{% for code in divisions %}<option value="{{ code }}" {{ 'selected' if code == division else '' }}>{{ code }}</option>{% endfor %}</select></label>
+          <label class="rtis-file">Excel files<input type="file" name="files" accept=".xlsx" multiple required /></label>
+          <button type="submit" id="rtis-upload-button">Upload files</button>
+        </form>
+        <p class="hint">Up to 10 files, 20 MB each. Division Code in every row must match your selection. Original files and all event types are saved; the view below focuses on H, J and K.</p>
+        <p class="hint">Previously imported events are skipped. The original Excel file remains available in upload history.</p>
+      </section>
+      <section class="card">
+        <h2>{{ analysis_types[analysis] }} — {{ division }}</h2>
+        <p class="hint">Train Number rule: digits only = Passenger; letters and digits together = Goods. Uploads are shared by both options.</p>
+        {% if unclassified %}<p class="hint">{{ unclassified }} H/J/K events have a blank or unmatched Train Number for this division, date and speed selection. Select Unclassified events to review them.</p>{% endif %}
+        <form method="get" action="/rtis" class="rtis-form">
+          <input type="hidden" name="division" value="{{ division }}" />
+          <input type="hidden" name="analysis" value="{{ analysis }}" />
+          <label>Show<select name="view"><option value="classified" {{ 'selected' if view == 'classified' else '' }}>{{ 'Passenger trains' if analysis == 'passenger' else 'Goods trains' }}</option><option value="unclassified" {{ 'selected' if view == 'unclassified' else '' }}>Unclassified events</option></select></label>
+          <label>Event date<input type="date" name="day" value="{{ day }}" /></label>
+          <label>Speed<select name="speed"><option value="" {{ 'selected' if not speed else '' }}>All speeds</option>{% for threshold in ['30', '40', '50'] %}<option value="{{ threshold }}" {{ 'selected' if speed == threshold else '' }}>{{ threshold }} and above</option>{% endfor %}</select></label>
+          <label>Event type<select name="event">{% for code in ['HJK', 'H', 'J', 'K'] %}<option value="{{ code }}" {{ 'selected' if code == event else '' }}>{{ 'H + J + K' if code == 'HJK' else code }}</option>{% endfor %}</select></label>
+          <button type="submit">Apply filters</button><a class="ghost small" href="/rtis?division={{ division }}&analysis={{ analysis }}">Reset</a>
+        </form>
+        <p class="rtis-counts">{{ 'Unclassified' if view == 'unclassified' else ('Passenger' if analysis == 'passenger' else 'Goods') }} — H: <strong>{{ counts.get('H', 0) }}</strong> &nbsp; J: <strong>{{ counts.get('J', 0) }}</strong> &nbsp; K: <strong>{{ counts.get('K', 0) }}</strong> — {{ 'Selected date' if day else 'All dates' }}</p>
+        <p class="hint">H: approach with respect to the home signal. J and K are shown as source codes; their definitions have not yet been confirmed.</p>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Event time</th><th>Station</th><th>Event</th><th>Train no.</th><th>Loco no.</th><th>Speed</th></tr></thead>
+          <tbody>{% for row in rows %}<tr><td>{{ row.event_time.strftime('%d-%m-%Y %H:%M:%S') }}</td><td>{{ row.station or '—' }}</td><td><strong>{{ row.event_type }}</strong></td><td>{{ row.train or '—' }}</td><td>{{ row.loco }}</td><td>{{ '%g'|format(row.speed) if row.speed is not none else '—' }}</td></tr>
+          {% else %}<tr><td colspan="6">No H/J/K events for this selection. Upload a report or change the date, speed or train type.</td></tr>{% endfor %}</tbody>
+        </table></div>
+        <div class="rtis-form" aria-label="Event pagination"><span>{{ total }} matching events · Page {{ page }} of {{ pages }} · 100 rows per page</span>
+          {% if page > 1 %}<a class="ghost small" href="/rtis?{{ query }}&page={{ page - 1 }}">Previous</a>{% endif %}
+          {% if page < pages %}<a class="ghost small" href="/rtis?{{ query }}&page={{ page + 1 }}">Next</a>{% endif %}
+        </div>
+      </section>
+      <section class="card"><h2>{{ division }} upload history</h2><p class="hint">Latest 50 files. Upload times are in UTC.</p>
+        <div class="table-wrap"><table><thead><tr><th>File</th><th>Event dates</th><th>Uploaded (UTC)</th><th>Source rows</th><th>New events</th><th>Original</th></tr></thead><tbody>
+        {% for item in history %}<tr><td>{{ item.filename }}</td><td>{{ item.first_day.strftime('%d-%m-%Y') }}{% if item.first_day != item.last_day %} to {{ item.last_day.strftime('%d-%m-%Y') }}{% endif %}</td><td>{{ item.uploaded_at.strftime('%d-%m-%Y %H:%M') }}</td><td>{{ item.row_count }}</td><td>{{ item.added_count }}</td><td><a class="ghost small" href="/rtis/uploads/{{ item.id }}/download">Download</a></td></tr>
+        {% else %}<tr><td colspan="6">No files uploaded for {{ division }} yet.</td></tr>{% endfor %}
+        </tbody></table></div>
+      </section>
+    </main>
+  </div>
+  <style>
+    .rtis-form {display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;margin:16px 0;}
+    .rtis-form label {display:flex;flex-direction:column;gap:8px;min-width:150px;}
+    .rtis-form .rtis-file {flex:1;min-width:220px;}
+    .rtis-form input[type=file] {max-width:100%;}
+    .rtis-counts {margin:16px 0 8px;}
+    .table-wrap {margin-top:16px;}
+    .rtis-form + .hint {margin-bottom:8px;}
+  </style>
+  <script>
+    document.getElementById('rtis-upload-form').addEventListener('submit', function () {
+      const button = document.getElementById('rtis-upload-button');
+      button.disabled = true; button.textContent = 'Uploading…';
+    });
+  </script>
+</body>
+</html>

@@ -55,6 +55,34 @@ The cell prints a public URL like `https://xxxx.ngrok.io`; open it to use the ap
 - Dates can be ISO strings (YYYY-MM-DD) or Excel date cells. Role aliases like `Shunter`/`LPS(Shunter)` normalize to `LPS`.
 - Promotion ordering: only superior roles per hierarchy; ordered by role then seniority rank then ready date.
 
+## RTIS uploads
+
+The sidebar RTIS tab (`/rtis`) accepts division-wise `.xlsx` exports for SDAH,
+HWH, ASN and MLDT. Select the division, upload up to 10 files (20 MB each), then
+filter H/J/K events by event date. Passenger Train Analysis is the default; Goods
+Train Analysis is a separate option. Following the user's rule, digit-only train
+numbers are passenger trains, while numbers containing both letters and digits
+are goods trains. Blank and unmatched identifiers remain in Unclassified events.
+The selection is retained across filters, pagination and uploads.
+The date selector filters Event Time. Speed options are All speeds, 30 and above,
+40 and above, and 50 and above (inclusive thresholds). Active speed filters omit
+blank speeds and apply to the event counts and results in both analysis options.
+All event types and original files are retained
+in the application's configured SQLite database. The upload history offers the
+original download. Existing app login is required for viewing and uploading.
+
+Imports validate every row's Division Code and the standard RTIS export headers.
+Blank speed remains blank, and train identifiers stored as text retain leading
+zeros. Re-uploading identical files does not add events. Overlapping exports are
+deduplicated by division, device, loco, station, event time/type and coordinates;
+the first imported event is retained. J and K remain source codes pending a
+confirmed definition. Event dates come from cell values, not the filename.
+
+Restart the app after installing this change; its normal startup creates the
+RTIS tables. Tests use an isolated database: install `httpx` in the development
+environment and run `python scripts/test_rtis.py`. Optionally pass the supplied
+`RTIS_Events_SDAH_2026-09-14.xlsx` path to exercise the reference export too.
+
 ## Customize
 - Edit `config/requirements.json` to change required numbers (used for seeding).
 - Add or modify rows in `data/employees.csv` with ISO dates (YYYY-MM-DD) for seeding.

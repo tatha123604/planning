@@ -25,6 +25,7 @@
       </div>
       <nav class="side-links">
         <a href="/ssts-report?report_tab=pf_entering&pf_day={{ report_day }}">Back To SSTS Report</a>
+        <a class="{{ 'active' if active_page == 'rtis' else '' }}" href="/rtis">RTIS</a>
         <a href="{{ ssts_web_url }}" target="_blank" rel="noreferrer">Open SSTS Rakes</a>
       </nav>
     </aside>

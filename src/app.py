@@ -57,6 +57,7 @@ from .models import (
     SstsSnapshotRun,
 )
 from .seed import seed_all
+from .rtis import router as rtis_router
 from processor import build_sheet2_df, build_summary_df
 
 BASE_PATH = Path(__file__).resolve().parent.parent
@@ -1667,6 +1668,7 @@ def _build_top_performer_comparison(
     )
 
 app = FastAPI(title="HR Planner")
+app.include_router(rtis_router)
 app.mount("/static", StaticFiles(directory=str(BASE_PATH / "static")), name="static")
 app.add_middleware(AuthMiddleware)
 
