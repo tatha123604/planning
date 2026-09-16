@@ -101,6 +101,18 @@ RTIS tables. Tests use an isolated database: install `httpx` and `pypdf` in the 
 environment and run `python scripts/test_rtis.py`. Optionally pass the supplied
 `RTIS_Events_SDAH_2026-09-14.xlsx` path to exercise the reference export too.
 
+### Passenger train number models
+
+In Passenger Train Analysis, upload a crew-link `.xlsx` in the **Train no. model**
+card. The importer reads both `Train No` columns with their shared `NAME OF TRAIN`
+and keeps only rows whose `HQ OF CREW` is SDAH or KOAA. Saved models are reusable
+from the model selector; choose **All passenger trains** to remove the shortlist.
+Train numbers match exactly, including leading zeros. Selecting a model adds
+Train Name and HQ OF CREW to the table and filtered Excel download. Division,
+date/time, speed, event and train-search filters apply within the shortlist.
+Models are saved in the configured database; restart the app to create the new
+model table. Uploading the same workbook again reuses its saved model.
+
 ### Combined RTIS output
 
 Click **Output** on RTIS to view `/rtis/output`: one table containing all saved

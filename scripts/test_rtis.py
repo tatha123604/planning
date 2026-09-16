@@ -14,13 +14,28 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from openpyxl import load_workbook
+from openpyxl import load_workbook, Workbook
 from pypdf import PdfReader
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, create_engine, select
 
 from src.rtis import (HEADERS, RtisEvent, RtisUpload, get_session,
                       import_rtis, parse_rtis, router)
+from src.rtis_train_models import RtisTrainModel, parse_train_model, save_train_model
+
+
+def model_workbook(rows=None):
+    book = Workbook()
+    sheet = book.active
+    sheet.append(['Train No', 'NAME OF TRAIN', 'Train No', 'HQ OF CREW'])
+    for row in rows or [(12377, 'PADATIK', 12378, 'SDAH'),
+                        ('00441', 'Special\nTrain', '00442', ' KOAA '),
+                        (13185, 'Excluded', 13186, 'ASN')]:
+        sheet.append(row)
+    stream = BytesIO()
+    book.save(stream)
+    book.close()
+    return stream.getvalue()
 
 REFERENCE = Path(sys.argv.pop()) if len(sys.argv) > 1 and sys.argv[-1].endswith('.xlsx') else None
 
@@ -48,6 +63,7 @@ class RtisTests(unittest.TestCase):
         self.engine = create_engine('sqlite://', connect_args={'check_same_thread': False}, poolclass=StaticPool)
         RtisUpload.__table__.create(self.engine)
         RtisEvent.__table__.create(self.engine)
+        RtisTrainModel.__table__.create(self.engine)
         self.session = Session(self.engine)
         self.app = FastAPI()
         self.app.include_router(router)
@@ -58,6 +74,56 @@ class RtisTests(unittest.TestCase):
         self.client.close()
         self.session.close()
         self.engine.dispose()
+
+    def test_train_model_pairs_hq_names_and_validation(self):
+        mapping, count = parse_train_model(model_workbook())
+        self.assertEqual(count, 2)
+        self.assertEqual(set(mapping), {'12377', '12378', '00441', '00442'})
+        self.assertEqual(mapping['12378']['name'], 'PADATIK')
+        self.assertEqual(mapping['00442'], {'name': 'Special Train', 'hq': 'KOAA'})
+        for rows in [[(1, 'Excluded', 2, 'ASN')], [(1, '', 2, 'SDAH')],
+                     [('ABC123', 'Bad', 2, 'SDAH')],
+                     [(1, 'One', 2, 'SDAH'), (1, 'Other', 3, 'KOAA')]]:
+            with self.assertRaises(ValueError):
+                parse_train_model(model_workbook(rows))
+        with self.assertRaises(ValueError):
+            parse_train_model(b'bad file')
+
+    def test_train_model_upload_filter_export_and_reuse(self):
+        for index, (train, division) in enumerate([('12377', 'SDAH'), ('12378', 'HWH'),
+                                ('00441', 'ASN'), ('13185', 'SDAH'),
+                                ('912377', 'SDAH'), ('GO123', 'SDAH')]):
+            import_rtis(self.session, train + '.xlsx', workbook(train=train, division=division,
+                        time=f'2026-09-14 10:00:0{index}'), division)
+        content = model_workbook()
+        response = self.client.post('/rtis/train-model/upload', data={'division': 'ALL'},
+                                    files={'model_file': ('model.xlsx', content)})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('3 matching events', response.text)
+        self.assertIn('Special Train', response.text)
+        self.assertIn('Train Name', response.text)
+        model = self.session.exec(select(RtisTrainModel)).one()
+        self.assertEqual(save_train_model(self.session, 'copy.xlsx', content).id, model.id)
+        query = f'division=ALL&model_id={model.id}'
+        self.assertIn('1 matching events', self.client.get('/rtis?' + query + '&division=HWH').text)
+        self.assertIn('2 matching events', self.client.get('/rtis?' + query + '&train_no=1237').text)
+        self.assertIn('0 matching events', self.client.get('/rtis?' + query + '&speed=30').text)
+        self.assertIn('5 matching events', self.client.get('/rtis?division=ALL').text)
+        self.assertIn('1 matching events', self.client.get('/rtis?division=ALL&analysis=goods').text)
+        result = self.client.get('/rtis/analysis.xlsx?' + query)
+        self.assertEqual(result.status_code, 200)
+        book = load_workbook(BytesIO(result.content))
+        rows = list(book.active.values)
+        self.assertEqual(len(rows), 4)
+        self.assertEqual(rows[0][-2:], ('Train Name', 'HQ OF CREW'))
+        names = {row[4]: row[-2] for row in rows[1:]}
+        self.assertEqual(names, {'12377': 'PADATIK', '12378': 'PADATIK', '00441': 'Special Train'})
+        book.close()
+        self.assertEqual(self.client.get('/rtis?model_id=999').status_code, 404)
+        self.assertEqual(self.client.get('/rtis?' + query + '&analysis=goods').status_code, 400)
+        invalid = self.client.post('/rtis/train-model/upload', files={'model_file': ('bad.xlsx', b'bad')})
+        self.assertIn('Model not saved', invalid.text)
+        self.assertEqual(len(self.session.exec(select(RtisTrainModel)).all()), 1)
 
     def test_division_validation_and_atomic_failure(self):
         for division in ('SDAH', 'HWH', 'ASN', 'MLDT'):

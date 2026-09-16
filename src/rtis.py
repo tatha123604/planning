@@ -22,6 +22,7 @@ from sqlmodel import Field, SQLModel, Session, select
 
 from .db import get_session
 from .rtis_exports import build_rtis_excel, build_rtis_pdf
+from .rtis_train_models import RtisTrainModel, save_train_model, selected_train_model
 
 DIVISIONS = ("SDAH", "HWH", "ASN", "MLDT")
 FOCUS_EVENTS = ("H", "J", "K")
@@ -213,7 +214,7 @@ def import_rtis(session: Session, filename: str, content: bytes, division: str) 
     return f"Saved {len(new):,} new events; {len(records) - len(new):,} duplicate rows skipped."
 
 
-def analysis_filters(division, day, event, analysis, view, speed, time_from="", time_to="", train_no=""):
+def analysis_filters(division, day, event, analysis, view, speed, time_from="", time_to="", train_no="", model_trains=None):
     """Keep on-screen results and full Excel downloads on the same filter rules."""
     if speed not in ("", "30", "40", "50"):
         raise HTTPException(400, "Choose All speeds, 30+, 40+ or 50+.")
@@ -240,6 +241,8 @@ def analysis_filters(division, day, event, analysis, view, speed, time_from="", 
     if start_time and end_time and start_time > end_time:
         raise HTTPException(400, "To time must be on or after From time within the selected date.")
     filters = [RtisEvent.event_type.in_(FOCUS_EVENTS)]
+    if model_trains is not None:
+        filters.append(RtisEvent.train.in_(list(model_trains)))
     filters.append(RtisEvent.division.in_(DIVISIONS) if division == "ALL" else RtisEvent.division == division)
     train_no = train_no.strip()
     if len(train_no) > 100:
@@ -276,9 +279,11 @@ def analysis_filters(division, day, event, analysis, view, speed, time_from="", 
 def rtis_page(request: Request, division: str = "SDAH", day: str = "", event: str = "HJK",
               page: int = 1, analysis: str = "passenger", view: str = "classified",
               speed: str = "", time_from: str = "", time_to: str = "", train_no: str = "",
+              model_id: int = 0,
               session: Session = Depends(get_session)):
     train_no = train_no.strip()
-    filters, summary_filters, unknown_filters = analysis_filters(division, day, event, analysis, view, speed, time_from, time_to, train_no)
+    selected_model, train_names = selected_train_model(session, model_id, analysis)
+    filters, summary_filters, unknown_filters = analysis_filters(division, day, event, analysis, view, speed, time_from, time_to, train_no, train_names if selected_model else None)
     unclassified = session.exec(select(func.count()).select_from(RtisEvent).where(*unknown_filters)).one()
     counts = dict(session.exec(select(RtisEvent.event_type, func.count()).where(*summary_filters)
                               .group_by(RtisEvent.event_type)).all())
@@ -298,11 +303,14 @@ def rtis_page(request: Request, division: str = "SDAH", day: str = "", event: st
         "max_upload_mb": MAX_UPLOAD_MB,
         "event": event, "counts": counts, "rows": rows, "total": total, "history": history,
         "page": page, "pages": pages,
+        "model_id": model_id, "selected_model": selected_model, "train_names": train_names,
+        "train_models": session.exec(select(RtisTrainModel.id, RtisTrainModel.filename, RtisTrainModel.train_count,
+                                            RtisTrainModel.eligible_rows).order_by(RtisTrainModel.id.desc())).all(),
         "analysis": analysis, "analysis_types": ANALYSIS_TYPES, "view": view,
         "unclassified": unclassified, "speed": speed, "time_from": time_from, "time_to": time_to, "train_no": train_no,
-        "division_query": urlencode({"day": day, "event": event, "analysis": analysis, "view": view, "speed": speed, "time_from": time_from, "time_to": time_to, "train_no": train_no}),
+        "division_query": urlencode({"day": day, "event": event, "analysis": analysis, "view": view, "speed": speed, "time_from": time_from, "time_to": time_to, "train_no": train_no, "model_id": model_id}),
         "switch_query": urlencode({"division": division, "day": day, "event": event, "speed": speed, "time_from": time_from, "time_to": time_to, "train_no": train_no}),
-        "query": urlencode({"division": division, "day": day, "event": event, "analysis": analysis, "view": view, "speed": speed, "time_from": time_from, "time_to": time_to, "train_no": train_no}),
+        "query": urlencode({"division": division, "day": day, "event": event, "analysis": analysis, "view": view, "speed": speed, "time_from": time_from, "time_to": time_to, "train_no": train_no, "model_id": model_id}),
         "notice": request.query_params.get("notice", ""),
     })
 
@@ -311,19 +319,43 @@ def rtis_page(request: Request, division: str = "SDAH", day: str = "", event: st
 def rtis_analysis_excel(division: str = "SDAH", day: str = "", event: str = "HJK",
                         analysis: str = "passenger", view: str = "classified", speed: str = "",
                         time_from: str = "", time_to: str = "", train_no: str = "",
+                        model_id: int = 0,
                         session: Session = Depends(get_session)):
-    filters, _, _ = analysis_filters(division, day, event, analysis, view, speed, time_from, time_to, train_no)
+    selected_model, train_names = selected_train_model(session, model_id, analysis)
+    filters, _, _ = analysis_filters(division, day, event, analysis, view, speed, time_from, time_to, train_no, train_names if selected_model else None)
     events = session.exec(select(RtisEvent).where(*filters)
                           .order_by(RtisEvent.event_time.desc(), RtisEvent.id.desc())
                           .execution_options(yield_per=1000))
     headers = ("Event date_time", "Division Code", "Station", "Event Type", "Train Number", "Loco No.", "Speed")
+    if selected_model:
+        headers = (*headers, "Train Name", "HQ OF CREW")
     rows = ([row.event_time.isoformat(sep=" "), row.division, row.station, row.event_type,
-             row.train, row.loco, str(row.speed) if row.speed is not None else ""] for row in events)
+             row.train, row.loco, str(row.speed) if row.speed is not None else ""] +
+            ([train_names[row.train]['name'], train_names[row.train]['hq']] if selected_model else []) for row in events)
     period = f"_{time_from.replace(':', '') or '000000'}-{time_to.replace(':', '') or '235959'}" if time_from or time_to else ""
     filename = f"RTIS_{division}_{analysis}_{view}_{day or 'all-dates'}{period}_{event}_{speed or 'all'}-speed.xlsx"
+    if selected_model:
+        filename = filename.replace('.xlsx', f'_model-{model_id}.xlsx')
     return Response(content=build_rtis_excel(headers, rows),
                     media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+@router.post("/rtis/train-model/upload")
+def rtis_model_upload(model_file: UploadFile = File(...), division: str = Form("ALL"),
+                      session: Session = Depends(get_session)):
+    if division not in (*DIVISIONS, "ALL"):
+        raise HTTPException(400, "Invalid division.")
+    try:
+        model = save_train_model(session, model_file.filename or '', model_file.file.read(MAX_BYTES + 1))
+        params = {"division": division, "analysis": "passenger", "model_id": model.id,
+                  "notice": f"Model saved: {model.eligible_rows} SDAH/KOAA rows, {model.train_count} train numbers. Model filter applied."}
+    except ValueError as exc:
+        session.rollback()
+        params = {"division": division, "analysis": "passenger", "notice": f"Model not saved: {exc}"}
+    finally:
+        model_file.file.close()
+    return RedirectResponse('/rtis?' + urlencode(params), status_code=303)
 
 
 @router.post("/rtis/upload")
