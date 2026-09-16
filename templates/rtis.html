@@ -101,8 +101,8 @@
         <p class="hint">Train no. matches full or partial text, ignoring letter case. Leave times blank for the full day. From and To times include the selected second on that date. Excel downloads all matching rows across all pages.</p>
         <p class="rtis-counts">{{ 'Unclassified' if view == 'unclassified' else ('Passenger' if analysis == 'passenger' else 'Goods') }} — H: <strong>{{ counts.get('H', 0) }}</strong> &nbsp; J: <strong>{{ counts.get('J', 0) }}</strong> &nbsp; K: <strong>{{ counts.get('K', 0) }}</strong> — {{ 'Selected date' if day else 'All dates' }}</p>
         <p class="hint">H: approach with respect to the home signal. J and K are shown as source codes; their definitions have not yet been confirmed.</p>
-        <div class="table-wrap"><table>
-          <thead><tr><th>Event date_time</th><th>Division Code</th><th>Station</th><th>Event</th><th>Train no.</th><th>Loco no.</th><th>Speed</th>{% if selected_model %}<th>Train Name</th><th>HQ OF CREW</th>{% endif %}</tr></thead>
+        <div class="table-wrap"><table class="rtis-data-table">
+          <thead><tr><th data-sort-type="date"><button type="button" class="table-sort" aria-label="Sort by Event date_time">Event date_time</button></th><th data-sort-type="text"><button type="button" class="table-sort" aria-label="Sort by Division Code">Division Code</button></th><th data-sort-type="text"><button type="button" class="table-sort" aria-label="Sort by Station">Station</button></th><th data-sort-type="text"><button type="button" class="table-sort" aria-label="Sort by Event">Event</button></th><th data-sort-type="text"><button type="button" class="table-sort" aria-label="Sort by Train no.">Train no.</button></th><th data-sort-type="text"><button type="button" class="table-sort" aria-label="Sort by Loco no.">Loco no.</button></th><th data-sort-type="number"><button type="button" class="table-sort" aria-label="Sort by Speed">Speed</button></th>{% if selected_model %}<th data-sort-type="text"><button type="button" class="table-sort" aria-label="Sort by Train Name">Train Name</button></th><th data-sort-type="text"><button type="button" class="table-sort" aria-label="Sort by HQ OF CREW">HQ OF CREW</button></th>{% endif %}</tr></thead>
           <tbody>{% for row in rows %}<tr><td>{{ row.event_time.strftime('%d-%m-%Y %H:%M:%S') }}</td><td>{{ row.division }}</td><td>{{ row.station or '—' }}</td><td><strong>{{ row.event_type }}</strong></td><td>{{ row.train or '—' }}</td><td>{{ row.loco }}</td><td>{{ '%g'|format(row.speed) if row.speed is not none else '—' }}</td>{% if selected_model %}<td>{{ train_names[row.train]['name'] }}</td><td>{{ train_names[row.train]['hq'] }}</td>{% endif %}</tr>
           {% else %}<tr><td colspan="{{ 9 if selected_model else 7 }}">No H/J/K events for this selection. Upload a report or change the model, train no., date, speed or train type.</td></tr>{% endfor %}</tbody>
         </table></div>
@@ -130,6 +130,10 @@
     .rtis-upload-form button:disabled {cursor:wait;opacity:0.7;}
     .rtis-counts {margin:16px 0 8px;}
     .table-wrap {margin-top:16px;}
+    .table-sort {padding:0;border:0;background:none;color:inherit;font:inherit;font-weight:800;cursor:pointer;text-align:left;}
+    .table-sort::after {content:' ↕';opacity:.55;font-size:.85em;}
+    .table-sort[aria-sort="ascending"]::after {content:' ↑';opacity:1;}
+    .table-sort[aria-sort="descending"]::after {content:' ↓';opacity:1;}
     .rtis-form + .hint {margin-bottom:8px;}
     @media (max-width:640px) {
       .content > header .header-actions .ghost {flex:0 0 auto;min-height:40px;display:flex;align-items:center;justify-content:center;}
@@ -140,6 +144,37 @@
       form.addEventListener('submit', function () {
         const button = form.querySelector('button[type="submit"]');
         button.disabled = true; button.textContent = 'Uploading…';
+      });
+    });
+  </script>
+  <script>
+    document.querySelectorAll('.rtis-data-table').forEach(function (table) {
+      const body = table.tBodies[0];
+      table.querySelectorAll('thead th').forEach(function (header, index) {
+        const button = header.querySelector('.table-sort');
+        if (!button || !body) return;
+        button.addEventListener('click', function () {
+          const descending = button.getAttribute('aria-sort') === 'ascending';
+          table.querySelectorAll('.table-sort').forEach(function (other) { other.removeAttribute('aria-sort'); });
+          button.setAttribute('aria-sort', descending ? 'descending' : 'ascending');
+          const type = header.dataset.sortType || 'text';
+          const rows = Array.from(body.querySelectorAll('tr')).filter(function (row) { return row.cells.length > index; });
+          rows.sort(function (left, right) {
+            let a = left.cells[index].textContent.trim();
+            let b = right.cells[index].textContent.trim();
+            if (type === 'number') {
+              a = Number.parseFloat(a); b = Number.parseFloat(b);
+              if (Number.isNaN(a)) a = descending ? -Infinity : Infinity;
+              if (Number.isNaN(b)) b = descending ? -Infinity : Infinity;
+            } else if (type === 'date') {
+              const toDate = function (value) { const match = value.match(/(\d{2})-(\d{2})-(\d{4}) (\d{2}):(\d{2}):(\d{2})/); return match ? new Date(match[3], match[2] - 1, match[1], match[4], match[5], match[6]).getTime() : 0; };
+              a = toDate(a); b = toDate(b);
+            } else { a = a.toLocaleLowerCase(); b = b.toLocaleLowerCase(); }
+            if (a === b) return 0;
+            return (a > b ? 1 : -1) * (descending ? -1 : 1);
+          });
+          rows.forEach(function (row) { body.appendChild(row); });
+        });
       });
     });
   </script>
