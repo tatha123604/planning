@@ -69,12 +69,13 @@
       <section class="card">
         <h2>{{ analysis_types[analysis] }} — {{ division }}</h2>
         <p class="hint">Train Number rule: digits only = Passenger; letters and digits together = Goods. Uploads are shared by both options.</p>
-        {% if unclassified %}<p class="hint">{{ unclassified }} H/J/K events have a blank or unmatched Train Number for this division, date and speed selection. Select Unclassified events to review them.</p>{% endif %}
+        {% if unclassified %}<p class="hint">{{ unclassified }} H/J/K events have a blank or unmatched Train Number for the selected division, date/time, speed and train search. Select Unclassified events to review them.</p>{% endif %}
         <form method="get" action="/rtis" class="rtis-form">
           <input type="hidden" name="division" value="{{ division }}" />
           <input type="hidden" name="analysis" value="{{ analysis }}" />
           <label>Show<select name="view"><option value="classified" {{ 'selected' if view == 'classified' else '' }}>{{ 'Passenger trains' if analysis == 'passenger' else 'Goods trains' }}</option><option value="unclassified" {{ 'selected' if view == 'unclassified' else '' }}>Unclassified events</option></select></label>
           <label>Event date_time<input type="date" name="day" value="{{ day }}" /></label>
+          <label>Train no.<input type="search" name="train_no" value="{{ train_no }}" maxlength="100" placeholder="Full or partial train no." /></label>
           <label>From time<input type="time" name="time_from" value="{{ time_from }}" step="1" /></label>
           <label>To time<input type="time" name="time_to" value="{{ time_to }}" step="1" /></label>
           <label>Speed<select name="speed"><option value="" {{ 'selected' if not speed else '' }}>All speeds</option>{% for threshold in ['30', '40', '50'] %}<option value="{{ threshold }}" {{ 'selected' if speed == threshold else '' }}>{{ threshold }} and above</option>{% endfor %}</select></label>
@@ -82,13 +83,13 @@
           <button type="submit">Apply filters</button><a class="ghost small" href="/rtis?division={{ division }}&analysis={{ analysis }}">Reset</a>
         </form>
         <a class="ghost small" href="/rtis/analysis.xlsx?{{ query }}">Download Excel</a>
-        <p class="hint">Leave times blank for the full day. From and To times include the selected second on that date. Excel downloads all matching rows across all pages.</p>
+        <p class="hint">Train no. matches full or partial text, ignoring letter case. Leave times blank for the full day. From and To times include the selected second on that date. Excel downloads all matching rows across all pages.</p>
         <p class="rtis-counts">{{ 'Unclassified' if view == 'unclassified' else ('Passenger' if analysis == 'passenger' else 'Goods') }} — H: <strong>{{ counts.get('H', 0) }}</strong> &nbsp; J: <strong>{{ counts.get('J', 0) }}</strong> &nbsp; K: <strong>{{ counts.get('K', 0) }}</strong> — {{ 'Selected date' if day else 'All dates' }}</p>
         <p class="hint">H: approach with respect to the home signal. J and K are shown as source codes; their definitions have not yet been confirmed.</p>
         <div class="table-wrap"><table>
           <thead><tr><th>Event date_time</th><th>Division Code</th><th>Station</th><th>Event</th><th>Train no.</th><th>Loco no.</th><th>Speed</th></tr></thead>
           <tbody>{% for row in rows %}<tr><td>{{ row.event_time.strftime('%d-%m-%Y %H:%M:%S') }}</td><td>{{ row.division }}</td><td>{{ row.station or '—' }}</td><td><strong>{{ row.event_type }}</strong></td><td>{{ row.train or '—' }}</td><td>{{ row.loco }}</td><td>{{ '%g'|format(row.speed) if row.speed is not none else '—' }}</td></tr>
-          {% else %}<tr><td colspan="7">No H/J/K events for this selection. Upload a report or change the date, speed or train type.</td></tr>{% endfor %}</tbody>
+          {% else %}<tr><td colspan="7">No H/J/K events for this selection. Upload a report or change the train no., date, speed or train type.</td></tr>{% endfor %}</tbody>
         </table></div>
         <div class="rtis-form" aria-label="Event pagination"><span>{{ total }} matching events · Page {{ page }} of {{ pages }} · 100 rows per page</span>
           {% if page > 1 %}<a class="ghost small" href="/rtis?{{ query }}&page={{ page - 1 }}">Previous</a>{% endif %}

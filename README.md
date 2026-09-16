@@ -77,6 +77,9 @@ requires a date and To time cannot precede From time. Time filters carry through
 division/analysis changes, pagination and Excel downloads. J+K selects both event types together.
 Download Excel exports all matching rows across all pages using the applied
 division, train type, date, speed and event filters.
+Train no. search matches full or partial identifiers, ignoring letter case and
+preserving leading zeros. It applies to both analysis tables, counts and Excel
+downloads, and stays selected across pagination and division/analysis changes.
 All event types and original files are retained
 in the application's configured SQLite database. The upload history offers the
 original download. Existing app login is required for viewing and uploading.

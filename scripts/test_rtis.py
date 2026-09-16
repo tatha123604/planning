@@ -287,6 +287,31 @@ class RtisTests(unittest.TestCase):
             for route in ['/rtis', '/rtis/analysis.xlsx']:
                 self.assertEqual(self.client.get(route + '?' + query).status_code, 400)
 
+    def test_train_search_filters_full_dataset_and_excel(self):
+        for analysis, train, event, query in [('passenger','00441','J','0044'), ('goods','AB/123','K','ab/12')]:
+            for i in range(101):
+                import_rtis(self.session, f'{analysis}{i}.xlsx', workbook(
+                    train=train, event=event, speed='50', time=f'2026-09-14 {i//60:02}:{i%60:02}:00'), 'SDAH')
+            url = f'analysis={analysis}&train_no={query}&event=JK&speed=40&day=2026-09-14&time_from=00:00&time_to=02:00'
+            page = self.client.get('/rtis?' + url + '&page=2')
+            self.assertEqual(page.context['total'], 101)
+            self.assertEqual(len(page.context['rows']), 1)
+            self.assertEqual(page.context['counts'][event], 101)
+            self.assertIn('name="train_no"', page.text)
+            from urllib.parse import parse_qs
+            for key in ('query','division_query','switch_query'):
+                self.assertEqual(parse_qs(page.context[key])['train_no'], [query])
+            book = load_workbook(BytesIO(self.client.get('/rtis/analysis.xlsx?' + url).content))
+            self.assertEqual(book.active.max_row, 102)
+            self.assertEqual({r[4] for r in book.active.iter_rows(min_row=2, values_only=True)}, {train})
+            book.close()
+            self.assertEqual(self.client.get(f'/rtis?analysis={analysis}&train_no=  {train}  ').context['total'], 101)
+        for query in ['not-found', '%', '_']:
+            response = self.client.get('/rtis', params={'train_no':query})
+            self.assertEqual(response.context['total'], 0)
+        self.assertEqual(self.client.get('/rtis', params={'train_no':' '}).context['total'], 101)
+        self.assertEqual(self.client.get('/rtis', params={'train_no':'1'*101}).status_code, 400)
+
     def test_empty_output_and_exports(self):
         response = self.client.get('/rtis/output')
         self.assertIn('No RTIS data uploaded yet', response.text)

@@ -213,7 +213,7 @@ def import_rtis(session: Session, filename: str, content: bytes, division: str) 
     return f"Saved {len(new):,} new events; {len(records) - len(new):,} duplicate rows skipped."
 
 
-def analysis_filters(division, day, event, analysis, view, speed, time_from="", time_to=""):
+def analysis_filters(division, day, event, analysis, view, speed, time_from="", time_to="", train_no=""):
     """Keep on-screen results and full Excel downloads on the same filter rules."""
     if speed not in ("", "30", "40", "50"):
         raise HTTPException(400, "Choose All speeds, 30+, 40+ or 50+.")
@@ -240,6 +240,11 @@ def analysis_filters(division, day, event, analysis, view, speed, time_from="", 
     if start_time and end_time and start_time > end_time:
         raise HTTPException(400, "To time must be on or after From time within the selected date.")
     filters = [RtisEvent.division == division, RtisEvent.event_type.in_(FOCUS_EVENTS)]
+    train_no = train_no.strip()
+    if len(train_no) > 100:
+        raise HTTPException(400, "Train no. search must be 100 characters or fewer.")
+    if train_no:
+        filters.append(func.lower(RtisEvent.train).contains(train_no.lower(), autoescape=True))
     if speed:
         filters.append(RtisEvent.speed >= int(speed))
     if selected_day:
@@ -269,9 +274,10 @@ def analysis_filters(division, day, event, analysis, view, speed, time_from="", 
 @router.get("/rtis")
 def rtis_page(request: Request, division: str = "SDAH", day: str = "", event: str = "HJK",
               page: int = 1, analysis: str = "passenger", view: str = "classified",
-              speed: str = "", time_from: str = "", time_to: str = "",
+              speed: str = "", time_from: str = "", time_to: str = "", train_no: str = "",
               session: Session = Depends(get_session)):
-    filters, summary_filters, unknown_filters = analysis_filters(division, day, event, analysis, view, speed, time_from, time_to)
+    train_no = train_no.strip()
+    filters, summary_filters, unknown_filters = analysis_filters(division, day, event, analysis, view, speed, time_from, time_to, train_no)
     unclassified = session.exec(select(func.count()).select_from(RtisEvent).where(*unknown_filters)).one()
     counts = dict(session.exec(select(RtisEvent.event_type, func.count()).where(*summary_filters)
                               .group_by(RtisEvent.event_type)).all())
@@ -290,10 +296,10 @@ def rtis_page(request: Request, division: str = "SDAH", day: str = "", event: st
         "event": event, "counts": counts, "rows": rows, "total": total, "history": history,
         "page": page, "pages": pages,
         "analysis": analysis, "analysis_types": ANALYSIS_TYPES, "view": view,
-        "unclassified": unclassified, "speed": speed, "time_from": time_from, "time_to": time_to,
-        "division_query": urlencode({"day": day, "event": event, "analysis": analysis, "view": view, "speed": speed, "time_from": time_from, "time_to": time_to}),
-        "switch_query": urlencode({"division": division, "day": day, "event": event, "speed": speed, "time_from": time_from, "time_to": time_to}),
-        "query": urlencode({"division": division, "day": day, "event": event, "analysis": analysis, "view": view, "speed": speed, "time_from": time_from, "time_to": time_to}),
+        "unclassified": unclassified, "speed": speed, "time_from": time_from, "time_to": time_to, "train_no": train_no,
+        "division_query": urlencode({"day": day, "event": event, "analysis": analysis, "view": view, "speed": speed, "time_from": time_from, "time_to": time_to, "train_no": train_no}),
+        "switch_query": urlencode({"division": division, "day": day, "event": event, "speed": speed, "time_from": time_from, "time_to": time_to, "train_no": train_no}),
+        "query": urlencode({"division": division, "day": day, "event": event, "analysis": analysis, "view": view, "speed": speed, "time_from": time_from, "time_to": time_to, "train_no": train_no}),
         "notice": request.query_params.get("notice", ""),
     })
 
@@ -301,9 +307,9 @@ def rtis_page(request: Request, division: str = "SDAH", day: str = "", event: st
 @router.get("/rtis/analysis.xlsx")
 def rtis_analysis_excel(division: str = "SDAH", day: str = "", event: str = "HJK",
                         analysis: str = "passenger", view: str = "classified", speed: str = "",
-                        time_from: str = "", time_to: str = "",
+                        time_from: str = "", time_to: str = "", train_no: str = "",
                         session: Session = Depends(get_session)):
-    filters, _, _ = analysis_filters(division, day, event, analysis, view, speed, time_from, time_to)
+    filters, _, _ = analysis_filters(division, day, event, analysis, view, speed, time_from, time_to, train_no)
     events = session.exec(select(RtisEvent).where(*filters)
                           .order_by(RtisEvent.event_time.desc(), RtisEvent.id.desc())
                           .execution_options(yield_per=1000))
