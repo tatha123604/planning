@@ -29,6 +29,7 @@ FOCUS_EVENTS = ("H", "J", "K")
 ANALYSIS_TYPES = {"passenger": "Passenger Train Analysis", "goods": "Goods Train Analysis"}
 MAX_UPLOAD_MB = 25
 MAX_BYTES = MAX_UPLOAD_MB * 1024 * 1024
+RTIS_RETENTION_DAYS = 2
 NS = {"s": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
 HEADERS = ("Sr.No.", "Device Id", "Loco No.", "Latitude", "Longitude", "Station",
            "Event Time", "Event Type", "Speed", "Division Code", "Reporting Time",
@@ -211,7 +212,29 @@ def import_rtis(session: Session, filename: str, content: bytes, division: str) 
     except IntegrityError:
         session.rollback()
         raise ValueError("An overlapping upload was saved at the same time. Retry this file.") from None
+    prune_rtis_history(session)
     return f"Saved {len(new):,} new events; {len(records) - len(new):,} duplicate rows skipped."
+
+
+def prune_rtis_history(session: Session) -> None:
+    """Keep RTIS events for the latest two event dates in the database."""
+    latest = session.exec(select(func.max(RtisEvent.event_time))).one()
+    if latest is None:
+        return
+    cutoff = latest.date() - timedelta(days=RTIS_RETENTION_DAYS - 1)
+    old_events = session.exec(select(RtisEvent).where(RtisEvent.event_time < datetime.combine(cutoff, clock_time.min))).all()
+    if not old_events:
+        return
+    old_upload_ids = {event.upload_id for event in old_events}
+    for event in old_events:
+        session.delete(event)
+    session.flush()
+    for upload_id in old_upload_ids:
+        if session.exec(select(RtisEvent.id).where(RtisEvent.upload_id == upload_id)).first() is None:
+            upload = session.get(RtisUpload, upload_id)
+            if upload:
+                session.delete(upload)
+    session.commit()
 
 
 def analysis_filters(division, day, event, analysis, view, speed, time_from="", time_to="", train_no="", model_trains=None):

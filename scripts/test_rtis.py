@@ -139,6 +139,17 @@ class RtisTests(unittest.TestCase):
         self.assertIn('0 new events', import_rtis(self.session, 'overlap.xlsx', workbook(serial='88'), 'SDAH'))
         self.assertEqual(len(self.session.exec(select(RtisEvent)).all()), 1)
 
+    def test_rtis_retains_only_latest_two_event_dates(self):
+        for day in ('2026-09-13', '2026-09-14', '2026-09-15'):
+            import_rtis(self.session, f'{day}.xlsx', workbook(time=f'{day} 10:00:00'), 'SDAH')
+        events = self.session.exec(select(RtisEvent).order_by(RtisEvent.event_time)).all()
+        self.assertEqual([event.event_time.date().isoformat() for event in events], ['2026-09-14', '2026-09-15'])
+        uploads = self.session.exec(select(RtisUpload).order_by(RtisUpload.filename)).all()
+        self.assertEqual([upload.filename for upload in uploads], ['2026-09-14.xlsx', '2026-09-15.xlsx'])
+        self.assertIn('1 matching events', self.client.get('/rtis?day=2026-09-14').text)
+        self.assertIn('1 matching events', self.client.get('/rtis?day=2026-09-15').text)
+        self.assertIn('0 matching events', self.client.get('/rtis?day=2026-09-13').text)
+
     def test_identifiers_blank_zero_and_excel_dates(self):
         row = parse_rtis(workbook(), 'SDAH')[0]
         self.assertEqual(row['train'], '00441')

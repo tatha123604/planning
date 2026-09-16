@@ -71,6 +71,9 @@ Train Analysis is a separate option. Following the user's rule, digit-only train
 numbers are passenger trains, while numbers containing both letters and digits
 are goods trains. Blank and unmatched identifiers remain in Unclassified events.
 The selection is retained across filters, pagination and uploads.
+RTIS event data keeps only the latest two event dates in the database. For example,
+when a 15-09-2026 report is uploaded, 14-09-2026 and 15-09-2026 remain available;
+older events and upload history are removed automatically after a successful upload.
 The date selector filters Event Time. Speed options are All speeds, 30 and above,
 40 and above, and 50 and above (inclusive thresholds). Active speed filters omit
 blank speeds and apply to the event counts and results in both analysis options.
