@@ -312,6 +312,36 @@ class RtisTests(unittest.TestCase):
         self.assertEqual(self.client.get('/rtis', params={'train_no':' '}).context['total'], 101)
         self.assertEqual(self.client.get('/rtis', params={'train_no':'1'*101}).status_code, 400)
 
+    def test_all_divisions_analysis_filters_history_and_excel(self):
+        divisions = {'SDAH','HWH','ASN','MLDT'}
+        for division in sorted(divisions):
+            for train, event in [('00441','J'), ('AB123','K'), ('','H')]:
+                import_rtis(self.session, f'{division}{event}.xlsx', workbook(
+                    division=division, train=train, event=event, speed='40'), division)
+        for analysis, search, event in [('passenger','004','J'), ('goods','ab','K')]:
+            query = f'division=ALL&analysis={analysis}&train_no={search}&event=JK&speed=40&day=2026-09-14&time_from=10:00&time_to=10:00'
+            page = self.client.get('/rtis?' + query)
+            self.assertEqual(page.context['total'], 4)
+            self.assertEqual(page.context['counts'][event], 4)
+            self.assertEqual({r.division for r in page.context['rows']}, divisions)
+            self.assertEqual({r.division for r in page.context['history']}, divisions)
+            self.assertEqual(len(page.context['history']), 12)
+            self.assertIn('All divisions', page.text)
+            self.assertIn('name="division" value="ALL"', page.text)
+            self.assertIn('division=ALL', page.context['query'])
+            self.assertIn('division=ALL', page.context['switch_query'])
+            book = load_workbook(BytesIO(self.client.get('/rtis/analysis.xlsx?' + query).content))
+            self.assertEqual(book.active.max_row, 5)
+            self.assertEqual({r[1] for r in book.active.iter_rows(min_row=2, values_only=True)}, divisions)
+            book.close()
+            for division in divisions:
+                single = self.client.get('/rtis?' + query.replace('division=ALL', 'division=' + division))
+                self.assertEqual(single.context['total'], 1)
+                self.assertEqual(len(single.context['history']), 3)
+        self.assertEqual(self.client.get('/rtis?division=ALL&view=unclassified').context['total'], 4)
+        self.assertEqual(self.client.post('/rtis/upload', data={'division':'ALL'},
+                                         files={'files':('test.xlsx',workbook())}).status_code, 400)
+
     def test_empty_output_and_exports(self):
         response = self.client.get('/rtis/output')
         self.assertIn('No RTIS data uploaded yet', response.text)

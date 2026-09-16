@@ -57,6 +57,11 @@ The cell prints a public URL like `https://xxxx.ngrok.io`; open it to use the ap
 
 ## RTIS uploads
 
+The All division tab combines SDAH, HWH, ASN and MLDT in both passenger and goods
+analysis tables. All existing filters, counts, pagination and Excel downloads
+apply across the selected divisions. Combined upload history includes Division
+Code; uploads still use the individual division inputs.
+
 The sidebar RTIS tab (`/rtis`) accepts division-wise `.xlsx` exports for SDAH,
 HWH, ASN and MLDT. Each division has its own labeled Excel file input and upload
 button. Choose files under the matching division and upload up to 10 files

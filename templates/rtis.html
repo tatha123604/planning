@@ -46,6 +46,7 @@
         {% for key, label in analysis_types.items() %}<a class="report-tab {{ 'active' if analysis == key else '' }}" {% if analysis == key %}aria-current="page"{% endif %} href="/rtis?{{ switch_query }}&analysis={{ key }}">{{ label }}</a>{% endfor %}
       </nav>
       <nav class="report-tabs" aria-label="RTIS divisions">
+        <a class="report-tab {{ 'active' if division == 'ALL' else '' }}" {% if division == 'ALL' %}aria-current="page"{% endif %} href="/rtis?division=ALL&{{ division_query }}">All</a>
         {% for code in divisions %}<a class="report-tab {{ 'active' if division == code else '' }}" href="/rtis?division={{ code }}&{{ division_query }}">{{ code }}</a>{% endfor %}
       </nav>
       {% if notice %}<section class="card" role="status"><p>{{ notice }}</p></section>{% endif %}
@@ -67,7 +68,7 @@
         <a class="ghost small" href="/rtis/output">Output</a>
       </section>
       <section class="card">
-        <h2>{{ analysis_types[analysis] }} — {{ division }}</h2>
+        <h2>{{ analysis_types[analysis] }} — {{ division_label }}</h2>
         <p class="hint">Train Number rule: digits only = Passenger; letters and digits together = Goods. Uploads are shared by both options.</p>
         {% if unclassified %}<p class="hint">{{ unclassified }} H/J/K events have a blank or unmatched Train Number for the selected division, date/time, speed and train search. Select Unclassified events to review them.</p>{% endif %}
         <form method="get" action="/rtis" class="rtis-form">
@@ -96,10 +97,10 @@
           {% if page < pages %}<a class="ghost small" href="/rtis?{{ query }}&page={{ page + 1 }}">Next</a>{% endif %}
         </div>
       </section>
-      <section class="card"><h2>{{ division }} upload history</h2><p class="hint">Latest 50 files. Upload times are in UTC.</p>
-        <div class="table-wrap"><table><thead><tr><th>File</th><th>Event dates</th><th>Uploaded (UTC)</th><th>Source rows</th><th>New events</th><th>Original</th></tr></thead><tbody>
-        {% for item in history %}<tr><td>{{ item.filename }}</td><td>{{ item.first_day.strftime('%d-%m-%Y') }}{% if item.first_day != item.last_day %} to {{ item.last_day.strftime('%d-%m-%Y') }}{% endif %}</td><td>{{ item.uploaded_at.strftime('%d-%m-%Y %H:%M') }}</td><td>{{ item.row_count }}</td><td>{{ item.added_count }}</td><td><a class="ghost small" href="/rtis/uploads/{{ item.id }}/download">Download</a></td></tr>
-        {% else %}<tr><td colspan="6">No files uploaded for {{ division }} yet.</td></tr>{% endfor %}
+      <section class="card"><h2>{{ division_label }} upload history</h2><p class="hint">Latest 50 files. Upload times are in UTC.</p>
+        <div class="table-wrap"><table><thead><tr><th>File</th><th>Division Code</th><th>Event dates</th><th>Uploaded (UTC)</th><th>Source rows</th><th>New events</th><th>Original</th></tr></thead><tbody>
+        {% for item in history %}<tr><td>{{ item.filename }}</td><td>{{ item.division }}</td><td>{{ item.first_day.strftime('%d-%m-%Y') }}{% if item.first_day != item.last_day %} to {{ item.last_day.strftime('%d-%m-%Y') }}{% endif %}</td><td>{{ item.uploaded_at.strftime('%d-%m-%Y %H:%M') }}</td><td>{{ item.row_count }}</td><td>{{ item.added_count }}</td><td><a class="ghost small" href="/rtis/uploads/{{ item.id }}/download">Download</a></td></tr>
+        {% else %}<tr><td colspan="7">No files uploaded for {{ division_label }} yet.</td></tr>{% endfor %}
         </tbody></table></div>
       </section>
       {% endblock %}

@@ -219,7 +219,7 @@ def analysis_filters(division, day, event, analysis, view, speed, time_from="", 
         raise HTTPException(400, "Choose All speeds, 30+, 40+ or 50+.")
     if analysis not in ANALYSIS_TYPES or view not in ("classified", "unclassified"):
         raise HTTPException(400, "Invalid analysis selection.")
-    if division not in DIVISIONS or event not in (*FOCUS_EVENTS, "HJK", "JK"):
+    if division not in (*DIVISIONS, "ALL") or event not in (*FOCUS_EVENTS, "HJK", "JK"):
         raise HTTPException(400, "Invalid division or event filter.")
     try:
         selected_day = date.fromisoformat(day) if day else None
@@ -239,7 +239,8 @@ def analysis_filters(division, day, event, analysis, view, speed, time_from="", 
     start_time, end_time = parsed_times
     if start_time and end_time and start_time > end_time:
         raise HTTPException(400, "To time must be on or after From time within the selected date.")
-    filters = [RtisEvent.division == division, RtisEvent.event_type.in_(FOCUS_EVENTS)]
+    filters = [RtisEvent.event_type.in_(FOCUS_EVENTS)]
+    filters.append(RtisEvent.division.in_(DIVISIONS) if division == "ALL" else RtisEvent.division == division)
     train_no = train_no.strip()
     if len(train_no) > 100:
         raise HTTPException(400, "Train no. search must be 100 characters or fewer.")
@@ -286,12 +287,14 @@ def rtis_page(request: Request, division: str = "SDAH", day: str = "", event: st
     page = min(max(1, page), pages)
     rows = session.exec(select(RtisEvent).where(*filters).order_by(RtisEvent.event_time.desc(), RtisEvent.id.desc()).offset((page - 1) * 100).limit(100)).all()
     # Select metadata only, never all the stored workbooks while rendering the page.
-    history = session.exec(select(RtisUpload.id, RtisUpload.filename, RtisUpload.uploaded_at,
+    history_filter = RtisUpload.division.in_(DIVISIONS) if division == "ALL" else RtisUpload.division == division
+    history = session.exec(select(RtisUpload.id, RtisUpload.filename, RtisUpload.uploaded_at, RtisUpload.division,
                                   RtisUpload.first_day, RtisUpload.last_day, RtisUpload.row_count,
-                                  RtisUpload.added_count).where(RtisUpload.division == division)
+                                  RtisUpload.added_count).where(history_filter)
                            .order_by(RtisUpload.id.desc()).limit(50)).all()
     return templates.TemplateResponse(request=request, name="rtis.html", context={
         "active_page": "rtis", "divisions": DIVISIONS, "division": division, "day": day,
+        "division_label": "All divisions" if division == "ALL" else division,
         "max_upload_mb": MAX_UPLOAD_MB,
         "event": event, "counts": counts, "rows": rows, "total": total, "history": history,
         "page": page, "pages": pages,
