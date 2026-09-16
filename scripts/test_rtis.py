@@ -151,7 +151,8 @@ class RtisTests(unittest.TestCase):
             self.assertEqual(response.status_code, 200)
             self.assertIn(f'{count} matching events', response.text)
             self.assertIn(f'value="{threshold}" selected', response.text)
-            self.assertIn(f'speed={threshold}&analysis=goods', response.text)
+            self.assertIn(f'speed={threshold}', response.context['switch_query'])
+            self.assertIn('&analysis=goods', response.text)
         self.assertIn('1 matching events', self.client.get('/rtis?speed=50&analysis=goods&day=2026-09-14').text)
         self.assertIn('9 matching events', self.client.get('/rtis?day=2026-09-14').text)
         self.assertEqual(self.client.get('/rtis?speed=35').status_code, 400)
@@ -259,6 +260,32 @@ class RtisTests(unittest.TestCase):
         empty = load_workbook(BytesIO(self.client.get('/rtis/analysis.xlsx?division=MLDT').content))
         self.assertEqual(empty.active.max_row, 1)
         empty.close()
+
+    def test_time_range_boundaries_and_excel_for_both_analyses(self):
+        for analysis, train in [('passenger', '00441'), ('goods', 'AB123')]:
+            event = 'J' if analysis == 'passenger' else 'K'
+            for stamp in ['09:59:59', '10:00:00', '10:30:00', '11:00:00', '11:00:01', '23:59:59']:
+                import_rtis(self.session, analysis + stamp.replace(':','') + '.xlsx',
+                            workbook(train=train, event=event, speed='50', time='2026-09-14 ' + stamp), 'SDAH')
+            query = f'analysis={analysis}&day=2026-09-14&time_from=10:00:00&time_to=11:00:00&event=JK&speed=40'
+            response = self.client.get('/rtis?' + query)
+            self.assertEqual(response.context['total'], 3)
+            self.assertEqual(response.context['counts'][event], 3)
+            self.assertIn('type="time" name="time_from"', response.text)
+            for key in ('query', 'switch_query', 'division_query'):
+                self.assertIn('time_from=10%3A00%3A00', response.context[key])
+                self.assertIn('time_to=11%3A00%3A00', response.context[key])
+            book = load_workbook(BytesIO(self.client.get('/rtis/analysis.xlsx?' + query).content))
+            self.assertEqual(book.active.max_row, 4)
+            self.assertEqual(book.active['A2'].value, datetime(2026,9,14,11))
+            book.close()
+            self.assertEqual(self.client.get(f'/rtis?analysis={analysis}&day=2026-09-14').context['total'], 6)
+            self.assertEqual(self.client.get(f'/rtis?analysis={analysis}&day=2026-09-14&time_from=23:59:59').context['total'], 1)
+            self.assertEqual(self.client.get(f'/rtis?analysis={analysis}&day=2026-09-14&time_to=10:00').context['total'], 2)
+        for query in ['time_from=10:00', 'day=2026-09-14&time_from=bad',
+                      'day=2026-09-14&time_to=25:00', 'day=2026-09-14&time_from=12:00&time_to=10:00']:
+            for route in ['/rtis', '/rtis/analysis.xlsx']:
+                self.assertEqual(self.client.get(route + '?' + query).status_code, 400)
 
     def test_empty_output_and_exports(self):
         response = self.client.get('/rtis/output')

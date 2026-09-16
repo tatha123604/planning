@@ -70,7 +70,11 @@ The date selector filters Event Time. Speed options are All speeds, 30 and above
 40 and above, and 50 and above (inclusive thresholds). Active speed filters omit
 blank speeds and apply to the event counts and results in both analysis options.
 Both analysis tables display Division Code and Event date_time. The Event
-date_time selector selects a whole day; J+K selects both event types together.
+date_time filter has a date plus optional From time and To time pickers, including
+seconds. Blank times select the whole day; either endpoint can be omitted. Both
+endpoints are inclusive of the selected second, within the same date. A time
+requires a date and To time cannot precede From time. Time filters carry through
+division/analysis changes, pagination and Excel downloads. J+K selects both event types together.
 Download Excel exports all matching rows across all pages using the applied
 division, train type, date, speed and event filters.
 All event types and original files are retained

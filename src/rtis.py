@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, time as clock_time
 from hashlib import sha256
 from io import BytesIO
 import json
@@ -213,7 +213,7 @@ def import_rtis(session: Session, filename: str, content: bytes, division: str) 
     return f"Saved {len(new):,} new events; {len(records) - len(new):,} duplicate rows skipped."
 
 
-def analysis_filters(division, day, event, analysis, view, speed):
+def analysis_filters(division, day, event, analysis, view, speed, time_from="", time_to=""):
     """Keep on-screen results and full Excel downloads on the same filter rules."""
     if speed not in ("", "30", "40", "50"):
         raise HTTPException(400, "Choose All speeds, 30+, 40+ or 50+.")
@@ -225,12 +225,32 @@ def analysis_filters(division, day, event, analysis, view, speed):
         selected_day = date.fromisoformat(day) if day else None
     except ValueError:
         raise HTTPException(400, "Invalid date.") from None
+    if (time_from or time_to) and not selected_day:
+        raise HTTPException(400, "Select an event date when filtering by time.")
+    parsed_times = []
+    for value in (time_from, time_to):
+        try:
+            if value and (len(value) not in (5, 8) or value[2] != ':' or
+                          (len(value) == 8 and value[5] != ':')):
+                raise ValueError
+            parsed_times.append(clock_time.fromisoformat(value) if value else None)
+        except ValueError:
+            raise HTTPException(400, "Enter times as HH:MM or HH:MM:SS.") from None
+    start_time, end_time = parsed_times
+    if start_time and end_time and start_time > end_time:
+        raise HTTPException(400, "To time must be on or after From time within the selected date.")
     filters = [RtisEvent.division == division, RtisEvent.event_type.in_(FOCUS_EVENTS)]
     if speed:
         filters.append(RtisEvent.speed >= int(speed))
     if selected_day:
-        filters.extend([RtisEvent.event_time >= datetime.combine(selected_day, datetime.min.time()),
-                        RtisEvent.event_time < datetime.combine(selected_day + timedelta(days=1), datetime.min.time())])
+        try:
+            start = datetime.combine(selected_day, start_time or clock_time.min)
+            # Include the entire selected end second; blank end covers the full day.
+            end = (datetime.combine(selected_day, end_time) + timedelta(seconds=1)
+                   if end_time else datetime.combine(selected_day + timedelta(days=1), clock_time.min))
+        except OverflowError:
+            raise HTTPException(400, "Event date is out of range.") from None
+        filters.extend([RtisEvent.event_time >= start, RtisEvent.event_time < end])
     passenger, goods = train_type_filters()
     unknown = ~(passenger | goods)
     unknown_filters = [*filters, unknown]
@@ -249,8 +269,9 @@ def analysis_filters(division, day, event, analysis, view, speed):
 @router.get("/rtis")
 def rtis_page(request: Request, division: str = "SDAH", day: str = "", event: str = "HJK",
               page: int = 1, analysis: str = "passenger", view: str = "classified",
-              speed: str = "", session: Session = Depends(get_session)):
-    filters, summary_filters, unknown_filters = analysis_filters(division, day, event, analysis, view, speed)
+              speed: str = "", time_from: str = "", time_to: str = "",
+              session: Session = Depends(get_session)):
+    filters, summary_filters, unknown_filters = analysis_filters(division, day, event, analysis, view, speed, time_from, time_to)
     unclassified = session.exec(select(func.count()).select_from(RtisEvent).where(*unknown_filters)).one()
     counts = dict(session.exec(select(RtisEvent.event_type, func.count()).where(*summary_filters)
                               .group_by(RtisEvent.event_type)).all())
@@ -269,10 +290,10 @@ def rtis_page(request: Request, division: str = "SDAH", day: str = "", event: st
         "event": event, "counts": counts, "rows": rows, "total": total, "history": history,
         "page": page, "pages": pages,
         "analysis": analysis, "analysis_types": ANALYSIS_TYPES, "view": view,
-        "unclassified": unclassified, "speed": speed,
-        "division_query": urlencode({"day": day, "event": event, "analysis": analysis, "view": view, "speed": speed}),
-        "switch_query": urlencode({"division": division, "day": day, "event": event, "speed": speed}),
-        "query": urlencode({"division": division, "day": day, "event": event, "analysis": analysis, "view": view, "speed": speed}),
+        "unclassified": unclassified, "speed": speed, "time_from": time_from, "time_to": time_to,
+        "division_query": urlencode({"day": day, "event": event, "analysis": analysis, "view": view, "speed": speed, "time_from": time_from, "time_to": time_to}),
+        "switch_query": urlencode({"division": division, "day": day, "event": event, "speed": speed, "time_from": time_from, "time_to": time_to}),
+        "query": urlencode({"division": division, "day": day, "event": event, "analysis": analysis, "view": view, "speed": speed, "time_from": time_from, "time_to": time_to}),
         "notice": request.query_params.get("notice", ""),
     })
 
@@ -280,15 +301,17 @@ def rtis_page(request: Request, division: str = "SDAH", day: str = "", event: st
 @router.get("/rtis/analysis.xlsx")
 def rtis_analysis_excel(division: str = "SDAH", day: str = "", event: str = "HJK",
                         analysis: str = "passenger", view: str = "classified", speed: str = "",
+                        time_from: str = "", time_to: str = "",
                         session: Session = Depends(get_session)):
-    filters, _, _ = analysis_filters(division, day, event, analysis, view, speed)
+    filters, _, _ = analysis_filters(division, day, event, analysis, view, speed, time_from, time_to)
     events = session.exec(select(RtisEvent).where(*filters)
                           .order_by(RtisEvent.event_time.desc(), RtisEvent.id.desc())
                           .execution_options(yield_per=1000))
     headers = ("Event date_time", "Division Code", "Station", "Event Type", "Train Number", "Loco No.", "Speed")
     rows = ([row.event_time.isoformat(sep=" "), row.division, row.station, row.event_type,
              row.train, row.loco, str(row.speed) if row.speed is not None else ""] for row in events)
-    filename = f"RTIS_{division}_{analysis}_{view}_{day or 'all-dates'}_{event}_{speed or 'all'}-speed.xlsx"
+    period = f"_{time_from.replace(':', '') or '000000'}-{time_to.replace(':', '') or '235959'}" if time_from or time_to else ""
+    filename = f"RTIS_{division}_{analysis}_{view}_{day or 'all-dates'}{period}_{event}_{speed or 'all'}-speed.xlsx"
     return Response(content=build_rtis_excel(headers, rows),
                     media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     headers={"Content-Disposition": f'attachment; filename="{filename}"'})
