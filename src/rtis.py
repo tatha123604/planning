@@ -213,16 +213,13 @@ def import_rtis(session: Session, filename: str, content: bytes, division: str) 
     return f"Saved {len(new):,} new events; {len(records) - len(new):,} duplicate rows skipped."
 
 
-@router.get("/rtis")
-def rtis_page(request: Request, division: str = "SDAH", day: str = "", event: str = "HJK",
-              page: int = 1, analysis: str = "passenger", view: str = "classified",
-              speed: str = "",
-              session: Session = Depends(get_session)):
+def analysis_filters(division, day, event, analysis, view, speed):
+    """Keep on-screen results and full Excel downloads on the same filter rules."""
     if speed not in ("", "30", "40", "50"):
         raise HTTPException(400, "Choose All speeds, 30+, 40+ or 50+.")
     if analysis not in ANALYSIS_TYPES or view not in ("classified", "unclassified"):
         raise HTTPException(400, "Invalid analysis selection.")
-    if division not in DIVISIONS or event not in (*FOCUS_EVENTS, "HJK"):
+    if division not in DIVISIONS or event not in (*FOCUS_EVENTS, "HJK", "JK"):
         raise HTTPException(400, "Invalid division or event filter.")
     try:
         selected_day = date.fromisoformat(day) if day else None
@@ -236,15 +233,27 @@ def rtis_page(request: Request, division: str = "SDAH", day: str = "", event: st
                         RtisEvent.event_time < datetime.combine(selected_day + timedelta(days=1), datetime.min.time())])
     passenger, goods = train_type_filters()
     unknown = ~(passenger | goods)
-    unclassified = session.exec(select(func.count()).select_from(RtisEvent).where(
-        *filters, unknown)).one()
+    unknown_filters = [*filters, unknown]
     if view == "unclassified":
         filters.append(unknown)
     else:
         filters.append(passenger if analysis == "passenger" else goods)
-    counts = dict(session.exec(select(RtisEvent.event_type, func.count()).where(*filters).group_by(RtisEvent.event_type)).all())
-    if event != "HJK":
+    summary_filters = list(filters)
+    if event == "JK":
+        filters.append(RtisEvent.event_type.in_(("J", "K")))
+    elif event != "HJK":
         filters.append(RtisEvent.event_type == event)
+    return filters, summary_filters, unknown_filters
+
+
+@router.get("/rtis")
+def rtis_page(request: Request, division: str = "SDAH", day: str = "", event: str = "HJK",
+              page: int = 1, analysis: str = "passenger", view: str = "classified",
+              speed: str = "", session: Session = Depends(get_session)):
+    filters, summary_filters, unknown_filters = analysis_filters(division, day, event, analysis, view, speed)
+    unclassified = session.exec(select(func.count()).select_from(RtisEvent).where(*unknown_filters)).one()
+    counts = dict(session.exec(select(RtisEvent.event_type, func.count()).where(*summary_filters)
+                              .group_by(RtisEvent.event_type)).all())
     total = session.exec(select(func.count()).select_from(RtisEvent).where(*filters)).one()
     pages = max(1, (total + 99) // 100)
     page = min(max(1, page), pages)
@@ -266,6 +275,23 @@ def rtis_page(request: Request, division: str = "SDAH", day: str = "", event: st
         "query": urlencode({"division": division, "day": day, "event": event, "analysis": analysis, "view": view, "speed": speed}),
         "notice": request.query_params.get("notice", ""),
     })
+
+
+@router.get("/rtis/analysis.xlsx")
+def rtis_analysis_excel(division: str = "SDAH", day: str = "", event: str = "HJK",
+                        analysis: str = "passenger", view: str = "classified", speed: str = "",
+                        session: Session = Depends(get_session)):
+    filters, _, _ = analysis_filters(division, day, event, analysis, view, speed)
+    events = session.exec(select(RtisEvent).where(*filters)
+                          .order_by(RtisEvent.event_time.desc(), RtisEvent.id.desc())
+                          .execution_options(yield_per=1000))
+    headers = ("Event date_time", "Division Code", "Station", "Event Type", "Train Number", "Loco No.", "Speed")
+    rows = ([row.event_time.isoformat(sep=" "), row.division, row.station, row.event_type,
+             row.train, row.loco, str(row.speed) if row.speed is not None else ""] for row in events)
+    filename = f"RTIS_{division}_{analysis}_{view}_{day or 'all-dates'}_{event}_{speed or 'all'}-speed.xlsx"
+    return Response(content=build_rtis_excel(headers, rows),
+                    media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 
 @router.post("/rtis/upload")

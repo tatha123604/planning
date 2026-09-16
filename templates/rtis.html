@@ -74,17 +74,19 @@
           <input type="hidden" name="division" value="{{ division }}" />
           <input type="hidden" name="analysis" value="{{ analysis }}" />
           <label>Show<select name="view"><option value="classified" {{ 'selected' if view == 'classified' else '' }}>{{ 'Passenger trains' if analysis == 'passenger' else 'Goods trains' }}</option><option value="unclassified" {{ 'selected' if view == 'unclassified' else '' }}>Unclassified events</option></select></label>
-          <label>Event date<input type="date" name="day" value="{{ day }}" /></label>
+          <label>Event date_time<input type="date" name="day" value="{{ day }}" /></label>
           <label>Speed<select name="speed"><option value="" {{ 'selected' if not speed else '' }}>All speeds</option>{% for threshold in ['30', '40', '50'] %}<option value="{{ threshold }}" {{ 'selected' if speed == threshold else '' }}>{{ threshold }} and above</option>{% endfor %}</select></label>
-          <label>Event type<select name="event">{% for code in ['HJK', 'H', 'J', 'K'] %}<option value="{{ code }}" {{ 'selected' if code == event else '' }}>{{ 'H + J + K' if code == 'HJK' else code }}</option>{% endfor %}</select></label>
+          <label>Event type<select name="event">{% for code in ['HJK', 'JK', 'H', 'J', 'K'] %}<option value="{{ code }}" {{ 'selected' if code == event else '' }}>{{ 'H + J + K' if code == 'HJK' else ('J+K' if code == 'JK' else code) }}</option>{% endfor %}</select></label>
           <button type="submit">Apply filters</button><a class="ghost small" href="/rtis?division={{ division }}&analysis={{ analysis }}">Reset</a>
         </form>
+        <a class="ghost small" href="/rtis/analysis.xlsx?{{ query }}">Download Excel</a>
+        <p class="hint">Downloads all rows matching the applied filters, across all pages.</p>
         <p class="rtis-counts">{{ 'Unclassified' if view == 'unclassified' else ('Passenger' if analysis == 'passenger' else 'Goods') }} — H: <strong>{{ counts.get('H', 0) }}</strong> &nbsp; J: <strong>{{ counts.get('J', 0) }}</strong> &nbsp; K: <strong>{{ counts.get('K', 0) }}</strong> — {{ 'Selected date' if day else 'All dates' }}</p>
         <p class="hint">H: approach with respect to the home signal. J and K are shown as source codes; their definitions have not yet been confirmed.</p>
         <div class="table-wrap"><table>
-          <thead><tr><th>Event time</th><th>Station</th><th>Event</th><th>Train no.</th><th>Loco no.</th><th>Speed</th></tr></thead>
-          <tbody>{% for row in rows %}<tr><td>{{ row.event_time.strftime('%d-%m-%Y %H:%M:%S') }}</td><td>{{ row.station or '—' }}</td><td><strong>{{ row.event_type }}</strong></td><td>{{ row.train or '—' }}</td><td>{{ row.loco }}</td><td>{{ '%g'|format(row.speed) if row.speed is not none else '—' }}</td></tr>
-          {% else %}<tr><td colspan="6">No H/J/K events for this selection. Upload a report or change the date, speed or train type.</td></tr>{% endfor %}</tbody>
+          <thead><tr><th>Event date_time</th><th>Division Code</th><th>Station</th><th>Event</th><th>Train no.</th><th>Loco no.</th><th>Speed</th></tr></thead>
+          <tbody>{% for row in rows %}<tr><td>{{ row.event_time.strftime('%d-%m-%Y %H:%M:%S') }}</td><td>{{ row.division }}</td><td>{{ row.station or '—' }}</td><td><strong>{{ row.event_type }}</strong></td><td>{{ row.train or '—' }}</td><td>{{ row.loco }}</td><td>{{ '%g'|format(row.speed) if row.speed is not none else '—' }}</td></tr>
+          {% else %}<tr><td colspan="7">No H/J/K events for this selection. Upload a report or change the date, speed or train type.</td></tr>{% endfor %}</tbody>
         </table></div>
         <div class="rtis-form" aria-label="Event pagination"><span>{{ total }} matching events · Page {{ page }} of {{ pages }} · 100 rows per page</span>
           {% if page > 1 %}<a class="ghost small" href="/rtis?{{ query }}&page={{ page - 1 }}">Previous</a>{% endif %}

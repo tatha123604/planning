@@ -69,6 +69,10 @@ The selection is retained across filters, pagination and uploads.
 The date selector filters Event Time. Speed options are All speeds, 30 and above,
 40 and above, and 50 and above (inclusive thresholds). Active speed filters omit
 blank speeds and apply to the event counts and results in both analysis options.
+Both analysis tables display Division Code and Event date_time. The Event
+date_time selector selects a whole day; J+K selects both event types together.
+Download Excel exports all matching rows across all pages using the applied
+division, train type, date, speed and event filters.
 All event types and original files are retained
 in the application's configured SQLite database. The upload history offers the
 original download. Existing app login is required for viewing and uploading.

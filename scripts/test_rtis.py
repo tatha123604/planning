@@ -220,6 +220,46 @@ class RtisTests(unittest.TestCase):
         self.assertIn('2026-09-15', pdf.pages[-1].extract_text())
         self.assertGreater(float(pdf.pages[0].mediabox.width), float(pdf.pages[0].mediabox.height))
 
+    def test_filtered_analysis_excel_and_jk_for_both_train_types(self):
+        for analysis, train in [('passenger', '00441'), ('goods', 'AB123')]:
+            for i in range(101):
+                import_rtis(self.session, f'{analysis}{i}.xlsx', workbook(
+                    train=train, event='J' if i % 2 else 'K', speed='40',
+                    time=f'2026-09-14 {i//60:02}:{i%60:02}:00',
+                    division='SDAH' if analysis == 'passenger' else 'HWH'),
+                    'SDAH' if analysis == 'passenger' else 'HWH')
+            division = 'SDAH' if analysis == 'passenger' else 'HWH'
+            for name, kwargs in [('home', {'event':'H'}), ('slow', {'event':'J','speed':'39'}),
+                                 ('nextday', {'event':'K','time':'2026-09-15 00:00:00'})]:
+                values = dict(train=train, division=division, speed='50')
+                values.update(kwargs)
+                import_rtis(self.session, name + '.xlsx', workbook(**values), division)
+            query = f'division={division}&analysis={analysis}&day=2026-09-14&speed=40&event=JK'
+            page = self.client.get('/rtis?' + query)
+            self.assertEqual(page.context['total'], 101)
+            self.assertEqual({r.event_type for r in page.context['rows']}, {'J','K'})
+            self.assertIn('<th>Division Code</th>', page.text)
+            self.assertIn('Event date_time<input', page.text)
+            self.assertIn('value="JK" selected>J+K', page.text)
+            self.assertIn('/rtis/analysis.xlsx?', page.text)
+            response = self.client.get('/rtis/analysis.xlsx?' + query)
+            self.assertEqual(response.status_code, 200)
+            book = load_workbook(BytesIO(response.content))
+            sheet = book.active
+            self.assertEqual(sheet.max_row, 102)
+            self.assertEqual([c.value for c in sheet[1]], ['Event date_time','Division Code','Station','Event Type','Train Number','Loco No.','Speed'])
+            self.assertEqual(sheet['A2'].value, page.context['rows'][0].event_time)
+            self.assertEqual(sheet['B2'].value, division)
+            self.assertEqual(sheet['E2'].value, train)
+            self.assertEqual(sheet['E2'].data_type, 's')
+            self.assertEqual(sheet['G2'].value, 40)
+            self.assertEqual(sheet.auto_filter.ref, 'A1:G102')
+            book.close()
+        self.assertEqual(self.client.get('/rtis/analysis.xlsx?event=BAD').status_code, 400)
+        empty = load_workbook(BytesIO(self.client.get('/rtis/analysis.xlsx?division=MLDT').content))
+        self.assertEqual(empty.active.max_row, 1)
+        empty.close()
+
     def test_empty_output_and_exports(self):
         response = self.client.get('/rtis/output')
         self.assertIn('No RTIS data uploaded yet', response.text)

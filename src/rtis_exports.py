@@ -19,7 +19,7 @@ def _excel_value(header: str, value: str):
             return int(value), "0"
         if header in ("Latitude", "Longitude", "Speed"):
             return float(value), "0.######"
-        if header in ("Event Time", "Reporting Time"):
+        if header in ("Event Time", "Event date_time", "Reporting Time"):
             return datetime.fromisoformat(value), "yyyy-mm-dd hh:mm:ss"
         if header == "Train Start Date":
             return date.fromisoformat(value), "yyyy-mm-dd"
@@ -34,8 +34,12 @@ def build_rtis_excel(headers: Sequence[str], rows: Iterable[list[str]]) -> bytes
     sheet = workbook.create_sheet("RTIS Output")
     sheet.freeze_panes = "A2"
     sheet.sheet_view.showGridLines = False
-    widths = (10, 14, 14, 14, 14, 12, 23, 12, 10, 15, 23, 32, 18)
-    for index, width in enumerate(widths, start=1):
+    widths = {"Sr.No.": 10, "Device Id": 14, "Loco No.": 14, "Latitude": 14,
+              "Longitude": 14, "Station": 12, "Event Time": 23, "Event date_time": 23,
+              "Event Type": 12, "Speed": 10, "Division Code": 15, "Reporting Time": 23,
+              "Train Number": 32, "Train Start Date": 18}
+    for index, header in enumerate(headers, start=1):
+        width = widths.get(header, 18)
         sheet.column_dimensions[get_column_letter(index)].width = width
     header_font = Font(name="Arial", size=10, bold=True, color="F3FBFF")
     body_font = Font(name="Arial", size=10, color="16314C")
