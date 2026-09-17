@@ -88,6 +88,8 @@ division, train type, date, speed and event filters.
 Train no. search matches full or partial identifiers, ignoring letter case and
 preserving leading zeros. It applies to both analysis tables, counts and Excel
 downloads, and stays selected across pagination and division/analysis changes.
+Station search works the same way with a case-insensitive partial match and is
+included in counts, pagination and Excel downloads.
 All event types and original files are retained
 in the application's configured SQLite database. The upload history offers the
 original download. Existing app login is required for viewing and uploading.

@@ -388,6 +388,12 @@ class RtisTests(unittest.TestCase):
             self.assertEqual(response.context['total'], 0)
         self.assertEqual(self.client.get('/rtis', params={'train_no':' '}).context['total'], 101)
         self.assertEqual(self.client.get('/rtis', params={'train_no':'1'*101}).status_code, 400)
+        station_page = self.client.get('/rtis', params={'station': 'bp'})
+        self.assertEqual(station_page.context['total'], 101)
+        self.assertEqual(station_page.context['station'], 'bp')
+        self.assertIn('name="station"', station_page.text)
+        self.assertEqual(self.client.get('/rtis', params={'station': 'not-found'}).context['total'], 0)
+        self.assertEqual(self.client.get('/rtis', params={'station': '1' * 101}).status_code, 400)
 
     def test_all_divisions_analysis_filters_history_and_excel(self):
         divisions = {'SDAH','HWH','ASN','MLDT'}
