@@ -307,11 +307,14 @@ def analysis_filters(division, day, event, analysis, view, speed, time_from="", 
 @router.get("/rtis")
 def rtis_page(request: Request, division: str = "SDAH", day: str = "", event: str = "HJK",
               page: int = 1, analysis: str = "passenger", view: str = "classified",
-              speed: str = "", time_from: str = "", time_to: str = "", train_no: str = "", station: str = "",
+              speed: str = "", time_from: str = "", time_to: str = "", train_no: str = "", station: str = "", home_station: str = "",
               model_id: int = 0,
               session: Session = Depends(get_session)):
     train_no = train_no.strip()
     station = station.strip()
+    home_station = home_station.strip().upper()
+    if len(home_station) > 100:
+        raise HTTPException(400, "FSD station search must be 100 characters or fewer.")
     selected_model, train_names = selected_train_model(session, model_id, analysis)
     home_model, home_mapping = selected_home_model(session)
     home_signal_rows = []
@@ -328,6 +331,8 @@ def rtis_page(request: Request, division: str = "SDAH", day: str = "", event: st
                 "distance_m": home.get("distance_m"),
             })
     home_signal_rows.sort(key=lambda row: (row["station"], row["direction"], row["station_dirn"], row["type"], row["latitude"], row["longitude"]))
+    if home_station:
+        home_signal_rows = [row for row in home_signal_rows if home_station in row["station"]]
     filters, summary_filters, unknown_filters = analysis_filters(division, day, event, analysis, view, speed, time_from, time_to, train_no, station, train_names if selected_model else None)
     unclassified = session.exec(select(func.count()).select_from(RtisEvent).where(*unknown_filters)).one()
     counts = dict(session.exec(select(RtisEvent.event_type, func.count()).where(*summary_filters)
@@ -355,6 +360,7 @@ def rtis_page(request: Request, division: str = "SDAH", day: str = "", event: st
                                             RtisTrainModel.eligible_rows).order_by(RtisTrainModel.id.desc())).all(),
         "analysis": analysis, "analysis_types": ANALYSIS_TYPES, "view": view,
         "unclassified": unclassified, "speed": speed, "time_from": time_from, "time_to": time_to, "train_no": train_no, "station": station,
+        "home_station": home_station,
         "division_query": urlencode({"day": day, "event": event, "analysis": analysis, "view": view, "speed": speed, "time_from": time_from, "time_to": time_to, "train_no": train_no, "station": station, "model_id": model_id}),
         "switch_query": urlencode({"division": division, "day": day, "event": event, "speed": speed, "time_from": time_from, "time_to": time_to, "train_no": train_no, "station": station}),
         "query": urlencode({"division": division, "day": day, "event": event, "analysis": analysis, "view": view, "speed": speed, "time_from": time_from, "time_to": time_to, "train_no": train_no, "station": station, "model_id": model_id}),
@@ -417,6 +423,30 @@ def rtis_home_model_upload(home_file: UploadFile = File(...), division: str = Fo
     finally:
         home_file.file.close()
     return RedirectResponse('/rtis?' + urlencode(params), status_code=303)
+
+
+@router.get("/rtis/home-model.xlsx")
+def rtis_home_model_excel(home_station: str = "", session: Session = Depends(get_session)):
+    home_station = home_station.strip().upper()
+    if len(home_station) > 100:
+        raise HTTPException(400, "FSD station search must be 100 characters or fewer.")
+    home_model, mapping = selected_home_model(session)
+    if home_model is None:
+        raise HTTPException(404, "No FSD home signal model has been uploaded.")
+    rows = []
+    for value in mapping.values():
+        for home in value.get("homes", []):
+            if home_station and home_station not in value["station"]:
+                continue
+            rows.append([value["station"], "UP" if value["event"] == "J" else "DOWN", home.get("type", ""),
+                         str(home.get("latitude", "")), str(home.get("longitude", "")), home.get("line", ""),
+                         str(home.get("distance_m", "")) if home.get("distance_m") is not None else ""])
+    rows.sort(key=lambda row: (row[0], row[1], row[5], row[2], row[3], row[4]))
+    headers = ("Station", "Direction", "Type", "Latitude", "Longitude", "Station DIRN", "Linear distance (m)")
+    filename = f"RTIS_FSD_Home_Signals_{home_station or 'all-stations'}.xlsx"
+    return Response(content=build_rtis_excel(headers, rows),
+                    media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 
 @router.post("/rtis/train-model/upload")

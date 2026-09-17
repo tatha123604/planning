@@ -17,7 +17,7 @@ def _excel_value(header: str, value: str):
     try:
         if header == "Sr.No.":
             return int(value), "0"
-        if header in ("Latitude", "Longitude", "Speed"):
+        if header in ("Latitude", "Longitude", "Speed", "Home Distance (m)", "Linear distance (m)"):
             return float(value), "0.######"
         if header in ("Event Time", "Event date_time", "Reporting Time"):
             return datetime.fromisoformat(value), "yyyy-mm-dd hh:mm:ss"
@@ -38,7 +38,8 @@ def build_rtis_excel(headers: Sequence[str], rows: Iterable[list[str]]) -> bytes
               "Longitude": 14, "Station": 12, "Event Time": 23, "Event date_time": 23,
               "Event Type": 12, "Speed": 10, "Division Code": 15, "Reporting Time": 23,
               "Train Number": 32, "Train Start Date": 18, "Train Name": 38, "HQ OF CREW": 16,
-              "Home Signal": 16, "Home Distance (m)": 20}
+              "Home Signal": 16, "Home Distance (m)": 20, "Linear distance (m)": 20, "Direction": 12,
+              "Type": 14, "Station DIRN": 24}
     for index, header in enumerate(headers, start=1):
         width = widths.get(header, 18)
         sheet.column_dimensions[get_column_letter(index)].width = width

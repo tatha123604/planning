@@ -99,6 +99,7 @@ the Home mapping is retained and the distance remains blank.
 The same card shows a complete FSD Home signal coordinate table grouped by
 station code, with Direction, Type, Latitude, Longitude, Station DIRN and linear
 distance for every Home/I-Home signal.
+That table has a station-code search box and a filtered Excel download.
 All event types and original files are retained
 in the application's configured SQLite database. The upload history offers the
 original download. Existing app login is required for viewing and uploading.
