@@ -101,6 +101,9 @@ station code, with Direction, Type, Latitude, Longitude, Station DIRN and linear
 distance for every Home/I-Home signal. It also shows the station geofence centre
 latitude and longitude in decimal form for each station.
 That table has a station-code search box and a filtered Excel download.
+Re-uploading the same FSD file refreshes its saved station coordinates from the
+current SSTS geofences, so an earlier upload made while SSTS was unavailable can
+be corrected without creating a duplicate model.
 All event types and original files are retained
 in the application's configured SQLite database. The upload history offers the
 original download. Existing app login is required for viewing and uploading.

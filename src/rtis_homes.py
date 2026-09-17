@@ -115,6 +115,14 @@ def save_home_model(session: Session, filename: str, content: bytes, geofence_po
     digest = sha256(content).hexdigest()
     existing = session.exec(select(RtisHomeModel).where(RtisHomeModel.digest == digest)).first()
     if existing:
+        if geofence_polygons:
+            mapping = json.loads(existing.mapping_json)
+            mapped = enrich_home_model(mapping, geofence_polygons)
+            existing.mapping_json = json.dumps(mapping)
+            existing.mapped_station_count = mapped
+            session.add(existing)
+            session.commit()
+            session.refresh(existing)
         return existing
     mapping, signal_count = parse_home_model(content)
     mapped = enrich_home_model(mapping, geofence_polygons or {})
