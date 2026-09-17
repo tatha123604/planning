@@ -314,6 +314,20 @@ def rtis_page(request: Request, division: str = "SDAH", day: str = "", event: st
     station = station.strip()
     selected_model, train_names = selected_train_model(session, model_id, analysis)
     home_model, home_mapping = selected_home_model(session)
+    home_signal_rows = []
+    for value in home_mapping.values():
+        for home in value.get("homes", []):
+            home_signal_rows.append({
+                "station": value["station"],
+                "direction": "UP" if value["event"] == "J" else "DOWN",
+                "event": value["event"],
+                "type": home.get("type", ""),
+                "latitude": home.get("latitude"),
+                "longitude": home.get("longitude"),
+                "station_dirn": home.get("line", ""),
+                "distance_m": home.get("distance_m"),
+            })
+    home_signal_rows.sort(key=lambda row: (row["station"], row["direction"], row["station_dirn"], row["type"], row["latitude"], row["longitude"]))
     filters, summary_filters, unknown_filters = analysis_filters(division, day, event, analysis, view, speed, time_from, time_to, train_no, station, train_names if selected_model else None)
     unclassified = session.exec(select(func.count()).select_from(RtisEvent).where(*unknown_filters)).one()
     counts = dict(session.exec(select(RtisEvent.event_type, func.count()).where(*summary_filters)
@@ -336,6 +350,7 @@ def rtis_page(request: Request, division: str = "SDAH", day: str = "", event: st
         "page": page, "pages": pages,
         "model_id": model_id, "selected_model": selected_model, "train_names": train_names,
         "home_model": home_model, "home_details": {row.id: event_home_details(row.station, row.event_type, home_mapping) for row in rows},
+        "home_signal_rows": home_signal_rows,
         "train_models": session.exec(select(RtisTrainModel.id, RtisTrainModel.filename, RtisTrainModel.train_count,
                                             RtisTrainModel.eligible_rows).order_by(RtisTrainModel.id.desc())).all(),
         "analysis": analysis, "analysis_types": ANALYSIS_TYPES, "view": view,

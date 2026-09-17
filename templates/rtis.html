@@ -89,6 +89,16 @@
         <p class="hint">Maps FSD UP Home to RTIS J and DN Home to RTIS K by station code. The upload attempts to read station geofence coordinates from SSTS and calculates nearest home straight-line distance in metres.</p>
         {% if home_model %}<p class="hint">Active model: {{ home_model.filename }} — {{ home_model.signal_count }} home signals across {{ home_model.station_count }} stations; SSTS coordinates mapped for {{ home_model.mapped_station_count }} station directions.</p>{% else %}<p class="hint">Upload the FSD workbook to show Home signal and Home distance columns beside RTIS events.</p>{% endif %}
       </section>
+      {% if home_model %}
+      <section class="card">
+        <h2>FSD Home signal coordinates</h2>
+        <p class="hint">All signals from the active FSD model, grouped by station code. Distance is the calculated straight-line distance from the SSTS station geofence centre.</p>
+        <div class="table-wrap"><table class="rtis-data-table">
+          <thead><tr><th data-sort-type="text"><button type="button" class="table-sort" aria-label="Sort by Station">Station</button></th><th data-sort-type="text"><button type="button" class="table-sort" aria-label="Sort by Direction">Direction</button></th><th data-sort-type="text"><button type="button" class="table-sort" aria-label="Sort by Type">Type</button></th><th data-sort-type="number"><button type="button" class="table-sort" aria-label="Sort by Latitude">Latitude</button></th><th data-sort-type="number"><button type="button" class="table-sort" aria-label="Sort by Longitude">Longitude</button></th><th data-sort-type="text"><button type="button" class="table-sort" aria-label="Sort by Station DIRN">Station DIRN</button></th><th data-sort-type="number"><button type="button" class="table-sort" aria-label="Sort by Linear distance">Linear distance (m)</button></th></tr></thead>
+          <tbody>{% for signal in home_signal_rows %}<tr><td>{{ signal.station }}</td><td>{{ signal.direction }}</td><td>{{ signal.type }}</td><td>{{ '%.6f'|format(signal.latitude) }}</td><td>{{ '%.6f'|format(signal.longitude) }}</td><td>{{ signal.station_dirn }}</td><td>{{ '%g'|format(signal.distance_m) if signal.distance_m is not none else '—' }}</td></tr>{% else %}<tr><td colspan="7">No FSD Home signals found.</td></tr>{% endfor %}</tbody>
+        </table></div>
+      </section>
+      {% endif %}
       <section class="card">
         <h2>{{ analysis_types[analysis] }} — {{ division_label }}</h2>
         <p class="hint">Train Number rule: digits only = Passenger; letters and digits together = Goods. Uploads are shared by both options.</p>

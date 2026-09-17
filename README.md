@@ -96,6 +96,9 @@ code. The app attempts to read the matching station geofence from SSTS, uses its
 polygon centre as the station point, and shows the nearest straight-line Home
 distance in metres beside each J/K event. If SSTS is unavailable during upload,
 the Home mapping is retained and the distance remains blank.
+The same card shows a complete FSD Home signal coordinate table grouped by
+station code, with Direction, Type, Latitude, Longitude, Station DIRN and linear
+distance for every Home/I-Home signal.
 All event types and original files are retained
 in the application's configured SQLite database. The upload history offers the
 original download. Existing app login is required for viewing and uploading.
