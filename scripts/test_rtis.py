@@ -129,7 +129,7 @@ class RtisTests(unittest.TestCase):
         home_book = load_workbook(BytesIO(self.client.get('/rtis/home-model.xlsx?home_station=BP').content))
         self.assertEqual(home_book.active.max_row, 4)
         self.assertEqual(home_book.active['A2'].value, 'BP')
-        self.assertEqual(home_book.active['G1'].value, 'Linear distance (m)')
+        self.assertEqual(home_book.active['I1'].value, 'Linear distance (m)')
         home_book.close()
         self.assertEqual(self.client.get('/rtis/home-model.xlsx?home_station=NOTFOUND').status_code, 200)
         book = load_workbook(BytesIO(self.client.get('/rtis/analysis.xlsx?day=2026-09-14').content))

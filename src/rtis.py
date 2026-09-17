@@ -325,6 +325,8 @@ def rtis_page(request: Request, division: str = "SDAH", day: str = "", event: st
                 "direction": "UP" if value["event"] == "J" else "DOWN",
                 "event": value["event"],
                 "type": home.get("type", ""),
+                "station_latitude": value.get("station_latitude"),
+                "station_longitude": value.get("station_longitude"),
                 "latitude": home.get("latitude"),
                 "longitude": home.get("longitude"),
                 "station_dirn": home.get("line", ""),
@@ -439,10 +441,11 @@ def rtis_home_model_excel(home_station: str = "", session: Session = Depends(get
             if home_station and home_station not in value["station"]:
                 continue
             rows.append([value["station"], "UP" if value["event"] == "J" else "DOWN", home.get("type", ""),
+                         str(value.get("station_latitude", "")), str(value.get("station_longitude", "")),
                          str(home.get("latitude", "")), str(home.get("longitude", "")), home.get("line", ""),
                          str(home.get("distance_m", "")) if home.get("distance_m") is not None else ""])
     rows.sort(key=lambda row: (row[0], row[1], row[5], row[2], row[3], row[4]))
-    headers = ("Station", "Direction", "Type", "Latitude", "Longitude", "Station DIRN", "Linear distance (m)")
+    headers = ("Station", "Direction", "Type", "Station Latitude", "Station Longitude", "Latitude", "Longitude", "Station DIRN", "Linear distance (m)")
     filename = f"RTIS_FSD_Home_Signals_{home_station or 'all-stations'}.xlsx"
     return Response(content=build_rtis_excel(headers, rows),
                     media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
