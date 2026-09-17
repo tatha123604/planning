@@ -90,7 +90,7 @@
         {% if home_model %}<p class="hint">Active model: {{ home_model.filename }} — {{ home_model.signal_count }} home signals across {{ home_model.station_count }} stations; SSTS coordinates mapped for {{ home_model.mapped_station_count }} station directions.</p>{% else %}<p class="hint">Upload the FSD workbook to show Home signal and Home distance columns beside RTIS events.</p>{% endif %}
       </section>
       {% if home_model %}
-      <details class="card collapsible" open>
+      <details class="card collapsible">
         <summary>FSD Home signal coordinates <span class="collapse-count">({{ home_signal_rows|length }} signals)</span></summary>
         <p class="hint">All signals from the active FSD model, grouped by station code. Distance is the calculated straight-line distance from the SSTS station geofence centre.</p>
         <form method="get" action="/rtis" class="rtis-form">
