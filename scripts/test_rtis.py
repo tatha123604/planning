@@ -22,6 +22,7 @@ from sqlmodel import Session, create_engine, select
 from src.rtis import (HEADERS, RtisEvent, RtisUpload, get_session,
                       import_rtis, parse_rtis, router)
 from src.rtis_train_models import RtisTrainModel, parse_train_model, save_train_model
+from src.rtis_homes import RtisHomeModel, event_home_details, parse_home_model, save_home_model
 
 
 def model_workbook(rows=None):
@@ -32,6 +33,19 @@ def model_workbook(rows=None):
                         ('00441', 'Special\nTrain', '00442', ' KOAA '),
                         (13185, 'Excluded', 13186, 'ASN')]:
         sheet.append(row)
+    stream = BytesIO()
+    book.save(stream)
+    book.close()
+    return stream.getvalue()
+
+
+def home_workbook():
+    book = Workbook()
+    sheet = book.active
+    sheet.append(['Station', 'DIRN', 'Station DIRN', 'TYPE', 'Latitude', 'Longitude'])
+    sheet.append(['BP', 'UP MAIN LINE', 'BP-UP MAIN LINE', 'Home', 22.1, 88.1])
+    sheet.append(['BP', 'DN MAIN LINE', 'BP-DN MAIN LINE', 'I/Home', 22.2, 88.2])
+    sheet.append(['BP', 'UP LOOP LINE', 'BP-UP LOOP LINE', 'Home', 22.11, 88.11])
     stream = BytesIO()
     book.save(stream)
     book.close()
@@ -64,6 +78,7 @@ class RtisTests(unittest.TestCase):
         RtisUpload.__table__.create(self.engine)
         RtisEvent.__table__.create(self.engine)
         RtisTrainModel.__table__.create(self.engine)
+        RtisHomeModel.__table__.create(self.engine)
         self.session = Session(self.engine)
         self.app = FastAPI()
         self.app.include_router(router)
@@ -88,6 +103,26 @@ class RtisTests(unittest.TestCase):
                 parse_train_model(model_workbook(rows))
         with self.assertRaises(ValueError):
             parse_train_model(b'bad file')
+
+    def test_home_model_maps_directions_and_distance(self):
+        mapping, signals = parse_home_model(home_workbook())
+        self.assertEqual(signals, 3)
+        self.assertEqual(mapping['BP|J']['homes'][0]['type'], 'Home')
+        self.assertEqual(mapping['BP|K']['homes'][0]['type'], 'I/Home')
+        from src.rtis_homes import enrich_home_model
+        mapped = enrich_home_model(mapping, {'BP': [(88.0, 22.0), (88.0, 22.01), (88.01, 22.01)]})
+        self.assertEqual(mapped, 2)
+        self.assertEqual(event_home_details('bp', 'J', mapping)[0], 'UP HOME')
+        self.assertGreater(event_home_details('BP', 'J', mapping)[1], 0)
+        self.assertEqual(event_home_details('BP', 'H', mapping), ('', ''))
+        save_home_model(self.session, 'fsd.xlsx', home_workbook(), {'BP': [(88.0, 22.0), (88.0, 22.01), (88.01, 22.01)]})
+        import_rtis(self.session, 'bp.xlsx', workbook(event='J', time='2026-09-14 10:00:00'), 'SDAH')
+        page = self.client.get('/rtis?day=2026-09-14')
+        self.assertIn('UP HOME', page.text)
+        self.assertIn('Home distance (m)', page.text)
+        book = load_workbook(BytesIO(self.client.get('/rtis/analysis.xlsx?day=2026-09-14').content))
+        self.assertEqual([cell.value for cell in book.active[1]][-2:], ['Home Signal', 'Home Distance (m)'])
+        book.close()
 
     def test_train_model_upload_filter_export_and_reuse(self):
         for index, (train, division) in enumerate([('12377', 'SDAH'), ('12378', 'HWH'),

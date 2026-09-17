@@ -90,6 +90,12 @@ preserving leading zeros. It applies to both analysis tables, counts and Excel
 downloads, and stays selected across pagination and division/analysis changes.
 Station search works the same way with a case-insensitive partial match and is
 included in counts, pagination and Excel downloads.
+The RTIS page also accepts the FSD home-signal workbook in its own upload card.
+FSD UP Home signals map to RTIS J and DN Home signals map to RTIS K by station
+code. The app attempts to read the matching station geofence from SSTS, uses its
+polygon centre as the station point, and shows the nearest straight-line Home
+distance in metres beside each J/K event. If SSTS is unavailable during upload,
+the Home mapping is retained and the distance remains blank.
 All event types and original files are retained
 in the application's configured SQLite database. The upload history offers the
 original download. Existing app login is required for viewing and uploading.

@@ -23,6 +23,7 @@ from sqlmodel import Field, SQLModel, Session, select
 from .db import get_session
 from .rtis_exports import build_rtis_excel, build_rtis_pdf
 from .rtis_train_models import RtisTrainModel, save_train_model, selected_train_model
+from .rtis_homes import RtisHomeModel, event_home_details, save_home_model, selected_home_model
 
 DIVISIONS = ("SDAH", "HWH", "ASN", "MLDT")
 FOCUS_EVENTS = ("H", "J", "K")
@@ -312,6 +313,7 @@ def rtis_page(request: Request, division: str = "SDAH", day: str = "", event: st
     train_no = train_no.strip()
     station = station.strip()
     selected_model, train_names = selected_train_model(session, model_id, analysis)
+    home_model, home_mapping = selected_home_model(session)
     filters, summary_filters, unknown_filters = analysis_filters(division, day, event, analysis, view, speed, time_from, time_to, train_no, station, train_names if selected_model else None)
     unclassified = session.exec(select(func.count()).select_from(RtisEvent).where(*unknown_filters)).one()
     counts = dict(session.exec(select(RtisEvent.event_type, func.count()).where(*summary_filters)
@@ -333,6 +335,7 @@ def rtis_page(request: Request, division: str = "SDAH", day: str = "", event: st
         "event": event, "counts": counts, "rows": rows, "total": total, "history": history,
         "page": page, "pages": pages,
         "model_id": model_id, "selected_model": selected_model, "train_names": train_names,
+        "home_model": home_model, "home_details": {row.id: event_home_details(row.station, row.event_type, home_mapping) for row in rows},
         "train_models": session.exec(select(RtisTrainModel.id, RtisTrainModel.filename, RtisTrainModel.train_count,
                                             RtisTrainModel.eligible_rows).order_by(RtisTrainModel.id.desc())).all(),
         "analysis": analysis, "analysis_types": ANALYSIS_TYPES, "view": view,
@@ -351,6 +354,7 @@ def rtis_analysis_excel(division: str = "SDAH", day: str = "", event: str = "HJK
                         model_id: int = 0,
                         session: Session = Depends(get_session)):
     selected_model, train_names = selected_train_model(session, model_id, analysis)
+    home_model, home_mapping = selected_home_model(session)
     filters, _, _ = analysis_filters(division, day, event, analysis, view, speed, time_from, time_to, train_no, station, train_names if selected_model else None)
     events = session.exec(select(RtisEvent).where(*filters)
                           .order_by(RtisEvent.event_time.desc(), RtisEvent.id.desc())
@@ -358,9 +362,12 @@ def rtis_analysis_excel(division: str = "SDAH", day: str = "", event: str = "HJK
     headers = ("Event date_time", "Division Code", "Station", "Event Type", "Train Number", "Loco No.", "Speed")
     if selected_model:
         headers = (*headers, "Train Name", "HQ OF CREW")
+    if home_model:
+        headers = (*headers, "Home Signal", "Home Distance (m)")
     rows = ([row.event_time.isoformat(sep=" "), row.division, row.station, row.event_type,
              row.train, row.loco, str(row.speed) if row.speed is not None else ""] +
-            ([train_names[row.train]['name'], train_names[row.train]['hq']] if selected_model else []) for row in events)
+            ([train_names[row.train]['name'], train_names[row.train]['hq']] if selected_model else []) +
+            ([*event_home_details(row.station, row.event_type, home_mapping)] if home_model else []) for row in events)
     period = f"_{time_from.replace(':', '') or '000000'}-{time_to.replace(':', '') or '235959'}" if time_from or time_to else ""
     filename = f"RTIS_{division}_{analysis}_{view}_{day or 'all-dates'}{period}_{event}_{speed or 'all'}-speed.xlsx"
     if selected_model:
@@ -368,6 +375,33 @@ def rtis_analysis_excel(division: str = "SDAH", day: str = "", event: str = "HJK
     return Response(content=build_rtis_excel(headers, rows),
                     media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+def _rtis_ssts_geofences():
+    try:
+        from .app import _fetch_ssts_geofence_polygons, fetch_ssts_token
+        return _fetch_ssts_geofence_polygons(fetch_ssts_token())
+    except Exception:
+        return {}
+
+
+@router.post("/rtis/home-model/upload")
+def rtis_home_model_upload(home_file: UploadFile = File(...), division: str = Form("ALL"),
+                           session: Session = Depends(get_session)):
+    if division not in (*DIVISIONS, "ALL"):
+        raise HTTPException(400, "Invalid division.")
+    try:
+        content = home_file.file.read(MAX_BYTES + 1)
+        model = save_home_model(session, home_file.filename or '', content, _rtis_ssts_geofences())
+        mapped = f"{model.mapped_station_count} station mappings" if model.mapped_station_count else "SSTS station coordinates unavailable; distances will appear after a successful SSTS sync"
+        params = {"division": division, "analysis": "passenger",
+                  "notice": f"FSD home model saved: {model.signal_count} signals, {mapped}."}
+    except ValueError as exc:
+        session.rollback()
+        params = {"division": division, "analysis": "passenger", "notice": f"FSD home model not saved: {exc}"}
+    finally:
+        home_file.file.close()
+    return RedirectResponse('/rtis?' + urlencode(params), status_code=303)
 
 
 @router.post("/rtis/train-model/upload")
