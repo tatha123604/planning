@@ -93,7 +93,7 @@ included in counts, pagination and Excel downloads.
 The RTIS page also accepts the FSD home-signal workbook in its own upload card.
 FSD UP Home signals map to RTIS J and DN Home signals map to RTIS K by station
 code. The app attempts to read the matching station geofence from SSTS, uses its
-polygon centre as the station point, and shows the nearest straight-line Home
+area-weighted polygon centroid as the station point, and shows the nearest straight-line Home
 distance in metres beside each J/K event. If SSTS is unavailable during upload,
 the Home mapping is retained and the distance remains blank.
 The same card shows a complete FSD Home signal coordinate table grouped by

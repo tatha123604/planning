@@ -91,13 +91,28 @@ def _haversine_m(latitude1, longitude1, latitude2, longitude2):
     return round(2 * radius * math.asin(math.sqrt(min(1, value))), 1)
 
 
+def _polygon_centroid(polygon):
+    """Return the area-weighted centroid of (longitude, latitude) points."""
+    area_twice = 0.0
+    longitude_sum = 0.0
+    latitude_sum = 0.0
+    for first, second in zip(polygon, polygon[1:] + polygon[:1]):
+        cross = first[0] * second[1] - second[0] * first[1]
+        area_twice += cross
+        longitude_sum += (first[0] + second[0]) * cross
+        latitude_sum += (first[1] + second[1]) * cross
+    if abs(area_twice) < 1e-12:
+        return (sum(point[0] for point in polygon) / len(polygon),
+                sum(point[1] for point in polygon) / len(polygon))
+    return longitude_sum / (3 * area_twice), latitude_sum / (3 * area_twice)
+
+
 def enrich_home_model(mapping, geofence_polygons):
     mapped = 0
     for value in mapping.values():
         polygon = geofence_polygons.get(value['station'], [])
         if polygon:
-            station_lon = sum(point[0] for point in polygon) / len(polygon)
-            station_lat = sum(point[1] for point in polygon) / len(polygon)
+            station_lon, station_lat = _polygon_centroid(polygon)
             value['station_latitude'] = station_lat
             value['station_longitude'] = station_lon
             for home in value['homes']:

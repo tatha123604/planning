@@ -22,7 +22,7 @@ from sqlmodel import Session, create_engine, select
 from src.rtis import (HEADERS, RtisEvent, RtisUpload, get_session,
                       import_rtis, parse_rtis, router)
 from src.rtis_train_models import RtisTrainModel, parse_train_model, save_train_model
-from src.rtis_homes import RtisHomeModel, event_home_details, parse_home_model, save_home_model
+from src.rtis_homes import RtisHomeModel, _polygon_centroid, event_home_details, parse_home_model, save_home_model
 
 
 def model_workbook(rows=None):
@@ -105,6 +105,7 @@ class RtisTests(unittest.TestCase):
             parse_train_model(b'bad file')
 
     def test_home_model_maps_directions_and_distance(self):
+        self.assertEqual(_polygon_centroid([(0, 0), (4, 0), (0, 4)]), (4 / 3, 4 / 3))
         mapping, signals = parse_home_model(home_workbook())
         self.assertEqual(signals, 3)
         self.assertEqual(mapping['BP|J']['homes'][0]['type'], 'Home')
