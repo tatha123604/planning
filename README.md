@@ -128,7 +128,8 @@ and keeps only rows whose `HQ OF CREW` is SDAH or KOAA. Saved models are reusabl
 from the model selector; choose **All passenger trains** to remove the shortlist.
 Train numbers match exactly, including leading zeros. Selecting a model adds
 Train Name and HQ OF CREW to the table and filtered Excel download. Division,
-date/time, speed, event and train-search filters apply within the shortlist.
+date/time, speed, event, train-search and searchable Train Name filters apply
+within the shortlist.
 Models are saved in the configured database; restart the app to create the new
 model table. Uploading the same workbook again reuses its saved model.
 
