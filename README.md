@@ -85,6 +85,8 @@ requires a date and To time cannot precede From time. Time filters carry through
 division/analysis changes, pagination and Excel downloads. J+K selects both event types together.
 Download Excel exports all matching rows across all pages using the applied
 division, train type, date, speed and event filters.
+Clicking the RTIS Speed header applies ascending/descending sorting across the
+full filtered dataset before pagination; the Excel download uses the same order.
 Train no. search matches full or partial identifiers, ignoring letter case and
 preserving leading zeros. It applies to both analysis tables, counts and Excel
 downloads, and stays selected across pagination and division/analysis changes.

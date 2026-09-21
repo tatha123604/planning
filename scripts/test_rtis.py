@@ -244,6 +244,22 @@ class RtisTests(unittest.TestCase):
         self.assertIn('101 matching events', self.client.get('/rtis').text)
         self.assertIn('Page 2 of 2', self.client.get('/rtis?page=2').text)
 
+    def test_speed_sort_is_applied_before_pagination_and_export(self):
+        for index in range(101):
+            import_rtis(self.session, f'sort-{index}.xlsx', workbook(
+                serial=str(index + 1), speed=str(index % 70), time=f'2026-09-14 10:{index // 60:02}:{index % 60:02}'), 'SDAH')
+        first = self.client.get('/rtis?sort_by=speed&sort_order=asc&page=1')
+        second = self.client.get('/rtis?sort_by=speed&sort_order=asc&page=2')
+        self.assertEqual(first.context['rows'][0].speed, 0)
+        self.assertEqual(second.context['rows'][0].speed, 69)
+        self.assertEqual(first.context['sort_by'], 'speed')
+        self.assertEqual(second.context['sort_order'], 'asc')
+        book = load_workbook(BytesIO(self.client.get('/rtis/analysis.xlsx?sort_by=speed&sort_order=desc').content))
+        speeds = [row[6].value for row in book.active.iter_rows(min_row=2)]
+        self.assertEqual(speeds[0], 69)
+        self.assertEqual(speeds[-1], 0)
+        book.close()
+
     @unittest.skipUnless(REFERENCE, 'No reference workbook supplied')
     def test_actual_export_with_invalid_fills(self):
         content = REFERENCE.read_bytes()
