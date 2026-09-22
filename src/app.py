@@ -790,6 +790,7 @@ IST = timezone(timedelta(hours=5, minutes=30))
 _SSTS_PF_REPORT_CACHE: dict[str, tuple[datetime, dict[str, object]]] = {}
 _SSTS_PF_PUNCT_CACHE: dict[str, tuple[datetime, list[dict[str, object]]]] = {}
 _SSTS_PF_POSITIONS_CACHE: dict[str, tuple[datetime, list[dict[str, object]]]] = {}
+_SSTS_TRAIN_REPORT_CACHE: dict[str, tuple[datetime, list[dict[str, object]]]] = {}
 _SSTS_PF_ANALYSIS_TASKS: dict[str, dict[str, object]] = {}
 _SSTS_PF_ANALYSIS_LOCK = threading.Lock()
 _SSTS_CREW_CACHE: tuple[datetime, dict[str, str]] | None = None
@@ -1776,11 +1777,12 @@ def _build_offline_in_service_rows(
     reference_time: datetime,
     report_day: date,
 ) -> tuple[list[dict[str, object]], str]:
-    try:
-        token = fetch_ssts_token()
-        train_rows = fetch_ssts_trains_report(report_day, token)
-    except (urlerror.URLError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
-        return [], str(exc)
+    cached_report = _SSTS_TRAIN_REPORT_CACHE.get(report_day.isoformat())
+    if not cached_report:
+        return [], "Train attachment data is still updating in the background."
+    cached_at, train_rows = cached_report
+    if (_utc_now() - cached_at) >= timedelta(minutes=SSTS_PF_REPORT_CACHE_TTL_MINUTES):
+        return [], "Train attachment data is still updating in the background."
 
     trains_by_device_id, trains_by_rake_name = _build_ssts_train_attachment_maps(train_rows)
     rows: list[dict[str, object]] = []
@@ -5049,6 +5051,13 @@ def refresh_ssts_snapshot(session: Session, force: bool = False) -> dict[str, ob
 def _run_background_ssts_sync_once(force: bool = False) -> None:
     with Session(engine) as session:
         refresh_ssts_snapshot(session, force=force)
+    try:
+        token = fetch_ssts_token()
+        report_day = _utc_now().astimezone(IST).date()
+        train_rows = fetch_ssts_trains_report(report_day, token)
+        _SSTS_TRAIN_REPORT_CACHE[report_day.isoformat()] = (_utc_now(), train_rows)
+    except (urlerror.URLError, RuntimeError, ValueError, json.JSONDecodeError):
+        pass
 
 
 def _background_ssts_sync_worker() -> None:
