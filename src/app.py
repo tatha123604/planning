@@ -2720,7 +2720,10 @@ def _build_pf_report_rows_for_train(
     ]
 
 
-def build_ssts_pf_entering_context(report_day: date) -> dict[str, object]:
+def build_ssts_pf_entering_context(
+    report_day: date,
+    progress_callback: Callable[[int, str], None] | None = None,
+) -> dict[str, object]:
     cache_key = report_day.isoformat()
     cached_entry = _SSTS_PF_REPORT_CACHE.get(cache_key)
     now_utc = _utc_now()
@@ -2750,7 +2753,11 @@ def build_ssts_pf_entering_context(report_day: date) -> dict[str, object]:
     except (urlerror.URLError, RuntimeError, ValueError, json.JSONDecodeError):
         shed_notice_lookup = {}
     if trains:
-        with ThreadPoolExecutor(max_workers=6) as executor:
+        total_trains = len(trains)
+        completed_trains = 0
+        if progress_callback is not None:
+            progress_callback(25, f"Fetching train-wise PF data... 0/{total_trains}")
+        with ThreadPoolExecutor(max_workers=8) as executor:
             future_map = {
                 executor.submit(_build_pf_report_rows_for_train, train, report_day, token, crew_fallbacks): train
                 for train in trains
@@ -2760,6 +2767,12 @@ def build_ssts_pf_entering_context(report_day: date) -> dict[str, object]:
                 rows.extend(train_rows)
                 if any(row.get("status_message") for row in train_rows):
                     missing_count += 1
+                completed_trains += 1
+                if progress_callback is not None:
+                    progress_callback(
+                        25 + int((completed_trains / max(total_trains, 1)) * 30),
+                        f"Fetching train-wise PF data... {completed_trains}/{total_trains}",
+                    )
     for row in rows:
         if not isinstance(row, dict):
             continue
@@ -4528,7 +4541,7 @@ def _build_ssts_pf_speed_analysis_result(
         if progress_callback is not None:
             progress_callback(percent, message)
 
-    raw_context = build_ssts_pf_entering_context(report_day)
+    raw_context = build_ssts_pf_entering_context(report_day, progress_callback=report_progress)
     token = fetch_ssts_token()
     report_progress(18, "Loaded PF source rows.")
     detailed_analysis_threshold = 40
