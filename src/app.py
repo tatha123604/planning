@@ -5057,7 +5057,9 @@ def _background_ssts_sync_worker() -> None:
             _run_background_ssts_sync_once(force=False)
         except Exception:
             pass
-        wait_seconds = max(60, SSTS_BACKGROUND_SYNC_INTERVAL_MINUTES * 60)
+        # Keep the stored snapshot within the same freshness window used by
+        # the report page, so normal page loads never need to block on SSTS.
+        wait_seconds = max(60, SSTS_REFRESH_INTERVAL_MINUTES * 60)
         if _SSTS_BACKGROUND_SYNC_STOP.wait(wait_seconds):
             break
 
@@ -6877,11 +6879,13 @@ def _build_ssts_report_response(
     active_report_tab = report_tab if report_tab in {"online_offline", "pf_entering"} else "online_offline"
     # Rendering PF results must never wait for the remote device API. The
     # background synchronizer keeps the online/offline snapshot up to date.
-    sync_result = (
-        refresh_ssts_snapshot(session, force=force)
-        if active_report_tab == "online_offline"
-        else {"status": "cached", "message": "Using saved SSTS snapshots."}
-    )
+    if active_report_tab == "online_offline" and force:
+        sync_result = refresh_ssts_snapshot(session, force=True)
+    elif active_report_tab == "online_offline":
+        _ensure_background_ssts_sync()
+        sync_result = {"status": "cached", "message": "Using saved SSTS snapshots."}
+    else:
+        sync_result = {"status": "cached", "message": "Using saved SSTS snapshots."}
     selected_day_value = _parse_report_date(selected_day)
     analysis_day_value = _parse_report_date(analysis_day)
     selected_analysis_rake_value: int | None = None
