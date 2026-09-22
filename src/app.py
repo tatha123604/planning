@@ -788,6 +788,8 @@ SSTS_PF_SPIKE_FILTER_TRAIN_OVERRIDES: dict[str, set[str]] = {
 }
 IST = timezone(timedelta(hours=5, minutes=30))
 _SSTS_PF_REPORT_CACHE: dict[str, tuple[datetime, dict[str, object]]] = {}
+_SSTS_PF_PUNCT_CACHE: dict[str, tuple[datetime, list[dict[str, object]]]] = {}
+_SSTS_PF_POSITIONS_CACHE: dict[str, tuple[datetime, list[dict[str, object]]]] = {}
 _SSTS_PF_ANALYSIS_TASKS: dict[str, dict[str, object]] = {}
 _SSTS_PF_ANALYSIS_LOCK = threading.Lock()
 _SSTS_CREW_CACHE: tuple[datetime, dict[str, str]] | None = None
@@ -2242,14 +2244,23 @@ def _build_pf_positions_params(source: dict[str, object]) -> dict[str, object]:
 
 
 def _fetch_ssts_positions(source: dict[str, object], token: str) -> list[dict[str, object]]:
+    params = _build_pf_positions_params(source)
+    cache_key = json.dumps(params, sort_keys=True, default=str)
+    now_utc = _utc_now()
+    cached_entry = _SSTS_PF_POSITIONS_CACHE.get(cache_key)
+    if cached_entry and (now_utc - cached_entry[0]) < timedelta(minutes=SSTS_PF_REPORT_CACHE_TTL_MINUTES):
+        return [dict(point) for point in cached_entry[1]]
     response = _ssts_get_json_with_params(
         SSTS_API_POSITIONS_URL,
-        _build_pf_positions_params(source),
+        params,
         headers={"Authorization": token},
     )
-    if not isinstance(response, list):
-        return []
-    return [point for point in response if isinstance(point, dict)]
+    points = [point for point in response if isinstance(point, dict)] if isinstance(response, list) else []
+    _SSTS_PF_POSITIONS_CACHE[cache_key] = (now_utc, points)
+    for stale_key, (cached_at, _) in list(_SSTS_PF_POSITIONS_CACHE.items()):
+        if (now_utc - cached_at) >= timedelta(minutes=SSTS_PF_REPORT_CACHE_TTL_MINUTES):
+            _SSTS_PF_POSITIONS_CACHE.pop(stale_key, None)
+    return [dict(point) for point in points]
 
 
 def _fetch_ssts_geofence_polygons(token: str) -> dict[str, list[tuple[float, float]]]:
@@ -2597,11 +2608,25 @@ def _build_pf_report_rows_for_train(
         "recalc": "true",
     }
     try:
-        response = _ssts_get_json_with_params(
-            SSTS_API_PUNCT_URL,
-            params,
-            headers={"Authorization": token},
-        )
+        cache_key = json.dumps(params, sort_keys=True, default=str)
+        now_utc = _utc_now()
+        cached_entry = _SSTS_PF_PUNCT_CACHE.get(cache_key)
+        if cached_entry and (now_utc - cached_entry[0]) < timedelta(minutes=SSTS_PF_REPORT_CACHE_TTL_MINUTES):
+            response = [dict(item) for item in cached_entry[1]]
+        else:
+            response = _ssts_get_json_with_params(
+                SSTS_API_PUNCT_URL,
+                params,
+                headers={"Authorization": token},
+            )
+            if isinstance(response, list):
+                _SSTS_PF_PUNCT_CACHE[cache_key] = (
+                    now_utc,
+                    [dict(item) for item in response if isinstance(item, dict)],
+                )
+                for stale_key, (cached_at, _) in list(_SSTS_PF_PUNCT_CACHE.items()):
+                    if (now_utc - cached_at) >= timedelta(minutes=SSTS_PF_REPORT_CACHE_TTL_MINUTES):
+                        _SSTS_PF_PUNCT_CACHE.pop(stale_key, None)
     except (urlerror.URLError, RuntimeError, ValueError, json.JSONDecodeError):
         response = []
     if not isinstance(response, list) or not response:
