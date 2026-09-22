@@ -6849,8 +6849,14 @@ def _build_ssts_report_response(
     junk_cleanup_error: str = "",
     status_code: int = 200,
 ):
-    sync_result = refresh_ssts_snapshot(session, force=force)
     active_report_tab = report_tab if report_tab in {"online_offline", "pf_entering"} else "online_offline"
+    # Rendering PF results must never wait for the remote device API. The
+    # background synchronizer keeps the online/offline snapshot up to date.
+    sync_result = (
+        refresh_ssts_snapshot(session, force=force)
+        if active_report_tab == "online_offline"
+        else {"status": "cached", "message": "Using saved SSTS snapshots."}
+    )
     selected_day_value = _parse_report_date(selected_day)
     analysis_day_value = _parse_report_date(analysis_day)
     selected_analysis_rake_value: int | None = None
@@ -6867,11 +6873,19 @@ def _build_ssts_report_response(
     parsed_pf_day = _parse_report_date(pf_day)
     if parsed_pf_day is not None:
         pf_day_value = parsed_pf_day
-    context = build_ssts_report_context(
-        session,
-        selected_day=selected_day_value,
-        analysis_day=analysis_day_value,
-        selected_analysis_rake=selected_analysis_rake_value,
+    context = (
+        build_ssts_report_context(
+            session,
+            selected_day=selected_day_value,
+            analysis_day=analysis_day_value,
+            selected_analysis_rake=selected_analysis_rake_value,
+        )
+        if active_report_tab == "online_offline"
+        else {
+            "selected_day": selected_day_value.isoformat() if selected_day_value else "",
+            "selected_analysis_day": analysis_day_value.isoformat() if analysis_day_value else "",
+            "selected_analysis_rake": selected_analysis_rake_value,
+        }
     )
     pf_context = {
         "pf_report_day": pf_day_value.isoformat(),
@@ -6976,32 +6990,12 @@ def _build_ssts_report_response(
                 gps_result = _pf_hydrate_chart_links_in_result(gps_task_payload["result"])
                 pf_context["pf_gps_mapping_error_rows"] = gps_result.get("pf_gps_mapping_error_rows", [])
                 pf_context["pf_gps_mapping_summary_rows"] = gps_result.get("pf_gps_mapping_summary_rows", [])
-        elif pf_task_id and parsed_pf_day is not None:
-            try:
-                rebuilt_result = _build_ssts_pf_speed_analysis_result(pf_day_value, pf_speed_threshold_value)
-                rebuilt_result = _pf_hydrate_chart_links_in_result(rebuilt_result)
-                pf_context.update(rebuilt_result)
-                pf_context["pf_analysis_status"] = "completed"
-                pf_context["pf_analysis_message"] = "Analysis restored after status refresh."
-                pf_context["pf_analysis_task_id"] = pf_task_id or ""
-                selected_mode = "clean" if pf_detail_mode == "clean" else "raw"
-                selected_detail_rows_by_train = (
-                    rebuilt_result.get("pf_detailed_detail_rows_by_train")
-                    if selected_mode == "clean"
-                    else rebuilt_result.get("pf_analysis_detail_rows_by_train")
-                )
-                if isinstance(selected_detail_rows_by_train, dict):
-                    selected_train_value = pf_train or (
-                        str(pf_context["pf_analysis_summary_rows"][0].get("train_no") or "")
-                        if pf_context["pf_analysis_summary_rows"]
-                        else ""
-                    )
-                    pf_context["pf_analysis_selected_train"] = selected_train_value
-                    pf_context["pf_analysis_selected_mode"] = selected_mode
-                    selected_rows = selected_detail_rows_by_train.get(selected_train_value, [])
-                    pf_context["pf_analysis_selected_rows"] = selected_rows if isinstance(selected_rows, list) else []
-            except Exception as exc:
-                pf_context["pf_report_error"] = f"PF analysis restore failed: {exc}"
+        if not task_payload and pf_task_id:
+            pf_context["pf_analysis_status"] = "error"
+            pf_context["pf_report_error"] = (
+                "This analysis is no longer available (the server may have restarted or the result expired). "
+                "Press Analysis to run it again in the background."
+            )
     latest_run = context.get("latest_run")
     junk_cleanup_summary = _ssts_cleanup_junk_summary()
     latest_summary = {

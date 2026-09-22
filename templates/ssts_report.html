@@ -1666,13 +1666,14 @@
         if (contentType.includes('application/json')) {
           return response.json();
         }
-        const text = await response.text();
-        return { detail: text || fallbackMessage };
+        return { detail: `${fallbackMessage} (HTTP ${response.status}). Please try again.` };
       };
 
       const fetchJsonWithRetry = async (url, options, fallbackMessage) => {
         let lastError = null;
-        for (let attempt = 0; attempt < 3; attempt += 1) {
+        // Retrying a start request can launch another expensive analysis.
+        const maxAttempts = (options?.method || 'GET').toUpperCase() === 'GET' ? 3 : 1;
+        for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
           try {
             const response = await fetch(url, {
               credentials: 'same-origin',
@@ -1684,11 +1685,14 @@
                 ...(options?.headers || {}),
               },
             });
+            if ([502, 503, 504].includes(response.status)) {
+              throw new Error(`SSTS server is temporarily unavailable (HTTP ${response.status}). Please try again.`);
+            }
             const payload = await readJsonResponse(response, fallbackMessage);
             return { response, payload };
           } catch (error) {
             lastError = error;
-            if (attempt >= 2) {
+            if (attempt >= maxAttempts - 1) {
               break;
             }
             await new Promise((resolve) => window.setTimeout(resolve, 900 * (attempt + 1)));
@@ -1731,16 +1735,6 @@
           );
         } catch (error) {
           const message = error && error.message ? error.message : 'Could not start PF analysis.';
-          if (
-            typeof message === 'string'
-            && (
-              message.includes('PF analysis task not found')
-              || message.includes('Could not read PF analysis status.')
-            )
-          ) {
-            navigateToResult(getResultUrl(sourceForm, taskId, resultUrl));
-            return;
-          }
           setButtonState(activeButton, false, getButtonLabel(activeButton));
           if (sourceForm?.id === 'pf-gps-analysis-form') {
             setGpsProgress(0, message);
@@ -1775,7 +1769,6 @@
           } catch (error) {
             setButtonState(button, false, getButtonLabel(button));
             setProgressMessage(error && error.message ? error.message : 'Could not start PF analysis.');
-            window.location.href = getStartFallbackUrl(form);
           }
         });
       });
