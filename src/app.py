@@ -1625,16 +1625,22 @@ def _ssts_sort_key(snapshot: SstsDeviceSnapshot, reference_time: datetime | None
     )
 
 
-def _ssts_request_with_retry(req: urlrequest.Request, *, expects_json: bool = True) -> object:
+def _ssts_request_with_retry(
+    req: urlrequest.Request,
+    *,
+    expects_json: bool = True,
+    timeout_seconds: int = 30,
+    max_attempts: int = 3,
+) -> object:
     last_error: Exception | None = None
-    for attempt in range(3):
+    for attempt in range(max(1, max_attempts)):
         try:
-            with urlrequest.urlopen(req, timeout=30) as response:
+            with urlrequest.urlopen(req, timeout=timeout_seconds) as response:
                 body = response.read().decode("utf-8", "replace")
             return json.loads(body) if expects_json else body
         except (urlerror.URLError, TimeoutError, ConnectionResetError, OSError, json.JSONDecodeError) as exc:
             last_error = exc
-            if attempt >= 2:
+            if attempt >= max(1, max_attempts) - 1:
                 break
             time.sleep(1.2 * (attempt + 1))
     if last_error is not None:
@@ -1666,13 +1672,24 @@ def _ssts_get_json_with_params(
     url: str,
     params: dict[str, object],
     headers: dict[str, str] | None = None,
+    *,
+    timeout_seconds: int = 30,
+    max_attempts: int = 3,
 ) -> object:
     encoded = urlparse.urlencode(
         {key: value for key, value in params.items() if value not in (None, "")},
         doseq=True,
     )
     full_url = f"{url}?{encoded}" if encoded else url
-    return _ssts_get_json(full_url, headers=headers)
+    request_headers = {"User-Agent": "Mozilla/5.0"}
+    if headers:
+        request_headers.update(headers)
+    req = urlrequest.Request(full_url, headers=request_headers)
+    return _ssts_request_with_retry(
+        req,
+        timeout_seconds=timeout_seconds,
+        max_attempts=max_attempts,
+    )
 
 
 def fetch_ssts_token() -> str:
@@ -2256,6 +2273,8 @@ def _fetch_ssts_positions(source: dict[str, object], token: str) -> list[dict[st
         SSTS_API_POSITIONS_URL,
         params,
         headers={"Authorization": token},
+        timeout_seconds=15,
+        max_attempts=1,
     )
     points = [point for point in response if isinstance(point, dict)] if isinstance(response, list) else []
     _SSTS_PF_POSITIONS_CACHE[cache_key] = (now_utc, points)
@@ -2620,6 +2639,8 @@ def _build_pf_report_rows_for_train(
                 SSTS_API_PUNCT_URL,
                 params,
                 headers={"Authorization": token},
+                timeout_seconds=15,
+                max_attempts=1,
             )
             if isinstance(response, list):
                 _SSTS_PF_PUNCT_CACHE[cache_key] = (
