@@ -90,18 +90,21 @@
         {% if home_model %}<p class="hint">Active model: {{ home_model.filename }} — {{ home_model.signal_count }} home signals across {{ home_model.station_count }} stations; SSTS coordinates mapped for {{ home_model.mapped_station_count }} station directions.</p>{% else %}<p class="hint">Upload the FSD workbook to show Home signal and Home distance columns beside RTIS events.</p>{% endif %}
       </section>
       {% if home_model %}
-      <details class="card collapsible">
-        <summary>FSD Home signal coordinates <span class="collapse-count">({{ home_signal_rows|length }} signals)</span></summary>
+      <details class="card collapsible" id="fsd-coordinates" {% if home_station %}open{% endif %}>
+        <summary>FSD Home signal coordinates <span class="collapse-count">(<span id="fsd-match-count">{{ home_signal_match_count }}</span> signals)</span></summary>
         <p class="hint">All signals from the active FSD model, grouped by station code. Distance is the calculated straight-line distance from the SSTS station geofence centre.</p>
-        <form method="get" action="/rtis" class="rtis-form">
+        <form method="get" action="/rtis" class="rtis-form" id="fsd-search-form">
           <input type="hidden" name="division" value="{{ division }}" /><input type="hidden" name="analysis" value="{{ analysis }}" />
-          <label>FSD Station code<input type="search" name="home_station" value="{{ home_station }}" maxlength="100" placeholder="e.g. BP or GZM" /></label>
-          <button type="submit">Search FSD stations</button><a class="ghost small" href="/rtis?division={{ division }}&analysis={{ analysis }}">Reset</a>
+          <label>FSD Station name / code<input id="fsd-station-search" list="fsd-station-options" aria-describedby="fsd-search-hint" type="search" name="home_station" value="{{ home_station }}" maxlength="100" placeholder="Type station name or code" /></label>
+          <datalist id="fsd-station-options">{% for station_code in home_signal_rows|map(attribute='station')|unique|sort %}<option value="{{ station_code }}"></option>{% endfor %}</datalist>
+          <button type="submit">Search FSD stations</button><a id="fsd-search-reset" class="ghost small" href="/rtis?division={{ division }}&analysis={{ analysis }}">Reset</a>
         </form>
-        <a class="ghost small" href="/rtis/home-model.xlsx?home_station={{ home_station|urlencode }}">Download FSD signal Excel</a>
+        <p class="hint" id="fsd-search-hint">Type any part of the station name/code shown in the model. Matching signals appear immediately; clear the box to show all.</p>
+        <p class="hint" id="fsd-search-status" role="status" aria-live="polite"></p>
+        <a id="fsd-signal-export" class="ghost small" href="/rtis/home-model.xlsx?home_station={{ home_station|urlencode }}">Download FSD signal Excel</a>
         <div class="table-wrap"><table class="rtis-data-table">
           <thead><tr><th data-sort-type="text"><button type="button" class="table-sort" aria-label="Sort by Station">Station</button></th><th data-sort-type="text"><button type="button" class="table-sort" aria-label="Sort by Direction">Direction</button></th><th data-sort-type="text"><button type="button" class="table-sort" aria-label="Sort by Type">Type</button></th><th data-sort-type="number"><button type="button" class="table-sort" aria-label="Sort by Station Latitude">Station Latitude</button></th><th data-sort-type="number"><button type="button" class="table-sort" aria-label="Sort by Station Longitude">Station Longitude</button></th><th data-sort-type="number"><button type="button" class="table-sort" aria-label="Sort by Home Latitude">Home Latitude</button></th><th data-sort-type="number"><button type="button" class="table-sort" aria-label="Sort by Home Longitude">Home Longitude</button></th><th data-sort-type="text"><button type="button" class="table-sort" aria-label="Sort by Station DIRN">Station DIRN</button></th><th data-sort-type="number"><button type="button" class="table-sort" aria-label="Sort by Linear distance">Linear distance (m)</button></th></tr></thead>
-          <tbody>{% for signal in home_signal_rows %}<tr><td>{{ signal.station }}</td><td>{{ signal.direction }}</td><td>{{ signal.type }}</td><td>{{ '%.6f'|format(signal.station_latitude) if signal.station_latitude is not none else '—' }}</td><td>{{ '%.6f'|format(signal.station_longitude) if signal.station_longitude is not none else '—' }}</td><td>{{ '%.6f'|format(signal.latitude) }}</td><td>{{ '%.6f'|format(signal.longitude) }}</td><td>{{ signal.station_dirn }}</td><td>{{ '%g'|format(signal.distance_m) if signal.distance_m is not none else '—' }}</td></tr>{% else %}<tr><td colspan="9">No FSD Home signals found.</td></tr>{% endfor %}</tbody>
+          <tbody>{% for signal in home_signal_rows %}<tr data-fsd-station="{{ signal.station }}" {% if home_station and home_station not in signal.station %}hidden{% endif %}><td>{{ signal.station }}</td><td>{{ signal.direction }}</td><td>{{ signal.type }}</td><td>{{ '%.6f'|format(signal.station_latitude) if signal.station_latitude is not none else '—' }}</td><td>{{ '%.6f'|format(signal.station_longitude) if signal.station_longitude is not none else '—' }}</td><td>{{ '%.6f'|format(signal.latitude) }}</td><td>{{ '%.6f'|format(signal.longitude) }}</td><td>{{ signal.station_dirn }}</td><td>{{ '%g'|format(signal.distance_m) if signal.distance_m is not none else '—' }}</td></tr>{% endfor %}<tr id="fsd-no-matches" {% if home_signal_match_count %}hidden{% endif %}><td colspan="9">No FSD Home signals match this station search.</td></tr></tbody>
         </table></div>
       </details>
       {% endif %}
@@ -220,6 +223,7 @@
       });
     });
   </script>
+  <script src="/static/fsd-search.js?v=20260923"></script>
   <script src="/static/sidebar-toggle.js"></script>
   {% block extra_scripts %}{% endblock %}
 </body>

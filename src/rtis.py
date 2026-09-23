@@ -359,8 +359,7 @@ def rtis_page(request: Request, division: str = "SDAH", day: str = "", event: st
                 "distance_m": home.get("distance_m"),
             })
     home_signal_rows.sort(key=lambda row: (row["station"], row["direction"], row["station_dirn"], row["type"], row["latitude"], row["longitude"]))
-    if home_station:
-        home_signal_rows = [row for row in home_signal_rows if home_station in row["station"]]
+    home_signal_match_count = sum(not home_station or home_station in row["station"] for row in home_signal_rows)
     filters, summary_filters, unknown_filters = analysis_filters(division, day, event, analysis, view, speed, time_from, time_to, train_no, station, train_names if selected_model else None, train_name)
     unclassified = session.exec(select(func.count()).select_from(RtisEvent).where(*unknown_filters)).one()
     counts = dict(session.exec(select(RtisEvent.event_type, func.count()).where(*summary_filters)
@@ -384,6 +383,7 @@ def rtis_page(request: Request, division: str = "SDAH", day: str = "", event: st
         "model_id": model_id, "selected_model": selected_model, "train_names": train_names,
         "home_model": home_model, "home_details": {row.id: event_home_details(row.station, row.event_type, home_mapping) for row in rows},
         "home_signal_rows": home_signal_rows,
+        "home_signal_match_count": home_signal_match_count,
         "train_models": session.exec(select(RtisTrainModel.id, RtisTrainModel.filename, RtisTrainModel.train_count,
                                             RtisTrainModel.eligible_rows).order_by(RtisTrainModel.id.desc())).all(),
         "analysis": analysis, "analysis_types": ANALYSIS_TYPES, "view": view,
