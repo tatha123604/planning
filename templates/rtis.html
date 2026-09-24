@@ -112,7 +112,7 @@
         <h2>{{ analysis_types[analysis] }} — {{ division_label }}</h2>
         <p class="hint">Train Number rule: digits only = Passenger; letters and digits together = Goods. Uploads are shared by both options.</p>
         {% if unclassified %}<p class="hint">{{ unclassified }} H/J/K events have a blank or unmatched Train Number for the selected division, date/time, speed and train search. Select Unclassified events to review them.</p>{% endif %}
-        <form method="get" action="/rtis" class="rtis-form">
+        <form method="get" action="/rtis" class="rtis-form" id="rtis-filter-form">
           <input type="hidden" name="division" value="{{ division }}" />
           <input type="hidden" name="analysis" value="{{ analysis }}" />
           {% if analysis == 'passenger' %}<label>Train no. model<select name="model_id"><option value="0">All passenger trains</option>{% for model in train_models %}<option value="{{ model.id }}" {{ 'selected' if model_id == model.id else '' }}>{{ model.filename }} — {{ model.train_count }} trains</option>{% endfor %}</select></label>{% if selected_model %}<label>Train Name<input type="search" name="train_name" value="{{ train_name }}" list="rtis-train-names" maxlength="100" placeholder="Search train name" /><datalist id="rtis-train-names">{% for name in train_name_options %}<option value="{{ name }}"></option>{% endfor %}</datalist></label>{% endif %}{% endif %}
@@ -131,7 +131,7 @@
         <p class="hint">Train no. and Station search match full or partial text, ignoring letter case. Leave times blank for the full day. From and To times include the selected second on that date. Excel downloads all matching rows across all pages.</p>
         <p class="rtis-counts">{{ 'Unclassified' if view == 'unclassified' else ('Passenger' if analysis == 'passenger' else 'Goods') }} — H: <strong>{{ counts.get('H', 0) }}</strong> &nbsp; J: <strong>{{ counts.get('J', 0) }}</strong> &nbsp; K: <strong>{{ counts.get('K', 0) }}</strong> — {{ 'Selected date' if day else 'All dates' }}</p>
         <p class="hint">H: approach with respect to the home signal. J and K are shown as source codes; their definitions have not yet been confirmed.</p>
-        <details class="table-collapse" open><summary>RTIS data table <span class="collapse-count">({{ total }} matching events)</span></summary><div class="table-wrap"><table class="rtis-data-table" id="rtis-analysis-table">
+        <details class="table-collapse" open><summary tabindex="-1">RTIS data table <span class="collapse-count">({{ total }} matching events)</span></summary><div class="table-wrap"><table class="rtis-data-table" id="rtis-analysis-table">
           <thead><tr><th data-sort-type="date"><button type="button" class="table-sort" aria-label="Sort by Event date_time">Event date_time</button></th><th data-sort-type="text"><button type="button" class="table-sort" aria-label="Sort by Division Code">Division Code</button></th><th data-sort-type="text"><button type="button" class="table-sort" aria-label="Sort by Station">Station</button></th><th data-sort-type="text"><button type="button" class="table-sort" aria-label="Sort by Event">Event</button></th><th data-sort-type="text"><button type="button" class="table-sort" aria-label="Sort by Train no.">Train no.</button></th><th data-sort-type="text"><button type="button" class="table-sort" aria-label="Sort by Loco no.">Loco no.</button></th><th data-sort-type="number" data-server-sort="speed"><button type="button" class="table-sort" aria-label="Sort by Speed">Speed</button></th>{% if home_model %}<th data-sort-type="text"><button type="button" class="table-sort" aria-label="Sort by Home signal">Home signal</button></th><th data-sort-type="number"><button type="button" class="table-sort" aria-label="Sort by Home distance">Home distance (m)</button></th>{% endif %}{% if selected_model %}<th data-sort-type="text"><button type="button" class="table-sort" aria-label="Sort by Train Name">Train Name</button></th><th data-sort-type="text"><button type="button" class="table-sort" aria-label="Sort by HQ OF CREW">HQ OF CREW</button></th>{% endif %}</tr></thead>
           <tbody>{% for row in rows %}<tr><td>{{ row.event_time.strftime('%d-%m-%Y %H:%M:%S') }}</td><td>{{ row.division }}</td><td>{{ row.station or '—' }}</td><td><strong>{{ row.event_type }}</strong></td><td>{{ row.train or '—' }}</td><td>{{ row.loco }}</td><td>{{ '%g'|format(row.speed) if row.speed is not none else '—' }}</td>{% if home_model %}<td>{{ home_details[row.id][0] }}</td><td>{{ '%g'|format(home_details[row.id][1]) if home_details[row.id][1] != '' else '—' }}</td>{% endif %}{% if selected_model %}<td>{{ train_names[row.train]['name'] }}</td><td>{{ train_names[row.train]['hq'] }}</td>{% endif %}</tr>
           {% else %}<tr><td colspan="{{ 11 if selected_model and home_model else (9 if selected_model or home_model else 7) }}">No H/J/K events for this selection. Upload a report or change the model, train no., date, speed or train type.</td></tr>{% endfor %}</tbody>
@@ -182,6 +182,20 @@
         button.disabled = true; button.textContent = 'Uploading…';
       });
     });
+  </script>
+  <script>
+    const rtisFilterForm = document.getElementById('rtis-filter-form');
+    if (rtisFilterForm) {
+      rtisFilterForm.addEventListener('submit', function () { sessionStorage.setItem('rtis-focus-table', '1'); });
+    }
+    if (sessionStorage.getItem('rtis-focus-table') === '1') {
+      sessionStorage.removeItem('rtis-focus-table');
+      const rtisTableSummary = document.querySelector('.table-collapse > summary');
+      if (rtisTableSummary) {
+        rtisTableSummary.scrollIntoView({behavior: 'smooth', block: 'start'});
+        rtisTableSummary.focus({preventScroll: true});
+      }
+    }
   </script>
   <script>
     document.querySelectorAll('.rtis-data-table').forEach(function (table) {
