@@ -128,7 +128,7 @@ class RtisTests(unittest.TestCase):
         self.assertIn('UP MAIN LINE', page.text)
         filtered = self.client.get('/rtis?home_station=bp')
         self.assertEqual(filtered.context['home_station'], 'BP')
-        self.assertIn('FSD Station code', filtered.text)
+        self.assertIn('FSD Station name / code', filtered.text)
         home_book = load_workbook(BytesIO(self.client.get('/rtis/home-model.xlsx?home_station=BP').content))
         self.assertEqual(home_book.active.max_row, 4)
         self.assertEqual(home_book.active['A2'].value, 'BP')
