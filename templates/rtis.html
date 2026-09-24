@@ -220,6 +220,7 @@
             url.searchParams.set('sort_by', serverSort);
             url.searchParams.set('sort_order', currentSort === serverSort && currentOrder === 'asc' ? 'desc' : 'asc');
             url.searchParams.set('page', '1');
+            sessionStorage.setItem('rtis-focus-table', '1');
             window.location.href = url.toString();
             return;
           }
