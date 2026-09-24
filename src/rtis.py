@@ -518,6 +518,8 @@ def rtis_upload(division: str = Form(...), files: list[UploadFile] = File(...),
         filename = (file.filename or "workbook.xlsx").replace("\\", "/").split("/")[-1]
         try:
             message = import_rtis(session, filename, file.file.read(MAX_BYTES + 1), division)
+            if message.startswith(("Saved", "Already uploaded")):
+                message = f"Success: {filename} uploaded to {division}. {message}"
         except ValueError as exc:
             session.rollback()
             message = f"Not saved: {exc}"

@@ -66,6 +66,8 @@ The sidebar RTIS tab (`/rtis`) accepts division-wise `.xlsx` exports for SDAH,
 HWH, ASN and MLDT. Each division has its own labeled Excel file input and upload
 button. Choose files under the matching division and upload up to 10 files
 (25 MB each) per upload, then
+each successful upload returns a division-specific Success notice with the file
+name and saved/duplicate row count.
 filter H/J/K events by event date. Passenger Train Analysis is the default; Goods
 Train Analysis is a separate option. Following the user's rule, digit-only train
 numbers are passenger trains, while numbers containing both letters and digits

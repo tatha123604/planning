@@ -223,6 +223,7 @@ class RtisTests(unittest.TestCase):
         response = self.client.post('/rtis/upload', data={'division': 'SDAH'}, files=files)
         self.assertEqual(response.status_code, 200)
         self.assertIn('2 matching events', response.text)
+        self.assertIn('Success: one.xlsx uploaded to SDAH.', response.text)
         self.assertIn('00441', response.text)
         self.assertIn('one.xlsx', response.text)
         self.assertIn('1 matching events', self.client.get('/rtis?event=J&day=2026-09-14').text)
