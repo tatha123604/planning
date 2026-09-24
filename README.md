@@ -87,7 +87,7 @@ Download Excel exports all matching rows across all pages using the applied
 division, train type, date, speed and event filters.
 Clicking the RTIS Speed header applies ascending/descending sorting across the
 full filtered dataset before pagination; the Excel download uses the same order.
-Train no. search matches full or partial identifiers, ignoring letter case and
+Train no. and Loco no. searches match full or partial identifiers, ignoring letter case and
 preserving leading zeros. It applies to both analysis tables, counts and Excel
 downloads, and stays selected across pagination and division/analysis changes.
 Station search works the same way with a case-insensitive partial match and is

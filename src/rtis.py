@@ -238,7 +238,7 @@ def prune_rtis_history(session: Session) -> None:
     session.commit()
 
 
-def analysis_filters(division, day, event, analysis, view, speed, time_from="", time_to="", train_no="", station="", model_trains=None, train_name=""):
+def analysis_filters(division, day, event, analysis, view, speed, time_from="", time_to="", train_no="", station="", model_trains=None, train_name="", loco_no=""):
     """Keep on-screen results and full Excel downloads on the same filter rules."""
     if speed not in ("", "30", "40", "50"):
         raise HTTPException(400, "Choose All speeds, 30+, 40+ or 50+.")
@@ -285,6 +285,11 @@ def analysis_filters(division, day, event, analysis, view, speed, time_from="", 
         raise HTTPException(400, "Station search must be 100 characters or fewer.")
     if station:
         filters.append(func.lower(RtisEvent.station).contains(station.lower(), autoescape=True))
+    loco_no = loco_no.strip()
+    if len(loco_no) > 100:
+        raise HTTPException(400, "Loco no. search must be 100 characters or fewer.")
+    if loco_no:
+        filters.append(func.lower(RtisEvent.loco).contains(loco_no.lower(), autoescape=True))
     if speed:
         filters.append(RtisEvent.speed >= int(speed))
     if selected_day:
@@ -331,13 +336,14 @@ def rtis_ordering(sort_by="event_time", sort_order="desc"):
 @router.get("/rtis")
 def rtis_page(request: Request, division: str = "SDAH", day: str = "", event: str = "HJK",
               page: int = 1, analysis: str = "passenger", view: str = "classified",
-              speed: str = "", time_from: str = "", time_to: str = "", train_no: str = "", station: str = "", home_station: str = "", train_name: str = "", sort_by: str = "event_time", sort_order: str = "desc",
+              speed: str = "", time_from: str = "", time_to: str = "", train_no: str = "", station: str = "", home_station: str = "", train_name: str = "", loco_no: str = "", sort_by: str = "event_time", sort_order: str = "desc",
               model_id: int = 0,
               session: Session = Depends(get_session)):
     train_no = train_no.strip()
     station = station.strip()
     home_station = home_station.strip().upper()
     train_name = train_name.strip()
+    loco_no = loco_no.strip()
     if len(home_station) > 100:
         raise HTTPException(400, "FSD station search must be 100 characters or fewer.")
     ordering = rtis_ordering(sort_by, sort_order)
@@ -360,7 +366,7 @@ def rtis_page(request: Request, division: str = "SDAH", day: str = "", event: st
             })
     home_signal_rows.sort(key=lambda row: (row["station"], row["direction"], row["station_dirn"], row["type"], row["latitude"], row["longitude"]))
     home_signal_match_count = sum(not home_station or home_station in row["station"] for row in home_signal_rows)
-    filters, summary_filters, unknown_filters = analysis_filters(division, day, event, analysis, view, speed, time_from, time_to, train_no, station, train_names if selected_model else None, train_name)
+    filters, summary_filters, unknown_filters = analysis_filters(division, day, event, analysis, view, speed, time_from, time_to, train_no, station, train_names if selected_model else None, train_name, loco_no)
     unclassified = session.exec(select(func.count()).select_from(RtisEvent).where(*unknown_filters)).one()
     counts = dict(session.exec(select(RtisEvent.event_type, func.count()).where(*summary_filters)
                               .group_by(RtisEvent.event_type)).all())
@@ -389,12 +395,12 @@ def rtis_page(request: Request, division: str = "SDAH", day: str = "", event: st
         "analysis": analysis, "analysis_types": ANALYSIS_TYPES, "view": view,
         "unclassified": unclassified, "speed": speed, "time_from": time_from, "time_to": time_to, "train_no": train_no, "station": station,
         "home_station": home_station,
-        "train_name": train_name,
+        "train_name": train_name, "loco_no": loco_no,
         "sort_by": sort_by, "sort_order": sort_order,
         "train_name_options": sorted({str(value.get("name", "")).strip() for value in train_names.values() if value.get("name")}),
-        "division_query": urlencode({"day": day, "event": event, "analysis": analysis, "view": view, "speed": speed, "time_from": time_from, "time_to": time_to, "train_no": train_no, "station": station, "train_name": train_name, "sort_by": sort_by, "sort_order": sort_order, "model_id": model_id}),
+        "division_query": urlencode({"day": day, "event": event, "analysis": analysis, "view": view, "speed": speed, "time_from": time_from, "time_to": time_to, "train_no": train_no, "station": station, "train_name": train_name, "loco_no": loco_no, "sort_by": sort_by, "sort_order": sort_order, "model_id": model_id}),
         "switch_query": urlencode({"division": division, "day": day, "event": event, "speed": speed, "time_from": time_from, "time_to": time_to, "train_no": train_no, "station": station, "sort_by": sort_by, "sort_order": sort_order}),
-        "query": urlencode({"division": division, "day": day, "event": event, "analysis": analysis, "view": view, "speed": speed, "time_from": time_from, "time_to": time_to, "train_no": train_no, "station": station, "train_name": train_name, "sort_by": sort_by, "sort_order": sort_order, "model_id": model_id}),
+        "query": urlencode({"division": division, "day": day, "event": event, "analysis": analysis, "view": view, "speed": speed, "time_from": time_from, "time_to": time_to, "train_no": train_no, "station": station, "train_name": train_name, "loco_no": loco_no, "sort_by": sort_by, "sort_order": sort_order, "model_id": model_id}),
         "notice": request.query_params.get("notice", ""),
     })
 
@@ -402,13 +408,13 @@ def rtis_page(request: Request, division: str = "SDAH", day: str = "", event: st
 @router.get("/rtis/analysis.xlsx")
 def rtis_analysis_excel(division: str = "SDAH", day: str = "", event: str = "HJK",
                         analysis: str = "passenger", view: str = "classified", speed: str = "",
-                        time_from: str = "", time_to: str = "", train_no: str = "", station: str = "", train_name: str = "", sort_by: str = "event_time", sort_order: str = "desc",
+                        time_from: str = "", time_to: str = "", train_no: str = "", station: str = "", train_name: str = "", loco_no: str = "", sort_by: str = "event_time", sort_order: str = "desc",
                         model_id: int = 0,
                         session: Session = Depends(get_session)):
     selected_model, train_names = selected_train_model(session, model_id, analysis)
     home_model, home_mapping = selected_home_model(session)
     ordering = rtis_ordering(sort_by, sort_order)
-    filters, _, _ = analysis_filters(division, day, event, analysis, view, speed, time_from, time_to, train_no, station, train_names if selected_model else None, train_name)
+    filters, _, _ = analysis_filters(division, day, event, analysis, view, speed, time_from, time_to, train_no, station, train_names if selected_model else None, train_name, loco_no)
     events = session.exec(select(RtisEvent).where(*filters)
                           .order_by(*ordering)
                           .execution_options(yield_per=1000))
