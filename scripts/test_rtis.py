@@ -236,6 +236,17 @@ class RtisTests(unittest.TestCase):
         failure = self.client.post('/rtis/upload', data={'division':'HWH'}, files={'files':('bad.xlsx', workbook())})
         self.assertIn('Not saved:', failure.text)
 
+    def test_undo_upload_removes_only_that_file_and_events(self):
+        import_rtis(self.session, 'one.xlsx', workbook(serial='1'), 'SDAH')
+        import_rtis(self.session, 'two.xlsx', workbook(serial='2', time='2026-09-14 11:00:00'), 'SDAH')
+        response = self.client.post('/rtis/uploads/1/delete', data={'division': 'SDAH', 'analysis': 'passenger'})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('Undone one.xlsx: 1 events removed.', response.text)
+        self.assertEqual(len(self.session.exec(select(RtisUpload)).all()), 1)
+        self.assertEqual(len(self.session.exec(select(RtisEvent)).all()), 1)
+        self.assertEqual(self.client.get('/rtis/uploads/1/download').status_code, 404)
+        self.assertEqual(self.client.post('/rtis/uploads/999/delete').status_code, 404)
+
     def test_pagination_and_nonfocus_retention(self):
         for i in range(101):
             import_rtis(self.session, f'{i}.xlsx', workbook(time=f'2026-09-14 {i//60:02}:{i%60:02}:00'), 'SDAH')

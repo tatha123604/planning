@@ -109,6 +109,9 @@ be corrected without creating a duplicate model.
 All event types and original files are retained
 in the application's configured SQLite database. The upload history offers the
 original download. Existing app login is required for viewing and uploading.
+Upload history also provides an explicit Undo action with confirmation. Undoing an
+upload removes that upload's saved events and history entry, while other uploads
+remain unchanged.
 
 Imports validate every row's Division Code and the standard RTIS export headers.
 Blank speed remains blank, and train identifiers stored as text retain leading

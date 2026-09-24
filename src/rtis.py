@@ -531,6 +531,26 @@ def rtis_download(upload_id: int, session: Session = Depends(get_session)):
                     headers={"Content-Disposition": f'attachment; filename="RTIS_{upload.division}_{upload.id}.xlsx"'})
 
 
+@router.post("/rtis/uploads/{upload_id}/delete")
+def rtis_delete_upload(upload_id: int, division: str = Form("ALL"), analysis: str = Form("passenger"),
+                       session: Session = Depends(get_session)):
+    upload = session.get(RtisUpload, upload_id)
+    if upload is None:
+        raise HTTPException(404, "Upload not found.")
+    deleted_events = session.exec(select(RtisEvent).where(RtisEvent.upload_id == upload_id)).all()
+    for event in deleted_events:
+        session.delete(event)
+    filename = upload.filename
+    upload_division = upload.division
+    session.delete(upload)
+    session.commit()
+    return RedirectResponse("/rtis?" + urlencode({
+        "division": division if division in (*DIVISIONS, "ALL") else upload_division,
+        "analysis": analysis if analysis in ANALYSIS_TYPES else "passenger",
+        "notice": f"Undone {filename}: {len(deleted_events):,} events removed.",
+    }), status_code=303)
+
+
 def _output_values(raw: str) -> list[str]:
     source = json.loads(raw)
     return [source.get(header, "") for header in HEADERS]
