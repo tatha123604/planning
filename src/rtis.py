@@ -191,8 +191,17 @@ def import_rtis(session: Session, filename: str, content: bytes, division: str) 
     if division not in DIVISIONS:
         raise ValueError("Choose SDAH, HWH, ASN or MLDT.")
     digest = sha256(content).hexdigest()
-    if session.exec(select(RtisUpload.id).where(RtisUpload.division == division, RtisUpload.digest == digest)).first():
-        return "Already uploaded; no duplicate events added."
+    previous_upload = session.exec(select(RtisUpload).where(RtisUpload.division == division,
+                                                              RtisUpload.digest == digest)).first()
+    if previous_upload:
+        # A previous upload can be left behind without events after an undo,
+        # retention cleanup, or an interrupted duplicate import. In that case
+        # allow the same workbook to restore its missing events.
+        previous_event = session.exec(select(RtisEvent.id).where(RtisEvent.upload_id == previous_upload.id).limit(1)).first()
+        if previous_event is not None:
+            return "Already uploaded; no duplicate events added."
+        session.delete(previous_upload)
+        session.flush()
     records = parse_rtis(content, division)
     unique = {row["fingerprint"]: row for row in records}
     existing = set()
