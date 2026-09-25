@@ -1,5 +1,6 @@
 {% extends "rtis.html" %}
-{% block title %}RTIS Analysis{% endblock %}
+{% block title %}RTIS Analysis<style>.analysis-card-head{display:flex;justify-content:space-between;gap:16px;align-items:center;flex-wrap:wrap}.speed-legend{display:flex;gap:10px;flex-wrap:wrap;font-size:.85rem}.speed-legend span{display:inline-flex;align-items:center;gap:5px}.speed-legend i{width:12px;height:12px;border-radius:50%;display:inline-block}.legend-green{background:#16a34a}.legend-yellow{background:#eab308}.legend-red{background:#dc2626}</style>
+{% endblock %}
 {% block content %}
 <header>
   <div><h1>RTIS Analysis</h1><p>Upload secondary GPS data and apply the analysis filters.</p></div>
@@ -7,7 +8,7 @@
 </header>
 {% if notice %}<section class="card" role="status"><p>{{ notice }}</p></section>{% endif %}
 <section class="card">
-  <h2>RTIS Primary/Secondary GPS data analysis</h2>
+  <div class="analysis-card-head"><h2>RTIS Primary/Secondary GPS data analysis</h2><div class="speed-legend"><span><i class="legend-green"></i>0-39 km/h</span><span><i class="legend-yellow"></i>40-59 km/h</span><span><i class="legend-red"></i>60+ km/h</span></div></div>
   <form method="post" action="/rtis/analysis/upload" enctype="multipart/form-data" class="rtis-form rtis-analysis-form">
     <label>Date<input type="date" name="analysis_date" id="analysis-date" required /></label>
     <label>Train type
