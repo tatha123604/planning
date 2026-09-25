@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections import Counter
+import csv
 from datetime import date, datetime, timedelta, time as clock_time
 from hashlib import sha256
 from io import BytesIO
@@ -12,6 +13,7 @@ import posixpath
 from urllib.parse import urlencode
 from xml.etree import ElementTree as ET
 from zipfile import BadZipFile, ZipFile
+from openpyxl import load_workbook
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import RedirectResponse, Response
@@ -528,6 +530,78 @@ def rtis_analysis_upload(
         if home_file:
             home_file.file.close()
     return RedirectResponse("/rtis/analysis?" + urlencode({"notice": notice}), status_code=303)
+
+
+def _rtis_analysis_points(content: bytes, upload: RtisAnalysisUpload) -> tuple[list[dict], str]:
+    """Read the common SecondaryGPSData CSV columns used by RTIS exports."""
+    try:
+        if upload.filename.lower().endswith(".xlsx"):
+            book = load_workbook(BytesIO(content), read_only=True, data_only=True)
+            sheet = book.active
+            rows = list(sheet.iter_rows(values_only=True))
+            book.close()
+            if not rows:
+                raise ValueError("The GPS workbook is empty.")
+            headers = [str(value or "").strip() for value in rows[0]]
+            reader = (dict(zip(headers, row)) for row in rows[1:])
+            fieldnames = headers
+        else:
+            text = content.decode("utf-8-sig", errors="replace")
+            csv_reader = csv.DictReader(text.splitlines())
+            fieldnames = csv_reader.fieldnames or []
+            reader = csv_reader
+    except Exception as exc:
+        raise ValueError("Cannot read the GPS CSV or Excel file.") from exc
+    if not fieldnames:
+        raise ValueError("The GPS file has no header row.")
+    fields = {str(field).strip().casefold(): field for field in fieldnames if field}
+    required = ("logging time", "latitude", "longitude", "speed")
+    if any(name not in fields for name in required):
+        raise ValueError("GPS file must contain Logging Time, Latitude, Longitude and Speed columns.")
+    points: list[dict] = []
+    for row in reader:
+        try:
+            latitude = float(str(row.get(fields["latitude"]) or "").strip())
+            longitude = float(str(row.get(fields["longitude"]) or "").strip())
+            speed = float(str(row.get(fields["speed"]) or "0").strip() or 0)
+        except (TypeError, ValueError):
+            continue
+        if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
+            continue
+        timestamp = str(row.get(fields["logging time"]) or "").strip()
+        if upload.time_from and timestamp[11:16] < upload.time_from:
+            continue
+        if upload.time_to and timestamp[11:16] > upload.time_to:
+            continue
+        points.append({"lat": latitude, "lon": longitude, "speed": round(speed, 2), "time": timestamp})
+    if not points:
+        raise ValueError("No GPS points matched the selected filters.")
+    return points, ""
+
+
+@router.post("/rtis/analysis/run")
+def rtis_analysis_run(request: Request, upload_id: int = Form(...), session: Session = Depends(get_session)):
+    upload = session.get(RtisAnalysisUpload, upload_id)
+    if upload is None:
+        raise HTTPException(404, "Analysis upload not found.")
+    points, _ = _rtis_analysis_points(upload.content, upload)
+    home_model, mapping = selected_home_model(session)
+    signals = []
+    for value in mapping.values():
+        for home in value.get("homes", []):
+            signals.append({
+                "station": value.get("station", ""), "event": value.get("event", ""),
+                "label": value.get("label", ""), "line": home.get("line", ""),
+                "lat": home.get("latitude"), "lon": home.get("longitude"),
+            })
+    # Match each home signal to the nearest GPS point for its hover details.
+    for signal in signals:
+        nearest = min(points, key=lambda point: (point["lat"] - signal["lat"]) ** 2 + (point["lon"] - signal["lon"]) ** 2)
+        signal.update(speed=nearest["speed"], time=nearest["time"])
+    return templates.TemplateResponse(request=request, name="rtis_analysis_result.html", context={
+        "request": request, "upload": upload, "points": points[::max(1, len(points) // 2000)],
+        "signals": signals, "home_model": home_model,
+    })
 
 
 @router.post("/rtis/home-model/upload")

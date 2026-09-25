@@ -31,9 +31,10 @@
   <h2>Recent analysis uploads</h2>
   {% if uploads %}
   <div class="table-wrap"><table class="rtis-data-table"><thead><tr><th>File</th><th>Date</th><th>Train type</th><th>Train no.</th><th>Loco no.</th><th>Time</th><th>Uploaded</th></tr></thead><tbody>
-    {% for upload in uploads %}<tr><td>{{ upload.filename }}</td><td>{{ upload.analysis_date }}</td><td>{{ upload.train_type }}</td><td>{{ upload.train_no or 'All' }}</td><td>{{ upload.loco_no or 'All' }}</td><td>{{ upload.time_from or '—' }}{% if upload.time_to %} to {{ upload.time_to }}{% endif %}</td><td>{{ upload.uploaded_at.strftime('%d-%m-%Y %H:%M') }}</td></tr>{% endfor %}
+    {% for upload in uploads %}<tr><td>{{ upload.filename }}</td><td>{{ upload.analysis_date }}</td><td>{{ upload.train_type }}</td><td>{{ upload.train_no or 'All' }}</td><td>{{ upload.loco_no or 'All' }}</td><td>{{ upload.time_from or '—' }}{% if upload.time_to %} to {{ upload.time_to }}{% endif %}</td><td>{{ upload.uploaded_at.strftime('%d-%m-%Y %H:%M') }}</td><td><form method="post" action="/rtis/analysis/run" class="analysis-run-form"><input type="hidden" name="upload_id" value="{{ upload.id }}" /><button type="submit">Analysis</button></form></td></tr>{% endfor %}
   </tbody></table></div>
   {% else %}<p class="hint">No analysis files uploaded yet.</p>{% endif %}
 </section>
-<style>.rtis-analysis-form{align-items:flex-end}.rtis-analysis-form .file-field{min-width:260px}.rtis-analysis-form input,.rtis-analysis-form select{min-height:38px}</style>
+<style>.rtis-analysis-form{align-items:flex-end}.rtis-analysis-form .file-field{min-width:260px}.rtis-analysis-form input,.rtis-analysis-form select{min-height:38px}.analysis-progress{display:flex;gap:16px;align-items:center}.analysis-progress-bar{height:8px;margin-top:10px;border-radius:8px;background:linear-gradient(90deg,#0f766e 25%,#99f6e4 50%,#0f766e 75%);background-size:200% 100%;animation:analysis-loading 1.2s linear infinite}@keyframes analysis-loading{to{background-position:-200% 0}}</style>
+<script>document.querySelectorAll('.analysis-run-form').forEach(form=>form.addEventListener('submit',()=>{const button=form.querySelector('button');button.disabled=true;button.textContent='Analysing…';const bar=document.createElement('div');bar.className='analysis-progress-bar';bar.setAttribute('role','progressbar');form.closest('tr').appendChild(bar)}));</script>
 {% endblock %}
