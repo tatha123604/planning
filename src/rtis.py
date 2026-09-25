@@ -482,6 +482,7 @@ def rtis_analysis_page(request: Request, notice: str = "", session: Session = De
     uploads = session.exec(
         select(RtisAnalysisUpload).order_by(RtisAnalysisUpload.id.desc()).limit(20)
     ).all()
+    home_model, _ = selected_home_model(session)
     return templates.TemplateResponse(
         request=request,
         name="rtis_analysis.html",
@@ -489,6 +490,7 @@ def rtis_analysis_page(request: Request, notice: str = "", session: Session = De
             "active_page": "rtis",
             "notice": notice,
             "uploads": uploads,
+            "home_model": home_model,
         },
     )
 

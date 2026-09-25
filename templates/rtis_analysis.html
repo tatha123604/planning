@@ -7,7 +7,7 @@
 </header>
 {% if notice %}<section class="card" role="status"><p>{{ notice }}</p></section>{% endif %}
 <section class="card">
-  <h2>Secondary GPS analysis</h2>
+  <h2>RTIS Primary/Secondary GPS data analysis</h2>
   <form method="post" action="/rtis/analysis/upload" enctype="multipart/form-data" class="rtis-form rtis-analysis-form">
     <label>Date<input type="date" name="analysis_date" id="analysis-date" required /></label>
     <label>Train type
@@ -26,9 +26,9 @@
     <label class="file-field">Primary GPS data (optional)<input type="file" name="primary_file" accept=".csv,.xlsx,.xls" /></label>
     <button type="submit">Upload and save analysis</button>
   </form>
+  <div class="rtis-form" style="margin-top:12px"><form method="post" action="/rtis/home-model/upload" enctype="multipart/form-data" class="rtis-form" style="margin:0"><label class="file-field">FSD signal model<input type="file" name="home_file" accept=".xlsx" required /></label><input type="hidden" name="return_to" value="analysis" /><button type="submit">Upload FSD model</button></form><span class="hint">{% if home_model %}Uploaded model: <strong>{{ home_model.filename }}</strong> ({{ home_model.signal_count }} signals){% else %}No FSD signal model uploaded yet.{% endif %}</span></div>
   <p class="hint">The uploaded data is saved with these filters. The FSD home signal model uses the same model format as the RTIS tab.</p>
 </section>
-<section class="card"><h2>FSD home signal model</h2><form method="post" action="/rtis/home-model/upload" enctype="multipart/form-data" class="rtis-form"><label class="file-field">Upload FSD model<input type="file" name="home_file" accept=".xlsx" required /></label><input type="hidden" name="return_to" value="analysis" /><button type="submit">Upload FSD model</button></form><p class="hint">This is separate from the GPS data upload and uses the same FSD model format as the RTIS tab.</p></section>
 <section class="card">
   <h2>Recent analysis uploads</h2>
   {% if uploads %}
