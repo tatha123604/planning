@@ -641,6 +641,25 @@ def rtis_analysis_run(request: Request, upload_id: int = Form(...), session: Ses
     if upload is None:
         raise HTTPException(404, "Analysis upload not found.")
     points, _ = _rtis_analysis_points(upload.content, upload)
+    primary_upload = session.exec(
+        select(RtisAnalysisPrimaryUpload).where(RtisAnalysisPrimaryUpload.analysis_upload_id == upload.id)
+    ).first()
+    if primary_upload:
+        primary_meta = RtisAnalysisUpload(
+            filename=primary_upload.filename,
+            analysis_date=upload.analysis_date,
+            train_type=upload.train_type,
+            train_no=upload.train_no,
+            loco_no=upload.loco_no,
+            time_from=upload.time_from,
+            time_to=upload.time_to,
+            content=primary_upload.content,
+        )
+        try:
+            points.extend(_rtis_analysis_points(primary_upload.content, primary_meta)[0])
+        except ValueError:
+            pass
+    points.sort(key=lambda point: point.get("time", ""))
     home_model, mapping = selected_home_model(session)
     signals = []
     for value in mapping.values():
@@ -652,14 +671,8 @@ def rtis_analysis_run(request: Request, upload_id: int = Form(...), session: Ses
             })
     if not signals:
         raise HTTPException(400, "Upload an FSD signal model before running analysis.")
-    # Keep only GPS samples close to an FSD home-signal coordinate.
-    signal_coordinates = [(signal["lat"], signal["lon"]) for signal in signals]
-    points = [
-        point for point in points
-        if min((point["lat"] - lat) ** 2 + (point["lon"] - lon) ** 2 for lat, lon in signal_coordinates) <= 0.001 ** 2
-    ]
     if not points:
-        raise HTTPException(400, "No GPS points in the selected time period match FSD signal coordinates.")
+        raise HTTPException(400, "No GPS points matched the selected date and time period.")
     # Match each home signal to the nearest GPS point for its hover details.
     matched_signals = []
     for signal in signals:
