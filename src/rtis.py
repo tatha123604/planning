@@ -591,11 +591,15 @@ def _rtis_analysis_points(content: bytes, upload: RtisAnalysisUpload) -> tuple[l
         if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
             continue
         timestamp = str(row.get(fields["logging time"]) or "").strip()
+        if upload.analysis_date and not timestamp.startswith(upload.analysis_date):
+            continue
         if upload.time_from and timestamp[11:16] < upload.time_from:
             continue
         if upload.time_to and timestamp[11:16] > upload.time_to:
             continue
-        points.append({"lat": latitude, "lon": longitude, "speed": round(speed, 2), "time": timestamp})
+        station_field = fields.get("last/cur stationcode") or fields.get("station code")
+        station = str(row.get(station_field) or "").strip() if station_field else ""
+        points.append({"lat": latitude, "lon": longitude, "speed": round(speed, 2), "time": timestamp, "station": station})
     if not points:
         raise ValueError("No GPS points matched the selected filters.")
     return points, ""
@@ -646,10 +650,20 @@ def rtis_analysis_run(request: Request, upload_id: int = Form(...), session: Ses
                 "label": value.get("label", ""), "line": home.get("line", ""),
                 "lat": home.get("latitude"), "lon": home.get("longitude"),
             })
+    if not signals:
+        raise HTTPException(400, "Upload an FSD signal model before running analysis.")
+    # Keep only GPS samples close to an FSD home-signal coordinate.
+    signal_coordinates = [(signal["lat"], signal["lon"]) for signal in signals]
+    points = [
+        point for point in points
+        if min((point["lat"] - lat) ** 2 + (point["lon"] - lon) ** 2 for lat, lon in signal_coordinates) <= 0.001 ** 2
+    ]
+    if not points:
+        raise HTTPException(400, "No GPS points in the selected time period match FSD signal coordinates.")
     # Match each home signal to the nearest GPS point for its hover details.
     for signal in signals:
         nearest = min(points, key=lambda point: (point["lat"] - signal["lat"]) ** 2 + (point["lon"] - signal["lon"]) ** 2)
-        signal.update(speed=nearest["speed"], time=nearest["time"])
+        signal.update(speed=nearest["speed"], time=nearest["time"], station=nearest.get("station") or signal.get("station", ""))
     return templates.TemplateResponse(request=request, name="rtis_analysis_result.html", context={
         "request": request, "upload": upload, "points": points[::max(1, len(points) // 2000)],
         "signals": signals, "home_model": home_model,
