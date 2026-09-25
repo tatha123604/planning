@@ -21,8 +21,10 @@
     </label>
     <label>Train no.<input type="text" name="train_no" id="analysis-train-no" maxlength="40" /></label>
     <label>Loco no.<input type="text" name="loco_no" id="analysis-loco-no" maxlength="40" required /></label>
-    <label>Time from<input type="time" name="time_from" required /></label>
-    <label>Time to<input type="time" name="time_to" required /></label>
+    <label>Time from<input type="time" name="time_from" /></label>
+    <label>Time to<input type="time" name="time_to" /></label>
+    <label>Station code from<input type="text" name="station_from" maxlength="30" placeholder="e.g. NMC" /></label>
+    <label>Station code to<input type="text" name="station_to" maxlength="30" placeholder="e.g. BARN" /></label>
     <label class="file-field">Secondary GPS data (CSV/Excel)<input type="file" name="gps_file" accept=".csv,.xlsx,.xls" required /></label>
     <label class="file-field">Primary GPS data (optional)<input type="file" name="primary_file" accept=".csv,.xlsx,.xls" /></label>
     <button type="submit">Upload and save analysis</button>
@@ -33,8 +35,8 @@
 <section class="card">
   <h2>Recent analysis uploads</h2>
   {% if uploads %}
-  <div class="table-wrap"><table class="rtis-data-table"><thead><tr><th>File</th><th>Date</th><th>Train type</th><th>Train no.</th><th>Loco no.</th><th>Time</th><th>Uploaded</th></tr></thead><tbody>
-    {% for upload in uploads %}<tr><td>{{ upload.filename }}</td><td>{{ upload.analysis_date }}</td><td>{{ upload.train_type }}</td><td>{{ upload.train_no or 'All' }}</td><td>{{ upload.loco_no or 'All' }}</td><td>{{ upload.time_from or '—' }}{% if upload.time_to %} to {{ upload.time_to }}{% endif %}</td><td>{{ upload.uploaded_at.strftime('%d-%m-%Y %H:%M') }}</td><td><form method="post" action="/rtis/analysis/run" class="analysis-run-form"><input type="hidden" name="upload_id" value="{{ upload.id }}" /><button type="submit">Analysis</button></form></td></tr>{% endfor %}
+  <div class="table-wrap"><table class="rtis-data-table"><thead><tr><th>File</th><th>Date</th><th>Train type</th><th>Train no.</th><th>Loco no.</th><th>Time</th><th>Station route</th><th>Uploaded</th><th>Action</th></tr></thead><tbody>
+    {% for upload in uploads %}<tr><td>{{ upload.filename }}</td><td>{{ upload.analysis_date }}</td><td>{{ upload.train_type }}</td><td>{{ upload.train_no or 'All' }}</td><td>{{ upload.loco_no or 'All' }}</td><td>{{ upload.time_from or '—' }}{% if upload.time_to %} to {{ upload.time_to }}{% endif %}</td><td>{{ upload.station_from or '—' }}{% if upload.station_to %} to {{ upload.station_to }}{% endif %}</td><td>{{ upload.uploaded_at.strftime('%d-%m-%Y %H:%M') }}</td><td><form method="post" action="/rtis/analysis/run" class="analysis-run-form"><input type="hidden" name="upload_id" value="{{ upload.id }}" /><button type="submit">Analysis</button></form></td></tr>{% endfor %}
   </tbody></table></div>
   {% else %}<p class="hint">No analysis files uploaded yet.</p>{% endif %}
 </section>
@@ -43,7 +45,7 @@
 document.querySelectorAll('.analysis-run-form').forEach(form=>form.addEventListener('submit',()=>{const button=form.querySelector('button');button.disabled=true;button.textContent='Analysing…';const bar=document.createElement('div');bar.className='analysis-progress-bar';bar.setAttribute('role','progressbar');form.closest('tr').appendChild(bar)}));
 const gpsInput=document.querySelector('input[name="gps_file"]');
 const primaryInput=document.querySelector('input[name="primary_file"]');
-function inferFile(file){if(!file)return;const name=file.name;const date=name.match(/20\d{2}[-_]\d{2}[-_]\d{2}/);const loco=name.match(/^\d{3,6}[_-]/);if(date&&!document.getElementById('analysis-date').value)document.getElementById('analysis-date').value=date[0].replaceAll('_','-');if(loco&&!document.getElementById('analysis-loco-no').value)document.getElementById('analysis-loco-no').value=loco[0].slice(0,-1);}
+function inferFile(file){if(!file)return;const name=file.name;const date=name.match(/20\d{2}[-_]\d{2}[-_]\d{2}/);if(date&&!document.getElementById('analysis-date').value)document.getElementById('analysis-date').value=date[0].replaceAll('_','-');}
 gpsInput?.addEventListener('change',()=>inferFile(gpsInput.files[0]));primaryInput?.addEventListener('change',()=>inferFile(primaryInput.files[0]));
 </script>
 {% endblock %}

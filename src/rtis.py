@@ -83,6 +83,8 @@ class RtisAnalysisUpload(SQLModel, table=True):
     time_from: str
     time_to: str
     content: bytes = Field(sa_column=Column(LargeBinary, nullable=False))
+    station_from: str = ""
+    station_to: str = ""
 
 
 class RtisAnalysisPrimaryUpload(SQLModel, table=True):
@@ -503,6 +505,8 @@ def rtis_analysis_upload(
     loco_no: str = Form(""),
     time_from: str = Form(""),
     time_to: str = Form(""),
+    station_from: str = Form(""),
+    station_to: str = Form(""),
     gps_file: UploadFile = File(...),
     primary_file: UploadFile | None = File(None),
     session: Session = Depends(get_session),
@@ -525,9 +529,13 @@ def rtis_analysis_upload(
                 raise ValueError(f"Primary file exceeds the {MAX_UPLOAD_MB} MB limit.")
         primary_inferred = _infer_gps_metadata(primary_filename, primary_content) if primary_content else {}
         resolved_date = analysis_date.strip() or primary_inferred.get("analysis_date") or inferred["analysis_date"]
-        resolved_loco = loco_no.strip() or primary_inferred.get("loco_no") or inferred["loco_no"]
-        if not resolved_date or not resolved_loco or not time_from.strip() or not time_to.strip():
-            raise ValueError("Date, Loco no., Time from and Time to are required.")
+        resolved_loco = loco_no.strip()
+        if not resolved_date or not resolved_loco:
+            raise ValueError("Date and Loco no. are required.")
+        if bool(time_from.strip()) != bool(time_to.strip()):
+            raise ValueError("Provide both Time from and Time to, or leave both blank.")
+        if bool(station_from.strip()) != bool(station_to.strip()):
+            raise ValueError("Provide both Station code from and Station code to, or leave both blank.")
         upload = RtisAnalysisUpload(
             filename=filename,
             analysis_date=resolved_date,
@@ -537,6 +545,8 @@ def rtis_analysis_upload(
             time_from=time_from.strip(),
             time_to=time_to.strip(),
             content=content,
+            station_from=station_from.strip().upper(),
+            station_to=station_to.strip().upper(),
         )
         session.add(upload)
         session.commit()
@@ -612,16 +622,12 @@ def _infer_gps_metadata(filename: str, content: bytes) -> dict[str, str]:
     date_match = re.search(r"20\d{2}[-_]\d{2}[-_]\d{2}", name)
     if date_match:
         result["analysis_date"] = date_match.group(0).replace("_", "-")
-    number_match = re.match(r"(\d{3,6})[_-]", name)
-    if number_match:
-        result["loco_no"] = number_match.group(1)
     try:
         first_line = content.decode("utf-8-sig", errors="replace").splitlines()[0]
         headers = [item.strip().casefold() for item in first_line.split(",")]
         for key, aliases in {
             "analysis_date": ("date", "event date", "train date"),
             "train_no": ("train no", "train number", "trainno"),
-            "loco_no": ("loco no", "loco number", "device id", "deviceid"),
         }.items():
             for alias in aliases:
                 if alias in headers:
@@ -654,6 +660,8 @@ def rtis_analysis_run(request: Request, upload_id: int = Form(...), session: Ses
             time_from=upload.time_from,
             time_to=upload.time_to,
             content=primary_upload.content,
+            station_from=upload.station_from,
+            station_to=upload.station_to,
         )
         try:
             points.extend(_rtis_analysis_points(primary_upload.content, primary_meta)[0])
@@ -673,6 +681,37 @@ def rtis_analysis_run(request: Request, upload_id: int = Form(...), session: Ses
         raise HTTPException(400, "Upload an FSD signal model before running analysis.")
     if not points:
         raise HTTPException(400, "No GPS points matched the selected date and time period.")
+
+    # Limit the route to the selected FSD station span. With no time or station
+    # filters, use the first and last FSD home signal as the default route span.
+    signal_indices = []
+    for signal in signals:
+        if signal.get("lat") is None or signal.get("lon") is None:
+            continue
+        nearest_index = min(
+            range(len(points)),
+            key=lambda index: (points[index]["lat"] - signal["lat"]) ** 2
+            + (points[index]["lon"] - signal["lon"]) ** 2,
+        )
+        signal_indices.append((signal, nearest_index))
+    station_from = (upload.station_from or "").strip().upper()
+    station_to = (upload.station_to or "").strip().upper()
+    if station_from and station_to:
+        from_indices = [index for signal, index in signal_indices if str(signal.get("station") or "").upper() == station_from]
+        to_indices = [index for signal, index in signal_indices if str(signal.get("station") or "").upper() == station_to]
+        if not from_indices or not to_indices:
+            raise HTTPException(400, "The selected station code was not found in the FSD signal model.")
+        start_index, end_index = min(from_indices), max(to_indices)
+        if start_index > end_index:
+            start_index, end_index = end_index, start_index
+        points = points[start_index:end_index + 1]
+    elif not upload.time_from and not upload.time_to and signal_indices:
+        start_index = min(index for _, index in signal_indices)
+        end_index = max(index for _, index in signal_indices)
+        points = points[start_index:end_index + 1]
+    if not points:
+        raise HTTPException(400, "No GPS points matched the selected route.")
+
     # Match each home signal to the nearest GPS point for its hover details.
     matched_signals = []
     for signal in signals:

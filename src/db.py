@@ -23,6 +23,11 @@ def init_db() -> None:
             raise
     # lightweight migrations: add missing columns and relax retirement_date to allow NULL
     with engine.begin() as conn:
+        analysis_cols = conn.execute(text("PRAGMA table_info(rtisanalysisupload);" )).fetchall()
+        analysis_names = {c[1] for c in analysis_cols}
+        for col in ("station_from", "station_to"):
+            if col not in analysis_names:
+                conn.execute(text(f"ALTER TABLE rtisanalysisupload ADD COLUMN {col} TEXT NOT NULL DEFAULT '';"))
         cols = conn.execute(text("PRAGMA table_info(employee);")).fetchall()
         names = {c[1] for c in cols}
         if "seniority_rank" not in names:
