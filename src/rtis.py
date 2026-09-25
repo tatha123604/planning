@@ -679,7 +679,7 @@ def rtis_analysis_run(request: Request, upload_id: int = Form(...), session: Ses
         nearest = min(points, key=lambda point: (point["lat"] - signal["lat"]) ** 2 + (point["lon"] - signal["lon"]) ** 2)
         distance_squared = (nearest["lat"] - signal["lat"]) ** 2 + (nearest["lon"] - signal["lon"]) ** 2
         if distance_squared <= 0.001 ** 2:
-            signal.update(speed=nearest["speed"], time=nearest["time"], station=nearest.get("station") or signal.get("station", ""))
+            signal.update(speed=nearest["speed"], time=nearest["time"])
             matched_signals.append(signal)
     signals = matched_signals
     return templates.TemplateResponse(request=request, name="rtis_analysis_result.html", context={
