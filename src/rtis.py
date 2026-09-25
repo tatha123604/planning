@@ -667,7 +667,7 @@ def rtis_analysis_run(request: Request, upload_id: int = Form(...), session: Ses
         # When no time/station range is supplied, a filename-inferred date may
         # differ from the timestamp format in the GPS export. Read the file
         # without that inferred date filter and let the FSD route bound it.
-        if upload.time_from or upload.time_to or upload.station_from or upload.station_to:
+        if upload.time_from or upload.time_to:
             raise HTTPException(400, str(exc)) from exc
         relaxed_upload = RtisAnalysisUpload(
             filename=upload.filename,
