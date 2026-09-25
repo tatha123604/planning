@@ -33,6 +33,9 @@ body {
   position: sticky;
   top: 0;
   height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
   transition: all 0.25s ease;
 }
 .brand {
