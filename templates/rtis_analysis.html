@@ -9,18 +9,19 @@
 <section class="card">
   <h2>Secondary GPS analysis</h2>
   <form method="post" action="/rtis/analysis/upload" enctype="multipart/form-data" class="rtis-form rtis-analysis-form">
-    <label>Date<input type="date" name="analysis_date" id="analysis-date" /></label>
+    <label>Date<input type="date" name="analysis_date" id="analysis-date" required /></label>
     <label>Train type
       <select name="train_type" required>
+        <option value="All">All</option>
         <option value="Passenger">Passenger</option>
         <option value="Goods">Goods</option>
         <option value="Other">Other</option>
       </select>
     </label>
     <label>Train no.<input type="text" name="train_no" id="analysis-train-no" maxlength="40" /></label>
-    <label>Loco no.<input type="text" name="loco_no" id="analysis-loco-no" maxlength="40" /></label>
-    <label>Time from<input type="time" name="time_from" /></label>
-    <label>Time to<input type="time" name="time_to" /></label>
+    <label>Loco no.<input type="text" name="loco_no" id="analysis-loco-no" maxlength="40" required /></label>
+    <label>Time from<input type="time" name="time_from" required /></label>
+    <label>Time to<input type="time" name="time_to" required /></label>
     <label class="file-field">Secondary GPS data (CSV/Excel)<input type="file" name="gps_file" accept=".csv,.xlsx,.xls" required /></label>
     <label class="file-field">Primary GPS data (optional)<input type="file" name="primary_file" accept=".csv,.xlsx,.xls" /></label>
     <button type="submit">Upload and save analysis</button>

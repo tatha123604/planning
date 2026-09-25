@@ -496,7 +496,7 @@ def rtis_analysis_page(request: Request, notice: str = "", session: Session = De
 @router.post("/rtis/analysis/upload")
 def rtis_analysis_upload(
     analysis_date: str = Form(...),
-    train_type: str = Form(...),
+    train_type: str = Form("All"),
     train_no: str = Form(""),
     loco_no: str = Form(""),
     time_from: str = Form(""),
@@ -522,12 +522,16 @@ def rtis_analysis_upload(
             if len(primary_content) > MAX_BYTES:
                 raise ValueError(f"Primary file exceeds the {MAX_UPLOAD_MB} MB limit.")
         primary_inferred = _infer_gps_metadata(primary_filename, primary_content) if primary_content else {}
+        resolved_date = analysis_date.strip() or primary_inferred.get("analysis_date") or inferred["analysis_date"]
+        resolved_loco = loco_no.strip() or primary_inferred.get("loco_no") or inferred["loco_no"]
+        if not resolved_date or not resolved_loco or not time_from.strip() or not time_to.strip():
+            raise ValueError("Date, Loco no., Time from and Time to are required.")
         upload = RtisAnalysisUpload(
             filename=filename,
-            analysis_date=analysis_date.strip() or primary_inferred.get("analysis_date") or inferred["analysis_date"],
+            analysis_date=resolved_date,
             train_type=train_type.strip(),
             train_no=train_no.strip() or primary_inferred.get("train_no") or inferred["train_no"],
-            loco_no=loco_no.strip() or primary_inferred.get("loco_no") or inferred["loco_no"],
+            loco_no=resolved_loco,
             time_from=time_from.strip(),
             time_to=time_to.strip(),
             content=content,
