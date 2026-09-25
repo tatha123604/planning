@@ -12,11 +12,6 @@ const map = L.map('rtis-map');
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 19, attribution: '&copy; OpenStreetMap contributors'}).addTo(map);
 const path = points.map(p => [p.lat, p.lon]);
 if (path.length) { const line = L.polyline(path, {color:'#0f766e', weight:4}).addTo(map); map.fitBounds(line.getBounds().pad(0.12)); }
-points.forEach(point => {
-  L.circleMarker([point.lat, point.lon], {radius:5, color:'#1d4ed8', fillColor:'#60a5fa', fillOpacity:.9})
-    .addTo(map)
-    .bindTooltip(`Station: ${point.station || '—'}<br>Date/time: ${point.time || '—'}<br>Speed: ${point.speed} km/h`);
-});
 signals.forEach(signal => {
   if (signal.lat == null || signal.lon == null) return;
   const marker = L.marker([signal.lat, signal.lon]).addTo(map);

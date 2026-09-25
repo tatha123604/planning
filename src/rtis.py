@@ -661,9 +661,14 @@ def rtis_analysis_run(request: Request, upload_id: int = Form(...), session: Ses
     if not points:
         raise HTTPException(400, "No GPS points in the selected time period match FSD signal coordinates.")
     # Match each home signal to the nearest GPS point for its hover details.
+    matched_signals = []
     for signal in signals:
         nearest = min(points, key=lambda point: (point["lat"] - signal["lat"]) ** 2 + (point["lon"] - signal["lon"]) ** 2)
-        signal.update(speed=nearest["speed"], time=nearest["time"], station=nearest.get("station") or signal.get("station", ""))
+        distance_squared = (nearest["lat"] - signal["lat"]) ** 2 + (nearest["lon"] - signal["lon"]) ** 2
+        if distance_squared <= 0.001 ** 2:
+            signal.update(speed=nearest["speed"], time=nearest["time"], station=nearest.get("station") or signal.get("station", ""))
+            matched_signals.append(signal)
+    signals = matched_signals
     return templates.TemplateResponse(request=request, name="rtis_analysis_result.html", context={
         "request": request, "upload": upload, "points": points[::max(1, len(points) // 2000)],
         "signals": signals, "home_model": home_model,
