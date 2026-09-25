@@ -487,7 +487,7 @@ def rtis_analysis_page(request: Request, notice: str = "", session: Session = De
         request=request,
         name="rtis_analysis.html",
         context={
-            "active_page": "rtis",
+            "active_page": "rtis_analysis",
             "notice": notice,
             "uploads": uploads,
             "home_model": home_model,
@@ -683,7 +683,8 @@ def rtis_analysis_run(request: Request, upload_id: int = Form(...), session: Ses
             matched_signals.append(signal)
     signals = matched_signals
     return templates.TemplateResponse(request=request, name="rtis_analysis_result.html", context={
-        "request": request, "upload": upload, "points": points[::max(1, len(points) // 2000)],
+        "request": request,
+        "active_page": "rtis_analysis", "upload": upload, "points": points[::max(1, len(points) // 2000)],
         "signals": signals, "home_model": home_model,
     })
 
