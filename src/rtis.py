@@ -564,6 +564,21 @@ def rtis_analysis_upload(
     return RedirectResponse("/rtis/analysis?" + urlencode({"notice": notice}), status_code=303)
 
 
+@router.post("/rtis/analysis/{upload_id}/delete")
+def rtis_analysis_delete(upload_id: int, session: Session = Depends(get_session)):
+    upload = session.get(RtisAnalysisUpload, upload_id)
+    if upload is None:
+        return RedirectResponse("/rtis/analysis?" + urlencode({"notice": "Analysis record not found."}), status_code=303)
+    primary_uploads = session.exec(
+        select(RtisAnalysisPrimaryUpload).where(RtisAnalysisPrimaryUpload.analysis_upload_id == upload_id)
+    ).all()
+    for primary_upload in primary_uploads:
+        session.delete(primary_upload)
+    session.delete(upload)
+    session.commit()
+    return RedirectResponse("/rtis/analysis?" + urlencode({"notice": f"Analysis record deleted: {upload.filename}."}), status_code=303)
+
+
 def _rtis_analysis_points(content: bytes, upload: RtisAnalysisUpload) -> tuple[list[dict], str]:
     """Read the common SecondaryGPSData CSV columns used by RTIS exports."""
     try:
