@@ -68,6 +68,20 @@ class RtisEvent(SQLModel, table=True):
     source: str
 
 
+class RtisAnalysisUpload(SQLModel, table=True):
+    """Uploaded secondary GPS data and the filters used for its analysis."""
+    id: int | None = Field(default=None, primary_key=True)
+    filename: str
+    uploaded_at: datetime = Field(default_factory=datetime.utcnow)
+    analysis_date: str
+    train_type: str
+    train_no: str
+    loco_no: str
+    time_from: str
+    time_to: str
+    content: bytes = Field(sa_column=Column(LargeBinary, nullable=False))
+
+
 def train_type_filters():
     """User rule: digits only = passenger; letters plus digits = goods."""
     train = func.trim(RtisEvent.train)
@@ -451,6 +465,69 @@ def _rtis_ssts_geofences():
         return _fetch_ssts_geofence_polygons(fetch_ssts_token())
     except Exception:
         return {}
+
+
+@router.get("/rtis/analysis")
+def rtis_analysis_page(request: Request, notice: str = "", session: Session = Depends(get_session)):
+    uploads = session.exec(
+        select(RtisAnalysisUpload).order_by(RtisAnalysisUpload.id.desc()).limit(20)
+    ).all()
+    return templates.TemplateResponse(
+        request=request,
+        name="rtis_analysis.html",
+        context={
+            "active_page": "rtis",
+            "notice": notice,
+            "uploads": uploads,
+        },
+    )
+
+
+@router.post("/rtis/analysis/upload")
+def rtis_analysis_upload(
+    analysis_date: str = Form(...),
+    train_type: str = Form(...),
+    train_no: str = Form(""),
+    loco_no: str = Form(""),
+    time_from: str = Form(""),
+    time_to: str = Form(""),
+    gps_file: UploadFile = File(...),
+    home_file: UploadFile | None = File(None),
+    session: Session = Depends(get_session),
+):
+    filename = (gps_file.filename or "secondary-gps-data.csv").replace("\\", "/").split("/")[-1]
+    suffix = Path(filename).suffix.lower()
+    if suffix not in {".csv", ".xlsx", ".xls"}:
+        raise HTTPException(400, "Upload a CSV or Excel GPS data file.")
+    try:
+        content = gps_file.file.read(MAX_BYTES + 1)
+        if len(content) > MAX_BYTES:
+            raise ValueError(f"File exceeds the {MAX_UPLOAD_MB} MB limit.")
+        upload = RtisAnalysisUpload(
+            filename=filename,
+            analysis_date=analysis_date.strip(),
+            train_type=train_type.strip(),
+            train_no=train_no.strip(),
+            loco_no=loco_no.strip(),
+            time_from=time_from.strip(),
+            time_to=time_to.strip(),
+            content=content,
+        )
+        session.add(upload)
+        session.commit()
+        notice = f"GPS analysis file saved: {filename}."
+        if home_file and home_file.filename:
+            home_content = home_file.file.read(MAX_BYTES + 1)
+            model = save_home_model(session, home_file.filename, home_content, _rtis_ssts_geofences())
+            notice += f" FSD home model saved: {model.signal_count} signals."
+    except ValueError as exc:
+        session.rollback()
+        notice = f"Upload not saved: {exc}"
+    finally:
+        gps_file.file.close()
+        if home_file:
+            home_file.file.close()
+    return RedirectResponse("/rtis/analysis?" + urlencode({"notice": notice}), status_code=303)
 
 
 @router.post("/rtis/home-model/upload")

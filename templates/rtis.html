@@ -40,7 +40,7 @@
     <main class="content">
       {% block content %}
       <header><div><h1>RTIS</h1><p>Division-wise Excel uploads and H, J, K events.</p></div>
-        <div class="header-actions"><a class="ghost small" href="/rtis/output">Output</a><a class="ghost small" href="/ssts-report?report_tab=pf_entering">SSTS PF analysis</a><a class="ghost small" href="/logout">Logout</a></div>
+        <div class="header-actions"><a class="ghost small" href="/rtis/analysis">RTIS Analysis</a><a class="ghost small" href="/rtis/output">Output</a><a class="ghost small" href="/ssts-report?report_tab=pf_entering">SSTS PF analysis</a><a class="ghost small" href="/logout">Logout</a></div>
       </header>
       <nav class="report-tabs" aria-label="RTIS analysis type">
         {% for key, label in analysis_types.items() %}<a class="report-tab {{ 'active' if analysis == key else '' }}" {% if analysis == key %}aria-current="page"{% endif %} href="/rtis?{{ switch_query }}&analysis={{ key }}{% if key == 'passenger' and model_id %}&model_id={{ model_id }}{% endif %}">{{ label }}</a>{% endfor %}

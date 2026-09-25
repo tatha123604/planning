@@ -1,0 +1,39 @@
+{% extends "rtis.html" %}
+{% block title %}RTIS Analysis{% endblock %}
+{% block content %}
+<header>
+  <div><h1>RTIS Analysis</h1><p>Upload secondary GPS data and apply the analysis filters.</p></div>
+  <div class="header-actions"><a class="ghost small" href="/rtis">Back to RTIS</a><a class="ghost small" href="/logout">Logout</a></div>
+</header>
+{% if notice %}<section class="card" role="status"><p>{{ notice }}</p></section>{% endif %}
+<section class="card">
+  <h2>Secondary GPS analysis</h2>
+  <form method="post" action="/rtis/analysis/upload" enctype="multipart/form-data" class="rtis-form rtis-analysis-form">
+    <label>Date<input type="date" name="analysis_date" required /></label>
+    <label>Train type
+      <select name="train_type" required>
+        <option value="Passenger">Passenger</option>
+        <option value="Goods">Goods</option>
+        <option value="Other">Other</option>
+      </select>
+    </label>
+    <label>Train no.<input type="text" name="train_no" maxlength="40" /></label>
+    <label>Loco no.<input type="text" name="loco_no" maxlength="40" /></label>
+    <label>Time from<input type="time" name="time_from" /></label>
+    <label>Time to<input type="time" name="time_to" /></label>
+    <label class="file-field">Secondary GPS data (CSV/Excel)<input type="file" name="gps_file" accept=".csv,.xlsx,.xls" required /></label>
+    <label class="file-field">FSD home signal model<input type="file" name="home_file" accept=".xlsx,.xls" /></label>
+    <button type="submit">Upload and save analysis</button>
+  </form>
+  <p class="hint">The uploaded data is saved with these filters. The FSD home signal model uses the same model format as the RTIS tab.</p>
+</section>
+<section class="card">
+  <h2>Recent analysis uploads</h2>
+  {% if uploads %}
+  <div class="table-wrap"><table class="rtis-data-table"><thead><tr><th>File</th><th>Date</th><th>Train type</th><th>Train no.</th><th>Loco no.</th><th>Time</th><th>Uploaded</th></tr></thead><tbody>
+    {% for upload in uploads %}<tr><td>{{ upload.filename }}</td><td>{{ upload.analysis_date }}</td><td>{{ upload.train_type }}</td><td>{{ upload.train_no or 'All' }}</td><td>{{ upload.loco_no or 'All' }}</td><td>{{ upload.time_from or '—' }}{% if upload.time_to %} to {{ upload.time_to }}{% endif %}</td><td>{{ upload.uploaded_at.strftime('%d-%m-%Y %H:%M') }}</td></tr>{% endfor %}
+  </tbody></table></div>
+  {% else %}<p class="hint">No analysis files uploaded yet.</p>{% endif %}
+</section>
+<style>.rtis-analysis-form{align-items:flex-end}.rtis-analysis-form .file-field{min-width:260px}.rtis-analysis-form input,.rtis-analysis-form select{min-height:38px}</style>
+{% endblock %}
