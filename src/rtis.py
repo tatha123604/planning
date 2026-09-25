@@ -10,6 +10,7 @@ import json
 import math
 from pathlib import Path
 import posixpath
+import re
 from urllib.parse import urlencode
 from xml.etree import ElementTree as ET
 from zipfile import BadZipFile, ZipFile
@@ -81,6 +82,13 @@ class RtisAnalysisUpload(SQLModel, table=True):
     loco_no: str
     time_from: str
     time_to: str
+    content: bytes = Field(sa_column=Column(LargeBinary, nullable=False))
+
+
+class RtisAnalysisPrimaryUpload(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    analysis_upload_id: int = Field(index=True)
+    filename: str
     content: bytes = Field(sa_column=Column(LargeBinary, nullable=False))
 
 
@@ -494,7 +502,7 @@ def rtis_analysis_upload(
     time_from: str = Form(""),
     time_to: str = Form(""),
     gps_file: UploadFile = File(...),
-    home_file: UploadFile | None = File(None),
+    primary_file: UploadFile | None = File(None),
     session: Session = Depends(get_session),
 ):
     filename = (gps_file.filename or "secondary-gps-data.csv").replace("\\", "/").split("/")[-1]
@@ -505,30 +513,38 @@ def rtis_analysis_upload(
         content = gps_file.file.read(MAX_BYTES + 1)
         if len(content) > MAX_BYTES:
             raise ValueError(f"File exceeds the {MAX_UPLOAD_MB} MB limit.")
+        inferred = _infer_gps_metadata(filename, content)
+        primary_content = b""
+        primary_filename = ""
+        if primary_file and primary_file.filename:
+            primary_filename = (primary_file.filename or "primary-gps.csv").replace("\\", "/").split("/")[-1]
+            primary_content = primary_file.file.read(MAX_BYTES + 1)
+            if len(primary_content) > MAX_BYTES:
+                raise ValueError(f"Primary file exceeds the {MAX_UPLOAD_MB} MB limit.")
+        primary_inferred = _infer_gps_metadata(primary_filename, primary_content) if primary_content else {}
         upload = RtisAnalysisUpload(
             filename=filename,
-            analysis_date=analysis_date.strip(),
+            analysis_date=analysis_date.strip() or primary_inferred.get("analysis_date") or inferred["analysis_date"],
             train_type=train_type.strip(),
-            train_no=train_no.strip(),
-            loco_no=loco_no.strip(),
+            train_no=train_no.strip() or primary_inferred.get("train_no") or inferred["train_no"],
+            loco_no=loco_no.strip() or primary_inferred.get("loco_no") or inferred["loco_no"],
             time_from=time_from.strip(),
             time_to=time_to.strip(),
             content=content,
         )
         session.add(upload)
         session.commit()
+        if primary_content:
+            session.add(RtisAnalysisPrimaryUpload(analysis_upload_id=upload.id or 0, filename=primary_filename, content=primary_content))
+            session.commit()
         notice = f"GPS analysis file saved: {filename}."
-        if home_file and home_file.filename:
-            home_content = home_file.file.read(MAX_BYTES + 1)
-            model = save_home_model(session, home_file.filename, home_content, _rtis_ssts_geofences())
-            notice += f" FSD home model saved: {model.signal_count} signals."
     except ValueError as exc:
         session.rollback()
         notice = f"Upload not saved: {exc}"
     finally:
         gps_file.file.close()
-        if home_file:
-            home_file.file.close()
+        if primary_file:
+            primary_file.file.close()
     return RedirectResponse("/rtis/analysis?" + urlencode({"notice": notice}), status_code=303)
 
 
@@ -579,6 +595,36 @@ def _rtis_analysis_points(content: bytes, upload: RtisAnalysisUpload) -> tuple[l
     return points, ""
 
 
+def _infer_gps_metadata(filename: str, content: bytes) -> dict[str, str]:
+    """Infer date, loco and train number from common GPS export headers/file names."""
+    result = {"analysis_date": "", "train_no": "", "loco_no": ""}
+    name = Path(filename).stem
+    date_match = re.search(r"20\d{2}[-_]\d{2}[-_]\d{2}", name)
+    if date_match:
+        result["analysis_date"] = date_match.group(0).replace("_", "-")
+    number_match = re.match(r"(\d{3,6})[_-]", name)
+    if number_match:
+        result["loco_no"] = number_match.group(1)
+    try:
+        first_line = content.decode("utf-8-sig", errors="replace").splitlines()[0]
+        headers = [item.strip().casefold() for item in first_line.split(",")]
+        for key, aliases in {
+            "analysis_date": ("date", "event date", "train date"),
+            "train_no": ("train no", "train number", "trainno"),
+            "loco_no": ("loco no", "loco number", "device id", "deviceid"),
+        }.items():
+            for alias in aliases:
+                if alias in headers:
+                    index = headers.index(alias)
+                    value = content.decode("utf-8-sig", errors="replace").splitlines()[1].split(",")[index].strip()
+                    if value:
+                        result[key] = value
+                    break
+    except (IndexError, UnicodeDecodeError):
+        pass
+    return result
+
+
 @router.post("/rtis/analysis/run")
 def rtis_analysis_run(request: Request, upload_id: int = Form(...), session: Session = Depends(get_session)):
     upload = session.get(RtisAnalysisUpload, upload_id)
@@ -606,6 +652,7 @@ def rtis_analysis_run(request: Request, upload_id: int = Form(...), session: Ses
 
 @router.post("/rtis/home-model/upload")
 def rtis_home_model_upload(home_file: UploadFile = File(...), division: str = Form("ALL"),
+                           return_to: str = Form("rtis"),
                            session: Session = Depends(get_session)):
     if division not in (*DIVISIONS, "ALL"):
         raise HTTPException(400, "Invalid division.")
@@ -620,6 +667,8 @@ def rtis_home_model_upload(home_file: UploadFile = File(...), division: str = Fo
         params = {"division": division, "analysis": "passenger", "notice": f"FSD home model not saved: {exc}"}
     finally:
         home_file.file.close()
+    if return_to == "analysis":
+        return RedirectResponse('/rtis/analysis?' + urlencode({"notice": params["notice"]}), status_code=303)
     return RedirectResponse('/rtis?' + urlencode(params), status_code=303)
 
 
