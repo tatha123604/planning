@@ -369,7 +369,7 @@ def rtis_ordering(sort_by="event_time", sort_order="desc"):
 
 
 @router.get("/rtis")
-def rtis_page(request: Request, division: str = "SDAH", day: str = "", event: str = "HJK",
+def rtis_page(request: Request, division: str = "ALL", day: str = "", event: str = "HJK",
               page: int = 1, analysis: str = "passenger", view: str = "classified",
               speed: str = "", time_from: str = "", time_to: str = "", train_no: str = "", station: str = "", home_station: str = "", train_name: str = "", loco_no: str = "", sort_by: str = "event_time", sort_order: str = "desc",
               model_id: int = 0,
@@ -441,7 +441,7 @@ def rtis_page(request: Request, division: str = "SDAH", day: str = "", event: st
 
 
 @router.get("/rtis/analysis.xlsx")
-def rtis_analysis_excel(division: str = "SDAH", day: str = "", event: str = "HJK",
+def rtis_analysis_excel(division: str = "ALL", day: str = "", event: str = "HJK",
                         analysis: str = "passenger", view: str = "classified", speed: str = "",
                         time_from: str = "", time_to: str = "", train_no: str = "", station: str = "", train_name: str = "", loco_no: str = "", sort_by: str = "event_time", sort_order: str = "desc",
                         model_id: int = 0,
