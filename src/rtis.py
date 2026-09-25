@@ -649,7 +649,27 @@ def rtis_analysis_run(request: Request, upload_id: int = Form(...), session: Ses
     try:
         points, _ = _rtis_analysis_points(upload.content, upload)
     except ValueError as exc:
-        raise HTTPException(400, str(exc)) from exc
+        # When no time/station range is supplied, a filename-inferred date may
+        # differ from the timestamp format in the GPS export. Read the file
+        # without that inferred date filter and let the FSD route bound it.
+        if upload.time_from or upload.time_to or upload.station_from or upload.station_to:
+            raise HTTPException(400, str(exc)) from exc
+        relaxed_upload = RtisAnalysisUpload(
+            filename=upload.filename,
+            analysis_date="",
+            train_type=upload.train_type,
+            train_no=upload.train_no,
+            loco_no=upload.loco_no,
+            time_from="",
+            time_to="",
+            content=upload.content,
+            station_from=upload.station_from,
+            station_to=upload.station_to,
+        )
+        try:
+            points, _ = _rtis_analysis_points(upload.content, relaxed_upload)
+        except ValueError as relaxed_exc:
+            raise HTTPException(400, str(relaxed_exc)) from relaxed_exc
     primary_upload = session.exec(
         select(RtisAnalysisPrimaryUpload).where(RtisAnalysisPrimaryUpload.analysis_upload_id == upload.id)
     ).first()
