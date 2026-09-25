@@ -10,23 +10,22 @@
 <section class="card">
   <div class="analysis-card-head"><h2>RTIS Primary/Secondary GPS data analysis</h2><div class="speed-legend"><span><i class="legend-green"></i>0-39 km/h</span><span><i class="legend-yellow"></i>40-59 km/h</span><span><i class="legend-red"></i>60+ km/h</span></div></div>
   <form method="post" action="/rtis/analysis/upload" enctype="multipart/form-data" class="rtis-form rtis-analysis-form">
-    <label>Date<input type="date" name="analysis_date" id="analysis-date" /></label>
-    <label>Train type
-      <select name="train_type" required>
-        <option value="All">All</option>
-        <option value="Passenger">Passenger</option>
-        <option value="Goods">Goods</option>
-        <option value="Other">Other</option>
-      </select>
-    </label>
-    <label>Train no.<input type="text" name="train_no" id="analysis-train-no" maxlength="40" /></label>
-    <label>Loco no.<input type="text" name="loco_no" id="analysis-loco-no" maxlength="40" required /></label>
-    <label>Time from<input type="time" name="time_from" /></label>
-    <label>Time to<input type="time" name="time_to" /></label>
-    <label>Station code from<input type="text" name="station_from" maxlength="30" placeholder="e.g. NMC" /></label>
-    <label>Station code to<input type="text" name="station_to" maxlength="30" placeholder="e.g. BARN" /></label>
-    <label class="file-field">Secondary GPS data (CSV/Excel)<input type="file" name="gps_file" accept=".csv,.xlsx,.xls" required /></label>
-    <label class="file-field">Primary GPS data (optional)<input type="file" name="primary_file" accept=".csv,.xlsx,.xls" /></label>
+    <fieldset class="analysis-upload-step"><legend>1. Upload GPS data</legend>
+      <label class="file-field">Secondary GPS data (CSV/Excel)<input type="file" name="gps_file" accept=".csv,.xlsx,.xls" /></label>
+      <label class="file-field">Primary GPS data (CSV/Excel, optional)<input type="file" name="primary_file" accept=".csv,.xlsx,.xls" /></label>
+      <p class="hint">Upload either file, or upload both to combine their GPS points.</p>
+    </fieldset>
+    <fieldset class="analysis-filter-step"><legend>2. Choose analysis mode</legend>
+      <label>Mode<select name="filter_mode" id="analysis-filter-mode"><option value="route">FSD route (automatic)</option><option value="time">Time range</option><option value="station">Station code range</option></select></label>
+      <div id="analysis-time-fields" class="analysis-mode-fields"><label>Time from<input type="time" name="time_from" /></label><label>Time to<input type="time" name="time_to" /></label></div>
+      <div id="analysis-station-fields" class="analysis-mode-fields" hidden><label>Station code from<input type="text" name="station_from" maxlength="30" placeholder="From raw file, e.g. NMC" /></label><label>Station code to<input type="text" name="station_to" maxlength="30" placeholder="To raw file, e.g. BARN" /></label><p class="hint">Station codes are checked against the raw GPS file.</p></div>
+    </fieldset>
+    <fieldset class="analysis-details-step"><legend>3. Train details</legend>
+      <label>Date<input type="date" name="analysis_date" id="analysis-date" /></label>
+      <label>Train type<select name="train_type" required><option value="All">All</option><option value="Passenger">Passenger</option><option value="Goods">Goods</option><option value="Other">Other</option></select></label>
+      <label>Train no.<input type="text" name="train_no" id="analysis-train-no" maxlength="40" /></label>
+      <label>Loco no. <span class="required-mark">*</span><input type="text" name="loco_no" id="analysis-loco-no" maxlength="40" required /></label>
+    </fieldset>
     <button type="submit">Upload and save analysis</button>
   </form>
   <div class="rtis-form" style="margin-top:12px"><form method="post" action="/rtis/home-model/upload" enctype="multipart/form-data" class="rtis-form" style="margin:0"><label class="file-field">FSD signal model<input type="file" name="home_file" accept=".xlsx" required /></label><input type="hidden" name="return_to" value="analysis" /><button type="submit">Upload FSD model</button></form><span class="hint">{% if home_model %}Uploaded model: <strong>{{ home_model.filename }}</strong> ({{ home_model.signal_count }} signals){% else %}No FSD signal model uploaded yet.{% endif %}</span></div>
@@ -40,9 +39,10 @@
   </tbody></table></div>
   {% else %}<p class="hint">No analysis files uploaded yet.</p>{% endif %}
 </section>
-<style>.rtis-analysis-form{align-items:flex-end}.rtis-analysis-form .file-field{min-width:260px}.rtis-analysis-form input,.rtis-analysis-form select{min-height:38px}.analysis-progress{display:flex;gap:16px;align-items:center}.analysis-progress-bar{height:8px;margin-top:10px;border-radius:8px;background:linear-gradient(90deg,#0f766e 25%,#99f6e4 50%,#0f766e 75%);background-size:200% 100%;animation:analysis-loading 1.2s linear infinite}@keyframes analysis-loading{to{background-position:-200% 0}}</style>
+<style>.rtis-analysis-form{align-items:flex-end}.rtis-analysis-form fieldset{width:100%;display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;border:1px solid var(--card-border);border-radius:10px;padding:12px}.rtis-analysis-form legend{font-weight:700;padding:0 6px}.analysis-mode-fields{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap}.required-mark{color:#dc2626}.rtis-analysis-form .file-field{min-width:260px}.rtis-analysis-form input,.rtis-analysis-form select{min-height:38px}.analysis-progress{display:flex;gap:16px;align-items:center}.analysis-progress-bar{height:8px;margin-top:10px;border-radius:8px;background:linear-gradient(90deg,#0f766e 25%,#99f6e4 50%,#0f766e 75%);background-size:200% 100%;animation:analysis-loading 1.2s linear infinite}@keyframes analysis-loading{to{background-position:-200% 0}}</style>
 <script>
 document.querySelectorAll('.analysis-run-form').forEach(form=>form.addEventListener('submit',()=>{const button=form.querySelector('button');button.disabled=true;button.textContent='Analysing…';const bar=document.createElement('div');bar.className='analysis-progress-bar';bar.setAttribute('role','progressbar');form.closest('tr').appendChild(bar)}));
+const filterMode=document.getElementById('analysis-filter-mode'),timeFields=document.getElementById('analysis-time-fields'),stationFields=document.getElementById('analysis-station-fields');function updateAnalysisMode(){const mode=filterMode.value;timeFields.hidden=mode!=='time';stationFields.hidden=mode!=='station';}filterMode?.addEventListener('change',updateAnalysisMode);updateAnalysisMode();
 const gpsInput=document.querySelector('input[name="gps_file"]');
 const primaryInput=document.querySelector('input[name="primary_file"]');
 function inferFile(file){if(!file)return;const name=file.name;const date=name.match(/20\d{2}[-_]\d{2}[-_]\d{2}/);if(date&&!document.getElementById('analysis-date').value)document.getElementById('analysis-date').value=date[0].replaceAll('_','-');}

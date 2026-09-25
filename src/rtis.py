@@ -499,54 +499,80 @@ def rtis_analysis_page(request: Request, notice: str = "", session: Session = De
 
 @router.post("/rtis/analysis/upload")
 def rtis_analysis_upload(
-    analysis_date: str = Form(...),
+    analysis_date: str = Form(""),
     train_type: str = Form("All"),
     train_no: str = Form(""),
     loco_no: str = Form(""),
+    filter_mode: str = Form("route"),
     time_from: str = Form(""),
     time_to: str = Form(""),
     station_from: str = Form(""),
     station_to: str = Form(""),
-    gps_file: UploadFile = File(...),
+    gps_file: UploadFile | None = File(None),
     primary_file: UploadFile | None = File(None),
     session: Session = Depends(get_session),
 ):
-    filename = (gps_file.filename or "secondary-gps-data.csv").replace("\\", "/").split("/")[-1]
+    main_file = gps_file if gps_file and gps_file.filename else primary_file
+    if main_file is None or not main_file.filename:
+        raise HTTPException(400, "Upload a secondary or primary GPS file.")
+    filename = (main_file.filename or "gps-data.csv").replace("\\", "/").split("/")[-1]
     suffix = Path(filename).suffix.lower()
     if suffix not in {".csv", ".xlsx", ".xls"}:
         raise HTTPException(400, "Upload a CSV or Excel GPS data file.")
     try:
-        content = gps_file.file.read(MAX_BYTES + 1)
+        content = main_file.file.read(MAX_BYTES + 1)
         if len(content) > MAX_BYTES:
             raise ValueError(f"File exceeds the {MAX_UPLOAD_MB} MB limit.")
         inferred = _infer_gps_metadata(filename, content)
         primary_content = b""
         primary_filename = ""
-        if primary_file and primary_file.filename:
+        if gps_file and gps_file.filename and primary_file and primary_file.filename:
             primary_filename = (primary_file.filename or "primary-gps.csv").replace("\\", "/").split("/")[-1]
             primary_content = primary_file.file.read(MAX_BYTES + 1)
             if len(primary_content) > MAX_BYTES:
                 raise ValueError(f"Primary file exceeds the {MAX_UPLOAD_MB} MB limit.")
         primary_inferred = _infer_gps_metadata(primary_filename, primary_content) if primary_content else {}
-        resolved_date = analysis_date.strip() or primary_inferred.get("analysis_date") or inferred["analysis_date"]
+        resolved_date = analysis_date.strip() or inferred.get("analysis_date") or primary_inferred.get("analysis_date", "")
         resolved_loco = loco_no.strip()
-        if not resolved_date or not resolved_loco:
-            raise ValueError("Date and Loco no. are required.")
+        if not resolved_loco:
+            raise ValueError("Loco no. must be entered manually; the file device ID is not used as loco no.")
+        mode = filter_mode.strip().lower() or "route"
+        if mode == "time" and (not time_from.strip() or not time_to.strip()):
+            raise ValueError("Time mode requires both Time from and Time to.")
+        if mode == "station" and (not station_from.strip() or not station_to.strip()):
+            raise ValueError("Station mode requires both Station code from and Station code to.")
         if bool(time_from.strip()) != bool(time_to.strip()):
             raise ValueError("Provide both Time from and Time to, or leave both blank.")
         if bool(station_from.strip()) != bool(station_to.strip()):
             raise ValueError("Provide both Station code from and Station code to, or leave both blank.")
+        station_from_value = station_from.strip().upper()
+        station_to_value = station_to.strip().upper()
+        if mode == "station" or station_from_value or station_to_value:
+            raw_meta = RtisAnalysisUpload(
+                filename=filename, analysis_date="", train_type=train_type.strip(), train_no="",
+                loco_no=resolved_loco, time_from="", time_to="", content=content,
+                station_from="", station_to="",
+            )
+            raw_points, _ = _rtis_analysis_points(content, raw_meta)
+            raw_codes = {str(point.get("station") or "").strip().upper() for point in raw_points if point.get("station")}
+            if primary_content:
+                primary_raw_meta = RtisAnalysisUpload(
+                    filename=primary_filename, analysis_date="", train_type=train_type.strip(), train_no="",
+                    loco_no=resolved_loco, time_from="", time_to="", content=primary_content,
+                    station_from="", station_to="",
+                )
+                primary_raw_points, _ = _rtis_analysis_points(primary_content, primary_raw_meta)
+                raw_codes.update(str(point.get("station") or "").strip().upper() for point in primary_raw_points if point.get("station"))
+            if not raw_codes:
+                raise ValueError("No station code has been found in the raw GPS file.")
+            missing = [code for code in (station_from_value, station_to_value) if code not in raw_codes]
+            if missing:
+                raise ValueError(f"Station code not found in the raw GPS file: {', '.join(missing)}.")
         upload = RtisAnalysisUpload(
-            filename=filename,
-            analysis_date=resolved_date,
-            train_type=train_type.strip(),
-            train_no=train_no.strip() or primary_inferred.get("train_no") or inferred["train_no"],
-            loco_no=resolved_loco,
-            time_from=time_from.strip(),
-            time_to=time_to.strip(),
-            content=content,
-            station_from=station_from.strip().upper(),
-            station_to=station_to.strip().upper(),
+            filename=filename, analysis_date=resolved_date, train_type=train_type.strip(),
+            train_no=train_no.strip() or primary_inferred.get("train_no") or inferred.get("train_no", ""),
+            loco_no=resolved_loco, time_from=time_from.strip(), time_to=time_to.strip(), content=content,
+            station_from=station_from_value, station_to=station_to_value,
         )
         session.add(upload)
         session.commit()
@@ -558,7 +584,8 @@ def rtis_analysis_upload(
         session.rollback()
         notice = f"Upload not saved: {exc}"
     finally:
-        gps_file.file.close()
+        if gps_file:
+            gps_file.file.close()
         if primary_file:
             primary_file.file.close()
     return RedirectResponse("/rtis/analysis?" + urlencode({"notice": notice}), status_code=303)
