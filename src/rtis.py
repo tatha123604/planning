@@ -646,7 +646,10 @@ def rtis_analysis_run(request: Request, upload_id: int = Form(...), session: Ses
     upload = session.get(RtisAnalysisUpload, upload_id)
     if upload is None:
         raise HTTPException(404, "Analysis upload not found.")
-    points, _ = _rtis_analysis_points(upload.content, upload)
+    try:
+        points, _ = _rtis_analysis_points(upload.content, upload)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
     primary_upload = session.exec(
         select(RtisAnalysisPrimaryUpload).where(RtisAnalysisPrimaryUpload.analysis_upload_id == upload.id)
     ).first()
