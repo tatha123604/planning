@@ -554,9 +554,11 @@ def rtis_event_analysis(event_id: int, request: Request, session: Session = Depe
     for index, row in enumerate(route_events):
         if row.id != event.id or row.latitude is None or row.longitude is None:
             continue
-        neighbours = route_events[index + 1:] + route_events[:index]
-        next_point = next((candidate for candidate in neighbours if candidate.latitude is not None and candidate.longitude is not None and candidate.latitude != row.latitude), None)
-        if next_point is not None:
+        previous_point = next((candidate for candidate in reversed(route_events[:index]) if candidate.latitude is not None and candidate.longitude is not None and candidate.latitude != row.latitude), None)
+        next_point = next((candidate for candidate in route_events[index + 1:] if candidate.latitude is not None and candidate.longitude is not None and candidate.latitude != row.latitude), None)
+        if previous_point is not None:
+            event_down = row.latitude < previous_point.latitude
+        elif next_point is not None:
             event_down = next_point.latitude < row.latitude
         break
     event_point = {"lat": event.latitude, "lon": event.longitude, "speed": event.speed or 0, "time": event.event_time.isoformat(), "station": event.station}
