@@ -1,0 +1,11 @@
+{% extends "rtis.html" %}
+{% block title %}RTIS Analysis Notice{% endblock %}
+{% block content %}
+<section class="card analysis-error-card" role="alert">
+  <div class="analysis-error-icon">!</div>
+  <h1>RTIS analysis could not be opened</h1>
+  <p class="analysis-error-message">{{ message }}</p>
+  <div class="header-actions"><a class="ghost small" href="/rtis">Back to RTIS data</a><a class="ghost small" href="/rtis/analysis">Open RTIS Analysis</a></div>
+</section>
+<style>.analysis-error-card{max-width:720px;margin:8vh auto;text-align:center;padding:40px 28px}.analysis-error-icon{width:48px;height:48px;display:grid;place-items:center;margin:0 auto 16px;border-radius:50%;background:#fef2f2;color:#dc2626;font-size:28px;font-weight:800}.analysis-error-message{max-width:560px;margin:12px auto 24px;color:var(--muted-text,#64748b);line-height:1.6}</style>
+{% endblock %}

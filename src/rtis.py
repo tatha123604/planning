@@ -498,14 +498,18 @@ def _rtis_ssts_geofences():
 
 @router.get("/rtis/event-analysis/{event_id}")
 def rtis_event_analysis(event_id: int, request: Request, session: Session = Depends(get_session)):
+    def error_page(message: str, status_code: int = 400):
+        response = templates.TemplateResponse(request=request, name="rtis_analysis_error.html", context={"request": request, "active_page": "rtis", "message": message})
+        response.status_code = status_code
+        return response
     event = session.get(RtisEvent, event_id)
     if event is None:
-        raise HTTPException(404, "RTIS event not found.")
+        return error_page("RTIS event not found.", 404)
     if event.latitude is None or event.longitude is None:
-        raise HTTPException(400, "This RTIS event has no latitude/longitude in the uploaded file.")
+        return error_page("This RTIS event has no latitude/longitude in the uploaded file.")
     home_model, mapping = selected_home_model(session)
     if not home_model:
-        raise HTTPException(400, "Upload an FSD signal model before running analysis.")
+        return error_page("Upload an FSD signal model before running analysis.")
     candidates = []
     for value in mapping.values():
         if str(value.get("station") or "").strip().upper() != str(event.station or "").strip().upper():
@@ -517,7 +521,7 @@ def rtis_event_analysis(event_id: int, request: Request, session: Session = Depe
                 distance = (float(home["latitude"]) - event.latitude) ** 2 + (float(home["longitude"]) - event.longitude) ** 2
                 candidates.append((distance, value, home))
     if not candidates:
-        raise HTTPException(404, "No matching FSD home signal was found for this RTIS event.")
+        return error_page("No matching FSD home signal was found for this RTIS event. Check that the FSD model contains the same station and event direction.", 404)
     _, signal_group, home = min(candidates, key=lambda item: item[0])
     day_start = datetime.combine(event.event_time.date(), clock_time.min)
     day_end = day_start + timedelta(days=1)
