@@ -511,8 +511,9 @@ def rtis_event_analysis(event_id: int, request: Request, session: Session = Depe
     if not home_model:
         return error_page("Upload an FSD signal model before running analysis.")
     candidates = []
+    station_code = str(event.station or "").strip().upper()
     for value in mapping.values():
-        if str(value.get("station") or "").strip().upper() != str(event.station or "").strip().upper():
+        if str(value.get("station") or "").strip().upper() != station_code:
             continue
         if value.get("event") != event.event_type:
             continue
@@ -520,6 +521,16 @@ def rtis_event_analysis(event_id: int, request: Request, session: Session = Depe
             if home.get("latitude") is not None and home.get("longitude") is not None:
                 distance = (float(home["latitude"]) - event.latitude) ** 2 + (float(home["longitude"]) - event.longitude) ** 2
                 candidates.append((distance, value, home))
+    # H is an approach event, so use the nearest FSD home at the same station
+    # when there is no direction-specific J/K signal mapping.
+    if not candidates and event.event_type == "H":
+        for value in mapping.values():
+            if str(value.get("station") or "").strip().upper() != station_code:
+                continue
+            for home in value.get("homes", []):
+                if home.get("latitude") is not None and home.get("longitude") is not None:
+                    distance = (float(home["latitude"]) - event.latitude) ** 2 + (float(home["longitude"]) - event.longitude) ** 2
+                    candidates.append((distance, value, home))
     if not candidates:
         return error_page("No matching FSD home signal was found for this RTIS event. Check that the FSD model contains the same station and event direction.", 404)
     _, signal_group, home = min(candidates, key=lambda item: item[0])
@@ -544,7 +555,7 @@ def rtis_event_analysis(event_id: int, request: Request, session: Session = Depe
         route_points = [event_point]
     signal = {"station": signal_group.get("station", ""), "event": event.event_type, "label": signal_group.get("label", "FSD Home Signal"), "line": home.get("line", ""), "lat": home["latitude"], "lon": home["longitude"], "speed": event.speed or 0, "time": event.event_time.isoformat(), "active": True}
     upload = {"filename": f"RTIS event {event.id}", "analysis_date": event.event_time.strftime("%Y-%m-%d"), "train_type": "RTIS event"}
-    return templates.TemplateResponse(request=request, name="rtis_analysis_result.html", context={"request": request, "active_page": "rtis_analysis", "upload": upload, "points": route_points, "signals": [signal], "home_model": home_model})
+    return templates.TemplateResponse(request=request, name="rtis_analysis_result.html", context={"request": request, "active_page": "rtis_analysis", "upload": upload, "points": route_points, "signals": [signal], "event_markers": [{"lat": event.latitude, "lon": event.longitude, "label": f"RTIS {event.event_type} event", "station": event.station, "speed": event.speed or 0, "time": event.event_time.isoformat()}], "home_model": home_model})
 
 
 @router.get("/rtis/analysis")
