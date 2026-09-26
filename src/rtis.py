@@ -555,7 +555,7 @@ def rtis_event_analysis(event_id: int, request: Request, session: Session = Depe
         route_points = [event_point]
     signal = {"station": signal_group.get("station", ""), "event": event.event_type, "label": signal_group.get("label", "FSD Home Signal"), "line": home.get("line", ""), "lat": home["latitude"], "lon": home["longitude"], "speed": event.speed or 0, "time": event.event_time.isoformat(), "active": True}
     upload = {"filename": f"RTIS event {event.id}", "analysis_date": event.event_time.strftime("%Y-%m-%d"), "train_type": "RTIS event"}
-    return templates.TemplateResponse(request=request, name="rtis_analysis_result.html", context={"request": request, "active_page": "rtis_analysis", "upload": upload, "points": route_points, "signals": [signal], "event_markers": [{"lat": event.latitude, "lon": event.longitude, "label": f"RTIS {event.event_type} event", "station": event.station, "speed": event.speed or 0, "time": event.event_time.isoformat()}], "home_model": home_model})
+    return templates.TemplateResponse(request=request, name="rtis_analysis_result.html", context={"request": request, "active_page": "rtis_analysis", "upload": upload, "points": route_points, "signals": [signal], "event_markers": [{"lat": event.latitude, "lon": event.longitude, "event": event.event_type, "label": f"RTIS {event.event_type} event", "station": event.station, "speed": event.speed or 0, "time": event.event_time.isoformat()}], "home_model": home_model})
 
 
 @router.get("/rtis/analysis")
