@@ -519,11 +519,29 @@ def rtis_event_analysis(event_id: int, request: Request, session: Session = Depe
     if not candidates:
         raise HTTPException(404, "No matching FSD home signal was found for this RTIS event.")
     _, signal_group, home = min(candidates, key=lambda item: item[0])
+    day_start = datetime.combine(event.event_time.date(), clock_time.min)
+    day_end = day_start + timedelta(days=1)
+    same_route_query = select(RtisEvent).where(
+        RtisEvent.division == event.division,
+        RtisEvent.event_time >= day_start,
+        RtisEvent.event_time < day_end,
+    )
+    if event.train.strip():
+        same_route_query = same_route_query.where(RtisEvent.train == event.train)
+    else:
+        same_route_query = same_route_query.where(RtisEvent.loco == event.loco)
+    route_events = session.exec(same_route_query.order_by(RtisEvent.event_time)).all()
+    route_points = [
+        {"lat": row.latitude, "lon": row.longitude, "speed": row.speed or 0, "time": row.event_time.isoformat(), "station": row.station}
+        for row in route_events if row.latitude is not None and row.longitude is not None
+    ]
     event_point = {"lat": event.latitude, "lon": event.longitude, "speed": event.speed or 0, "time": event.event_time.isoformat(), "station": event.station}
+    if not route_points:
+        route_points = [event_point]
     signal_point = {"lat": home["latitude"], "lon": home["longitude"], "speed": event.speed or 0, "time": event.event_time.isoformat(), "station": signal_group.get("station", "")}
     signal = {"station": signal_group.get("station", ""), "event": event.event_type, "label": signal_group.get("label", "FSD Home Signal"), "line": home.get("line", ""), "lat": home["latitude"], "lon": home["longitude"], "speed": event.speed or 0, "time": event.event_time.isoformat(), "active": True}
     upload = {"filename": f"RTIS event {event.id}", "analysis_date": event.event_time.strftime("%Y-%m-%d"), "train_type": "RTIS event"}
-    return templates.TemplateResponse(request=request, name="rtis_analysis_result.html", context={"request": request, "active_page": "rtis_analysis", "upload": upload, "points": [event_point, signal_point], "signals": [signal], "home_model": home_model})
+    return templates.TemplateResponse(request=request, name="rtis_analysis_result.html", context={"request": request, "active_page": "rtis_analysis", "upload": upload, "points": route_points + [signal_point], "signals": [signal], "home_model": home_model})
 
 
 @router.get("/rtis/analysis")
