@@ -524,8 +524,12 @@ def rtis_event_analysis(event_id: int, request: Request, session: Session = Depe
     # H is an approach event, so use the nearest FSD home at the same station
     # when there is no direction-specific J/K signal mapping.
     if not candidates and event.event_type == "H":
+        train_digits_for_signal = "".join(character for character in str(event.train or "") if character.isdigit())
+        expected_event = "K" if train_digits_for_signal and int(train_digits_for_signal) % 2 == 0 else ("J" if train_digits_for_signal else "")
         for value in mapping.values():
             if str(value.get("station") or "").strip().upper() != station_code:
+                continue
+            if expected_event and value.get("event") != expected_event:
                 continue
             for home in value.get("homes", []):
                 if home.get("latitude") is not None and home.get("longitude") is not None:
