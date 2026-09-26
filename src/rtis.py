@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from collections import Counter
 import csv
-from datetime import date, datetime, timedelta, time as clock_time
+from datetime import date, datetime, timedelta, timezone, time as clock_time
+from zoneinfo import ZoneInfo
 from hashlib import sha256
 from io import BytesIO
 import json
@@ -40,6 +41,14 @@ HEADERS = ("Sr.No.", "Device Id", "Loco No.", "Latitude", "Longitude", "Station"
            "Train Number", "Train Start Date")
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent.parent / "templates"))
+IST = ZoneInfo("Asia/Kolkata")
+def format_ist(value):
+    if not value:
+        return ""
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(IST).strftime("%d-%m-%Y %H:%M")
+templates.env.filters["ist"] = format_ist
 
 
 class RtisUpload(SQLModel, table=True):
