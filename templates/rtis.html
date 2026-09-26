@@ -146,7 +146,7 @@
         </details>
       </section>
       <details class="card collapsible" open><summary>{{ division_label }} upload history <span class="collapse-count">({{ history|length }} files)</span></summary><p class="hint">Latest 50 files. Upload times are in UTC.</p>
-        <div class="table-wrap"><table><thead><tr><th>File</th><th>Division Code</th><th>Event dates</th><th>Uploaded (UTC)</th><th>Source rows</th><th>New events</th><th>Original</th><th>Undo</th></tr></thead><tbody>
+        <div class="table-wrap"><table><thead><tr><th>File</th><th>Division Code</th><th>Event dates</th><th>Uploaded</th><th>Source rows</th><th>New events</th><th>Original</th><th>Undo</th></tr></thead><tbody>
         {% for item in history %}<tr><td>{{ item.filename }}</td><td>{{ item.division }}</td><td>{{ item.first_day.strftime('%d-%m-%Y') }}{% if item.first_day != item.last_day %} to {{ item.last_day.strftime('%d-%m-%Y') }}{% endif %}</td><td>{{ item.uploaded_at|ist }}</td><td>{{ item.row_count }}</td><td>{{ item.added_count }}</td><td><a class="ghost small" href="/rtis/uploads/{{ item.id }}/download">Download</a></td><td><form method="post" action="/rtis/uploads/{{ item.id }}/delete" onsubmit="return confirm('Undo this upload and remove its events?');"><input type="hidden" name="division" value="{{ division }}" /><input type="hidden" name="analysis" value="{{ analysis }}" /><button type="submit" class="danger small">Undo</button></form></td></tr>
         {% else %}<tr><td colspan="8">No files uploaded for {{ division_label }} yet.</td></tr>{% endfor %}
         </tbody></table></div>
@@ -256,3 +256,4 @@
   {% block extra_scripts %}{% endblock %}
 </body>
 </html>
+
