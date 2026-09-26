@@ -77,6 +77,8 @@ class RtisEvent(SQLModel, table=True):
     loco: str
     train: str
     speed: float | None = None
+    latitude: float | None = None
+    longitude: float | None = None
     source: str
 
 
@@ -194,6 +196,12 @@ def parse_rtis(content: bytes, division: str) -> list[dict]:
                         if source["Reporting Time"]:
                             _timestamp(source["Reporting Time"], epoch)
                         speed = float(source["Speed"]) if source["Speed"] else None
+                        latitude = float(source["Latitude"]) if source["Latitude"] else None
+                        longitude = float(source["Longitude"]) if source["Longitude"] else None
+                        if latitude is not None and not -90 <= latitude <= 90:
+                            raise ValueError("Latitude is outside the valid range.")
+                        if longitude is not None and not -180 <= longitude <= 180:
+                            raise ValueError("Longitude is outside the valid range.")
                         if speed is not None and (not math.isfinite(speed) or speed < 0):
                             raise ValueError("Speed must be a non-negative number.")
                     except ValueError as exc:
@@ -206,7 +214,7 @@ def parse_rtis(content: bytes, division: str) -> list[dict]:
                                 event_time.isoformat(), event_type, source["Latitude"], source["Longitude"]]
                     records.append(dict(division=division, event_type=event_type, event_time=event_time,
                                         station=source["Station"], loco=source["Loco No."],
-                                        train=source["Train Number"], speed=speed,
+                                        train=source["Train Number"], speed=speed, latitude=latitude, longitude=longitude,
                                         source=json.dumps(source),
                                         fingerprint=sha256(json.dumps(identity).encode()).hexdigest()))
                     if len(records) > 100_000:
@@ -486,6 +494,36 @@ def _rtis_ssts_geofences():
         return _fetch_ssts_geofence_polygons(fetch_ssts_token())
     except Exception:
         return {}
+
+
+@router.get("/rtis/event-analysis/{event_id}")
+def rtis_event_analysis(event_id: int, request: Request, session: Session = Depends(get_session)):
+    event = session.get(RtisEvent, event_id)
+    if event is None:
+        raise HTTPException(404, "RTIS event not found.")
+    if event.latitude is None or event.longitude is None:
+        raise HTTPException(400, "This RTIS event has no latitude/longitude in the uploaded file.")
+    home_model, mapping = selected_home_model(session)
+    if not home_model:
+        raise HTTPException(400, "Upload an FSD signal model before running analysis.")
+    candidates = []
+    for value in mapping.values():
+        if str(value.get("station") or "").strip().upper() != str(event.station or "").strip().upper():
+            continue
+        if value.get("event") != event.event_type:
+            continue
+        for home in value.get("homes", []):
+            if home.get("latitude") is not None and home.get("longitude") is not None:
+                distance = (float(home["latitude"]) - event.latitude) ** 2 + (float(home["longitude"]) - event.longitude) ** 2
+                candidates.append((distance, value, home))
+    if not candidates:
+        raise HTTPException(404, "No matching FSD home signal was found for this RTIS event.")
+    _, signal_group, home = min(candidates, key=lambda item: item[0])
+    event_point = {"lat": event.latitude, "lon": event.longitude, "speed": event.speed or 0, "time": event.event_time.isoformat(), "station": event.station}
+    signal_point = {"lat": home["latitude"], "lon": home["longitude"], "speed": event.speed or 0, "time": event.event_time.isoformat(), "station": signal_group.get("station", "")}
+    signal = {"station": signal_group.get("station", ""), "event": event.event_type, "label": signal_group.get("label", "FSD Home Signal"), "line": home.get("line", ""), "lat": home["latitude"], "lon": home["longitude"], "speed": event.speed or 0, "time": event.event_time.isoformat(), "active": True}
+    upload = {"filename": f"RTIS event {event.id}", "analysis_date": event.event_time.strftime("%Y-%m-%d"), "train_type": "RTIS event"}
+    return templates.TemplateResponse(request=request, name="rtis_analysis_result.html", context={"request": request, "active_page": "rtis_analysis", "upload": upload, "points": [event_point, signal_point], "signals": [signal], "home_model": home_model})
 
 
 @router.get("/rtis/analysis")

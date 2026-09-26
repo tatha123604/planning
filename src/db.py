@@ -28,6 +28,11 @@ def init_db() -> None:
         for col in ("station_from", "station_to"):
             if col not in analysis_names:
                 conn.execute(text(f"ALTER TABLE rtisanalysisupload ADD COLUMN {col} TEXT NOT NULL DEFAULT '';"))
+        event_cols = conn.execute(text("PRAGMA table_info(rtisevent);")).fetchall()
+        event_names = {c[1] for c in event_cols}
+        for col in ("latitude", "longitude"):
+            if col not in event_names:
+                conn.execute(text(f"ALTER TABLE rtisevent ADD COLUMN {col} REAL;"))
         cols = conn.execute(text("PRAGMA table_info(employee);")).fetchall()
         names = {c[1] for c in cols}
         if "seniority_rank" not in names:
