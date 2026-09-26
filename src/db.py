@@ -1,4 +1,5 @@
 import os
+import json
 from pathlib import Path
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
@@ -33,6 +34,15 @@ def init_db() -> None:
         for col in ("latitude", "longitude"):
             if col not in event_names:
                 conn.execute(text(f"ALTER TABLE rtisevent ADD COLUMN {col} REAL;"))
+        event_rows = conn.execute(text("SELECT id, source FROM rtisevent WHERE latitude IS NULL OR longitude IS NULL;")).fetchall()
+        for event_id, source in event_rows:
+            try:
+                payload = json.loads(source or "{}")
+                latitude = float(payload.get("Latitude")) if payload.get("Latitude") not in (None, "") else None
+                longitude = float(payload.get("Longitude")) if payload.get("Longitude") not in (None, "") else None
+            except (TypeError, ValueError, json.JSONDecodeError):
+                continue
+            conn.execute(text("UPDATE rtisevent SET latitude = :latitude, longitude = :longitude WHERE id = :event_id"), {"latitude": latitude, "longitude": longitude, "event_id": event_id})
         cols = conn.execute(text("PRAGMA table_info(employee);")).fetchall()
         names = {c[1] for c in cols}
         if "seniority_rank" not in names:
