@@ -918,21 +918,19 @@ def rtis_analysis_run(request: Request, upload_id: int = Form(...), session: Ses
 
     # Match each home signal to the nearest GPS point for its hover and chart details.
     matched_signals = []
-    chart_signals = []
     point_stations = {str(point.get("station") or "").strip().upper() for point in points if point.get("station")}
     for signal in signals:
         nearest = min(points, key=lambda point: (point["lat"] - signal["lat"]) ** 2 + (point["lon"] - signal["lon"]) ** 2)
         distance_squared = (nearest["lat"] - signal["lat"]) ** 2 + (nearest["lon"] - signal["lon"]) ** 2
         same_station = str(signal.get("station") or "").strip().upper() in point_stations
-        signal.update(speed=nearest["speed"], time=nearest["time"])
-        chart_signals.append(dict(signal))
         if distance_squared <= 0.001 ** 2 or same_station:
+            signal.update(speed=nearest["speed"], time=nearest["time"])
             matched_signals.append(signal)
     signals = matched_signals
     return templates.TemplateResponse(request=request, name="rtis_analysis_result.html", context={
         "request": request,
         "active_page": "rtis_analysis", "upload": upload, "points": points[::max(1, len(points) // 2000)],
-        "signals": signals, "chart_signals": chart_signals, "home_model": home_model,
+        "signals": signals, "home_model": home_model,
     })
 
 
