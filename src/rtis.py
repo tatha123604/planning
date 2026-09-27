@@ -583,7 +583,17 @@ def rtis_event_analysis(event_id: int, request: Request, session: Session = Depe
         event_down = route_points[0]["lat"] > route_points[-1]["lat"]
     if event_down is None:
         event_down = False
-    if not route_points:
+    if route_points:
+        # Event analysis is station-specific: keep only the GPS points from
+        # the station whose H/J/K event was selected, rather than plotting the
+        # complete same-train route on the map.
+        event_station = str(event.station or "").strip().upper()
+        station_points = [
+            point for point in route_points
+            if str(point.get("station") or "").strip().upper() == event_station
+        ]
+        route_points = station_points or [event_point]
+    else:
         route_points = [event_point]
     if event.event_type == "H":
         expected_signal_event = "K" if event_down else "J"
