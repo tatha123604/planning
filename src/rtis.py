@@ -555,6 +555,7 @@ def rtis_event_analysis(event_id: int, request: Request, session: Session = Depe
         for row in route_events if row.latitude is not None and row.longitude is not None
     ]
     event_down = None
+    previous_direction_found = False
     for index, row in enumerate(route_events):
         if row.id != event.id or row.latitude is None or row.longitude is None:
             continue
@@ -562,8 +563,7 @@ def rtis_event_analysis(event_id: int, request: Request, session: Session = Depe
         next_point = next((candidate for candidate in route_events[index + 1:] if candidate.latitude is not None and candidate.longitude is not None and candidate.latitude != row.latitude), None)
         if previous_point is not None:
             event_down = row.latitude < previous_point.latitude
-        elif next_point is not None:
-            event_down = next_point.latitude < row.latitude
+            previous_direction_found = True
         break
     event_point = {"lat": event.latitude, "lon": event.longitude, "speed": event.speed or 0, "time": event.event_time.isoformat(), "station": event.station}
     event_code = str(event.event_type or "").strip().upper()
@@ -575,13 +575,15 @@ def rtis_event_analysis(event_id: int, request: Request, session: Session = Depe
     elif event_code == "K":
         # RTIS K is the Down home event.
         event_down = True
+    elif event_code == "H":
+        # H has no inherent direction. Only a preceding timestamped GPS point
+        # can establish whether latitude is increasing or decreasing.
+        event_down = event_down if previous_direction_found else None
     elif train_digits:
-        # For H events, use the Indian train numbering convention: odd numbers
-        # run Up and even numbers run Down.
         event_down = int(train_digits) % 2 == 0
     elif event_down is None and route_points:
         event_down = route_points[0]["lat"] > route_points[-1]["lat"]
-    if event_down is None:
+    if event_code != "H" and event_down is None:
         event_down = False
     if route_points:
         # Event analysis is station-specific: keep only the GPS points from
@@ -596,7 +598,7 @@ def rtis_event_analysis(event_id: int, request: Request, session: Session = Depe
     else:
         route_points = [event_point]
     if event.event_type == "H":
-        expected_signal_event = "K" if event_down else "J"
+        expected_signal_event = "K" if event_down is True else ("J" if event_down is False else None)
         signals_for_result = []
         seen_signal_keys = set()
         for _, group, home_item in candidates:
@@ -604,11 +606,11 @@ def rtis_event_analysis(event_id: int, request: Request, session: Session = Depe
             if key in seen_signal_keys:
                 continue
             seen_signal_keys.add(key)
-            signals_for_result.append({"station": group.get("station", ""), "event": group.get("event", ""), "label": group.get("label", "FSD Home Signal"), "line": home_item.get("line", ""), "lat": home_item["latitude"], "lon": home_item["longitude"], "speed": event.speed or 0, "time": event.event_time.isoformat(), "active": group.get("event") == expected_signal_event})
+            signals_for_result.append({"station": group.get("station", ""), "event": group.get("event", ""), "label": group.get("label", "FSD Home Signal"), "line": home_item.get("line", ""), "lat": home_item["latitude"], "lon": home_item["longitude"], "speed": event.speed or 0, "time": event.event_time.isoformat(), "active": expected_signal_event is not None and group.get("event") == expected_signal_event})
     else:
         signals_for_result = [{"station": signal_group.get("station", ""), "event": signal_group.get("event", event.event_type), "label": signal_group.get("label", "FSD Home Signal"), "line": home.get("line", ""), "lat": home["latitude"], "lon": home["longitude"], "speed": event.speed or 0, "time": event.event_time.isoformat(), "active": True}]
     upload = {"filename": f"RTIS event {event.id}", "analysis_date": event.event_time.strftime("%Y-%m-%d"), "train_type": "RTIS event"}
-    return templates.TemplateResponse(request=request, name="rtis_analysis_result.html", context={"request": request, "active_page": "rtis_analysis", "upload": upload, "points": route_points, "event_down": event_down, "signals": signals_for_result, "event_analysis": True, "event_direction": event_code, "event_markers": [{"lat": event.latitude, "lon": event.longitude, "event": event_code, "label": f"RTIS {event_code} event", "station": event.station, "speed": event.speed or 0, "time": event.event_time.isoformat()}], "home_model": home_model})
+    return templates.TemplateResponse(request=request, name="rtis_analysis_result.html", context={"request": request, "active_page": "rtis_analysis", "upload": upload, "points": route_points, "event_down": event_down, "signals": signals_for_result, "event_analysis": True, "event_direction": event_code, "event_direction_known": event_code != "H" or previous_direction_found, "event_markers": [{"lat": event.latitude, "lon": event.longitude, "event": event_code, "label": f"RTIS {event_code} event", "station": event.station, "speed": event.speed or 0, "time": event.event_time.isoformat()}], "home_model": home_model})
 
 
 @router.get("/rtis/analysis")
