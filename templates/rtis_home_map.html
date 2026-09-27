@@ -2,7 +2,62 @@
 {% block title %}FSD Home Signals Map{% endblock %}
 {% block content %}
 <header><div><h1>FSD Home Signals Map</h1><p>{{ home_model.filename }} · {{ signals|length }} mapped home signals</p></div><div class="header-actions"><a class="ghost small" href="/rtis">Back to RTIS</a></div></header>
-<section class="card"><div id="fsd-home-map" style="height:82vh;min-height:620px;border-radius:12px"></div></section>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" /><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-<script>const signals={{ signals|tojson }},map=L.map('fsd-home-map');L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap contributors'}).addTo(map);const icon=L.divIcon({className:'fsd-map-signal',html:'<span>●</span>',iconSize:[22,22],iconAnchor:[11,11]});const bounds=[];signals.forEach(signal=>{const marker=L.marker([signal.lat,signal.lon],{icon}).addTo(map);marker.bindTooltip(`<strong>${signal.station||'—'}</strong><br>${signal.direction} Home · ${signal.type||'—'}<br>Line: ${signal.line||'—'}`,{sticky:true});bounds.push([signal.lat,signal.lon]);});if(bounds.length)map.fitBounds(L.latLngBounds(bounds).pad(.06));else map.setView([22.57,88.36],10);</script><style>.fsd-map-signal{background:transparent;border:0}.fsd-map-signal span{display:grid;place-items:center;width:18px;height:18px;border-radius:50%;background:#facc15;color:#111827;border:2px solid #111827;box-shadow:0 0 0 2px #fff;font-size:13px}</style>
+<section class="card fsd-home-map-card">
+  <div class="home-map-search" role="search">
+    <input id="home-map-station" list="home-map-stations" type="search" placeholder="Station code" aria-label="Station code" autocomplete="off">
+    <datalist id="home-map-stations"></datalist>
+    <button id="home-map-search-button" class="primary small" type="button">Search</button>
+  </div>
+  <div id="fsd-home-map" style="height:82vh;min-height:620px;border-radius:12px"></div>
+</section>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script>
+const signals={{ signals|tojson }};
+const map=L.map('fsd-home-map');
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
+const icon=L.divIcon({className:'rail-signal-icon',html:'<span><i class="lamp red"></i><i class="lamp yellow"></i><i class="lamp green"></i></span>',iconSize:[24,44],iconAnchor:[12,42]});
+const bounds=[];
+const markers=[];
+const stationCodes=[...new Set(signals.map(signal=>String(signal.station||'').trim().toUpperCase()).filter(Boolean))].sort();
+const stationInput=document.getElementById('home-map-station');
+const stationList=document.getElementById('home-map-stations');
+stationCodes.forEach(code=>{const option=document.createElement('option');option.value=code;stationList.appendChild(option);});
+function clearHighlights(){markers.forEach(marker=>marker.getElement().classList.remove('signal-highlight'));}
+function fitAll(){if(bounds.length)map.fitBounds(L.latLngBounds(bounds).pad(.06));else map.setView([22.57,88.36],10);}
+signals.forEach(signal=>{
+  const marker=L.marker([signal.lat,signal.lon],{icon}).addTo(map);
+  marker.station=String(signal.station||'').trim().toUpperCase();
+  marker.bindTooltip(`<strong>${signal.station||'—'}</strong><br>${signal.direction} Home · ${signal.type||'—'}<br>Line: ${signal.line||'—'}`,{sticky:true});
+  markers.push(marker); bounds.push([signal.lat,signal.lon]);
+});
+function searchStation(){
+  const code=stationInput.value.trim().toUpperCase();
+  stationInput.setCustomValidity('');
+  if(!code){clearHighlights();fitAll();return;}
+  const matches=markers.filter(marker=>marker.station===code);
+  if(!matches.length){clearHighlights();stationInput.setCustomValidity('Station code not found in FSD model');stationInput.reportValidity();return;}
+  clearHighlights();
+  matches.forEach(marker=>marker.getElement().classList.add('signal-highlight'));
+  const target=matches[0].getLatLng();
+  map.setView(target,Math.max(map.getZoom(),14),{animate:true});
+}
+document.getElementById('home-map-search-button').addEventListener('click',searchStation);
+stationInput.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();searchStation();}});
+stationInput.addEventListener('input',()=>{if(!stationInput.value.trim()){stationInput.setCustomValidity('');clearHighlights();fitAll();}});
+fitAll();
+</script>
+<style>
+.fsd-home-map-card{position:relative}
+.home-map-search{position:absolute;z-index:1000;right:14px;top:14px;display:flex;gap:8px;padding:8px;background:rgba(15,23,42,.94);border:1px solid #334155;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.28)}
+.home-map-search input{width:180px;padding:8px 10px;border:1px solid #64748b;border-radius:7px;background:#0f172a;color:#f8fafc}
+.home-map-search input::placeholder{color:#94a3b8}
+.rail-signal-icon{background:transparent;border:0;transition:transform .2s}
+.rail-signal-icon span{display:block;width:14px;height:35px;margin:0 auto;background:#111827;border:2px solid #000;border-radius:8px 8px 2px 2px;box-shadow:0 0 0 2px #f8fafc}
+.rail-signal-icon .lamp{display:block;width:8px;height:8px;margin:3px auto;border-radius:50%;border:1px solid rgba(255,255,255,.45);background:#111827}
+.rail-signal-icon .lamp.red{background:#991b1b}.rail-signal-icon .lamp.yellow{background:#a16207}.rail-signal-icon .lamp.green{background:#166534}
+.rail-signal-icon.signal-highlight{z-index:1000;transform:scale(1.22)}
+.rail-signal-icon.signal-highlight span{box-shadow:0 0 0 2px #f8fafc,0 0 12px 4px rgba(250,204,21,.9)}
+@media(max-width:640px){.home-map-search{left:10px;right:10px;top:10px}.home-map-search input{flex:1;width:auto}}
+</style>
 {% endblock %}
