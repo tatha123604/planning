@@ -1,0 +1,8 @@
+{% extends "rtis.html" %}
+{% block title %}FSD Home Signals Map{% endblock %}
+{% block content %}
+<header><div><h1>FSD Home Signals Map</h1><p>{{ home_model.filename }} · {{ signals|length }} mapped home signals</p></div><div class="header-actions"><a class="ghost small" href="/rtis">Back to RTIS</a></div></header>
+<section class="card"><div id="fsd-home-map" style="height:82vh;min-height:620px;border-radius:12px"></div></section>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" /><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script>const signals={{ signals|tojson }},map=L.map('fsd-home-map');L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap contributors'}).addTo(map);const icon=L.divIcon({className:'fsd-map-signal',html:'<span>●</span>',iconSize:[22,22],iconAnchor:[11,11]});const bounds=[];signals.forEach(signal=>{const marker=L.marker([signal.lat,signal.lon],{icon}).addTo(map);marker.bindTooltip(`<strong>${signal.station||'—'}</strong><br>${signal.direction} Home · ${signal.type||'—'}<br>Line: ${signal.line||'—'}`,{sticky:true});bounds.push([signal.lat,signal.lon]);});if(bounds.length)map.fitBounds(L.latLngBounds(bounds).pad(.06));else map.setView([22.57,88.36],10);</script><style>.fsd-map-signal{background:transparent;border:0}.fsd-map-signal span{display:grid;place-items:center;width:18px;height:18px;border-radius:50%;background:#facc15;color:#111827;border:2px solid #111827;box-shadow:0 0 0 2px #fff;font-size:13px}</style>
+{% endblock %}

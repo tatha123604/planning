@@ -385,6 +385,20 @@ def rtis_ordering(sort_by="event_time", sort_order="desc"):
     return [ordered.nulls_last(), RtisEvent.id.desc()]
 
 
+@router.get("/rtis/home-model/map")
+def rtis_home_model_map(request: Request, session: Session = Depends(get_session)):
+    home_model, mapping = selected_home_model(session)
+    if not home_model:
+        raise HTTPException(400, "Upload an FSD home signal model first.")
+    signals = []
+    for value in mapping.values():
+        for home in value.get("homes", []):
+            if home.get("latitude") is None or home.get("longitude") is None:
+                continue
+            signals.append({"station": value.get("station", ""), "direction": "UP" if value.get("event") == "J" else "DOWN", "event": value.get("event", ""), "type": home.get("type", ""), "line": home.get("line", ""), "lat": home["latitude"], "lon": home["longitude"]})
+    return templates.TemplateResponse(request=request, name="rtis_home_map.html", context={"request": request, "active_page": "rtis", "home_model": home_model, "signals": signals})
+
+
 @router.get("/rtis")
 def rtis_page(request: Request, division: str = "ALL", day: str = "", event: str = "HJK",
               page: int = 1, analysis: str = "passenger", view: str = "classified",
