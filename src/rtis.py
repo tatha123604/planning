@@ -515,26 +515,12 @@ def rtis_event_analysis(event_id: int, request: Request, session: Session = Depe
     for value in mapping.values():
         if str(value.get("station") or "").strip().upper() != station_code:
             continue
-        if value.get("event") != event.event_type:
+        if event.event_type != "H" and value.get("event") != event.event_type:
             continue
         for home in value.get("homes", []):
             if home.get("latitude") is not None and home.get("longitude") is not None:
                 distance = (float(home["latitude"]) - event.latitude) ** 2 + (float(home["longitude"]) - event.longitude) ** 2
                 candidates.append((distance, value, home))
-    # H is an approach event, so use the nearest FSD home at the same station
-    # when there is no direction-specific J/K signal mapping.
-    if not candidates and event.event_type == "H":
-        train_digits_for_signal = "".join(character for character in str(event.train or "") if character.isdigit())
-        expected_event = "K" if train_digits_for_signal and int(train_digits_for_signal) % 2 == 0 else ("J" if train_digits_for_signal else "")
-        for value in mapping.values():
-            if str(value.get("station") or "").strip().upper() != station_code:
-                continue
-            if expected_event and value.get("event") != expected_event:
-                continue
-            for home in value.get("homes", []):
-                if home.get("latitude") is not None and home.get("longitude") is not None:
-                    distance = (float(home["latitude"]) - event.latitude) ** 2 + (float(home["longitude"]) - event.longitude) ** 2
-                    candidates.append((distance, value, home))
     if not candidates:
         return error_page("No matching FSD home signal was found for this RTIS event. Check that the FSD model contains the same station and event direction.", 404)
     _, signal_group, home = min(candidates, key=lambda item: item[0])
@@ -576,9 +562,20 @@ def rtis_event_analysis(event_id: int, request: Request, session: Session = Depe
         event_down = False
     if not route_points:
         route_points = [event_point]
-    signal = {"station": signal_group.get("station", ""), "event": event.event_type, "label": signal_group.get("label", "FSD Home Signal"), "line": home.get("line", ""), "lat": home["latitude"], "lon": home["longitude"], "speed": event.speed or 0, "time": event.event_time.isoformat(), "active": True}
+    if event.event_type == "H":
+        expected_signal_event = "K" if event_down else "J"
+        signals_for_result = []
+        seen_signal_keys = set()
+        for _, group, home_item in candidates:
+            key = (group.get("event"), home_item.get("latitude"), home_item.get("longitude"))
+            if key in seen_signal_keys:
+                continue
+            seen_signal_keys.add(key)
+            signals_for_result.append({"station": group.get("station", ""), "event": group.get("event", ""), "label": group.get("label", "FSD Home Signal"), "line": home_item.get("line", ""), "lat": home_item["latitude"], "lon": home_item["longitude"], "speed": event.speed or 0, "time": event.event_time.isoformat(), "active": group.get("event") == expected_signal_event})
+    else:
+        signals_for_result = [{"station": signal_group.get("station", ""), "event": signal_group.get("event", event.event_type), "label": signal_group.get("label", "FSD Home Signal"), "line": home.get("line", ""), "lat": home["latitude"], "lon": home["longitude"], "speed": event.speed or 0, "time": event.event_time.isoformat(), "active": True}]
     upload = {"filename": f"RTIS event {event.id}", "analysis_date": event.event_time.strftime("%Y-%m-%d"), "train_type": "RTIS event"}
-    return templates.TemplateResponse(request=request, name="rtis_analysis_result.html", context={"request": request, "active_page": "rtis_analysis", "upload": upload, "points": route_points, "event_down": event_down, "signals": [signal], "event_analysis": True, "event_markers": [{"lat": event.latitude, "lon": event.longitude, "event": event.event_type, "label": f"RTIS {event.event_type} event", "station": event.station, "speed": event.speed or 0, "time": event.event_time.isoformat()}], "home_model": home_model})
+    return templates.TemplateResponse(request=request, name="rtis_analysis_result.html", context={"request": request, "active_page": "rtis_analysis", "upload": upload, "points": route_points, "event_down": event_down, "signals": signals_for_result, "event_analysis": True, "event_markers": [{"lat": event.latitude, "lon": event.longitude, "event": event.event_type, "label": f"RTIS {event.event_type} event", "station": event.station, "speed": event.speed or 0, "time": event.event_time.isoformat()}], "home_model": home_model})
 
 
 @router.get("/rtis/analysis")
