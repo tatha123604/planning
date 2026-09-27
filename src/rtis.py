@@ -566,12 +566,13 @@ def rtis_event_analysis(event_id: int, request: Request, session: Session = Depe
             event_down = next_point.latitude < row.latitude
         break
     event_point = {"lat": event.latitude, "lon": event.longitude, "speed": event.speed or 0, "time": event.event_time.isoformat(), "station": event.station}
+    event_code = str(event.event_type or "").strip().upper()
     train_digits = "".join(character for character in str(event.train or "") if character.isdigit())
-    if event.event_type == "J":
+    if event_code == "J":
         # RTIS J is the Up home event; the GPS latitude change can point the
         # other way on a curved route, so it must not override the event code.
         event_down = False
-    elif event.event_type == "K":
+    elif event_code == "K":
         # RTIS K is the Down home event.
         event_down = True
     elif train_digits:
