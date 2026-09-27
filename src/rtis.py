@@ -789,7 +789,11 @@ def _rtis_analysis_points(content: bytes, upload: RtisAnalysisUpload) -> tuple[l
         if upload.time_to and timestamp[11:16] > upload.time_to:
             continue
         station_field = fields.get("last/cur stationcode") or fields.get("station code")
-        station = str(row.get(station_field) or "").strip() if station_field else ""
+        station = str(row.get(station_field) or "").strip().upper() if station_field else ""
+        # GPS exports may append D/U to the three-letter station code
+        # (for example BWND), while the FSD model stores BWN.
+        if len(station) == 4 and station[-1] in {"D", "U"}:
+            station = station[:3]
         points.append({"lat": latitude, "lon": longitude, "speed": round(speed, 2), "time": timestamp, "station": station})
     if not points:
         raise ValueError("No GPS points matched the selected filters.")
