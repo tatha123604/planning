@@ -106,10 +106,10 @@ class RtisAnalysisPrimaryUpload(SQLModel, table=True):
 
 
 def train_type_filters():
-    """User rule: digits only = passenger; letters plus digits = goods."""
+    """Digits-only train numbers are Passenger; other non-empty values are Goods."""
     train = func.trim(RtisEvent.train)
     passenger = (train != "") & ~train.op("GLOB")("*[^0-9]*")
-    goods = train.op("GLOB")("*[A-Za-z]*") & train.op("GLOB")("*[0-9]*")
+    goods = (train != "") & train.op("GLOB")("*[^0-9]*")
     return passenger, goods
 
 

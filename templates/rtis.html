@@ -116,7 +116,7 @@
       {% endif %}
       <section class="card">
         <h2>{{ analysis_types[analysis] }} — {{ division_label }}</h2>
-        <p class="hint">Train Number rule: digits only = Passenger; letters and digits together = Goods. Uploads are shared by both options.</p>
+        <p class="hint">Train Number rule: digits only = Passenger; any non-empty train number containing non-digit characters = Goods. Uploads are shared by both options.</p>
         {% if unclassified %}<p class="hint">{{ unclassified }} H/J/K events have a blank or unmatched Train Number for the selected division, date/time, speed and train search. Select Unclassified events to review them.</p>{% endif %}
         <form method="get" action="/rtis" class="rtis-form" id="rtis-filter-form">
           <input type="hidden" name="division" value="{{ division }}" />
