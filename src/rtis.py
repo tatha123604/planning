@@ -567,8 +567,16 @@ def rtis_event_analysis(event_id: int, request: Request, session: Session = Depe
         break
     event_point = {"lat": event.latitude, "lon": event.longitude, "speed": event.speed or 0, "time": event.event_time.isoformat(), "station": event.station}
     train_digits = "".join(character for character in str(event.train or "") if character.isdigit())
-    if train_digits:
-        # Indian train numbering convention: odd numbers run Up, even numbers Down.
+    if event.event_type == "J":
+        # RTIS J is the Up home event; the GPS latitude change can point the
+        # other way on a curved route, so it must not override the event code.
+        event_down = False
+    elif event.event_type == "K":
+        # RTIS K is the Down home event.
+        event_down = True
+    elif train_digits:
+        # For H events, use the Indian train numbering convention: odd numbers
+        # run Up and even numbers run Down.
         event_down = int(train_digits) % 2 == 0
     elif event_down is None and route_points:
         event_down = route_points[0]["lat"] > route_points[-1]["lat"]
