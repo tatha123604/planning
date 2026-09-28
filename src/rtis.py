@@ -807,11 +807,16 @@ def _rtis_analysis_points(content: bytes, upload: RtisAnalysisUpload) -> tuple[l
         if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
             continue
         timestamp = str(row.get(fields["logging time"]) or "").strip()
-        if upload.analysis_date and not timestamp.startswith(upload.analysis_date):
+        parsed_timestamp = _parse_gps_timestamp(timestamp)
+        if upload.analysis_date and parsed_timestamp is not None:
+            if parsed_timestamp.date().isoformat() != upload.analysis_date:
+                continue
+        elif upload.analysis_date and not timestamp.startswith(upload.analysis_date):
             continue
-        if upload.time_from and timestamp[11:16] < upload.time_from:
+        timestamp_time = parsed_timestamp.strftime("%H:%M:%S") if parsed_timestamp is not None else timestamp[11:16]
+        if upload.time_from and timestamp_time < upload.time_from:
             continue
-        if upload.time_to and timestamp[11:16] > upload.time_to:
+        if upload.time_to and timestamp_time > upload.time_to:
             continue
         station_field = fields.get("last/cur stationcode") or fields.get("station code")
         station = str(row.get(station_field) or "").strip().upper() if station_field else ""
@@ -823,6 +828,17 @@ def _rtis_analysis_points(content: bytes, upload: RtisAnalysisUpload) -> tuple[l
     if not points:
         raise ValueError("No GPS points matched the selected filters.")
     return points, ""
+
+
+def _parse_gps_timestamp(value: str) -> datetime | None:
+    """Parse ISO and common railway exports such as DD-MM-YYYY HH:MM."""
+    text = str(value or "").strip()
+    for pattern in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%d-%m-%Y %H:%M:%S", "%d-%m-%Y %H:%M"):
+        try:
+            return datetime.strptime(text, pattern)
+        except ValueError:
+            continue
+    return None
 
 
 def _infer_gps_metadata(filename: str, content: bytes) -> dict[str, str]:
