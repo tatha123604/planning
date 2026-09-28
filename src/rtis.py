@@ -934,12 +934,13 @@ def rtis_analysis_run(request: Request, upload_id: int = Form(...), session: Ses
         # station codes have no Home/I-Home signal row in the FSD workbook, so
         # fall back to the station code carried by the GPS points for those
         # endpoints instead of rejecting the whole analysis.
-        from_indices = [index for signal, index in signal_indices if str(signal.get("station") or "").strip().upper() == station_from]
-        to_indices = [index for signal, index in signal_indices if str(signal.get("station") or "").strip().upper() == station_to]
         point_from_indices = [index for index, point in enumerate(points) if str(point.get("station") or "").strip().upper() == station_from]
         point_to_indices = [index for index, point in enumerate(points) if str(point.get("station") or "").strip().upper() == station_to]
-        from_indices = from_indices or point_from_indices
-        to_indices = to_indices or point_to_indices
+        # The GPS station-code timestamps are authoritative for repeated
+        # visits. FSD nearest-signal positions are only a fallback when the
+        # raw GPS row does not carry a station code.
+        from_indices = point_from_indices or [index for signal, index in signal_indices if str(signal.get("station") or "").strip().upper() == station_from]
+        to_indices = point_to_indices or [index for signal, index in signal_indices if str(signal.get("station") or "").strip().upper() == station_to]
         if not from_indices or not to_indices:
             missing = [code for code, indices in ((station_from, from_indices), (station_to, to_indices)) if not indices]
             raise HTTPException(400, f"Station code not found in FSD model or GPS data: {', '.join(missing)}.")
