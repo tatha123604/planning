@@ -943,7 +943,16 @@ def rtis_analysis_run(request: Request, upload_id: int = Form(...), session: Ses
         if not from_indices or not to_indices:
             missing = [code for code, indices in ((station_from, from_indices), (station_to, to_indices)) if not indices]
             raise HTTPException(400, f"Station code not found in FSD model or GPS data: {', '.join(missing)}.")
-        start_index, end_index = min(from_indices), max(to_indices)
+        # Use the nearest matching To station after the requested From station
+        # in file/timestamp order, rather than spanning to a later occurrence.
+        first_from = min(from_indices)
+        following_to = sorted(index for index in to_indices if index > first_from)
+        if following_to:
+            start_index, end_index = first_from, following_to[0]
+        else:
+            last_from = max(from_indices)
+            preceding_to = sorted((index for index in to_indices if index < last_from), reverse=True)
+            start_index, end_index = last_from, (preceding_to[0] if preceding_to else min(to_indices))
         if start_index <= end_index:
             points = points[start_index:end_index + 1]
         else:
