@@ -25,6 +25,7 @@ Features: shows headcount vs requirement, recruiting steps (immediate and timed 
 
 Authentication
 - Login required. Default credentials: user `admin`, password `sdah1234`.
+- RTIS-only login: user `rtis`, password `rtis1234` by default. Set Railway variables `RTIS_USER` and `RTIS_PASS` to use a different account; this account can access only RTIS and RTIS Analysis.
 
 ### Run on Google Colab
 Colab can host the app and expose it publicly with ngrok.

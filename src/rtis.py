@@ -49,6 +49,7 @@ def format_ist(value):
         value = value.replace(tzinfo=timezone.utc)
     return value.astimezone(IST).strftime("%d-%m-%Y %H:%M")
 templates.env.filters["ist"] = format_ist
+templates.env.globals["is_rtis_user"] = lambda request: request.cookies.get("session") == "rtis"
 
 
 class RtisUpload(SQLModel, table=True):

@@ -86,6 +86,7 @@ def format_dmy(value):
 templates.env.filters["dmy"] = format_dmy
 ASSET_VER = "v20260514c"
 templates.env.globals["asset_ver"] = ASSET_VER
+templates.env.globals["is_rtis_user"] = lambda request: request.cookies.get("session") == "rtis"
 TOP_PERFORMER_STORE_PATH = BASE_PATH / "data" / "top_performer_store.json"
 TOP_PERFORMER_PHOTO_DIR = BASE_PATH / "static" / "top_performer_photos"
 SSTS_JUNK_FILE_PATTERNS = [
@@ -734,6 +735,8 @@ def _coerce_export_table_payload(payload: object) -> tuple[str, list[str], list[
 
 ADMIN_USER = "admin"
 ADMIN_PASS = "sdah1234"
+RTIS_USER = os.getenv("RTIS_USER", "rtis")
+RTIS_PASS = os.getenv("RTIS_PASS", "rtis1234")
 _AUTH_COOKIE = "session"
 _ALLOWED_PATHS = {"/login", "/logout", "/health"}
 _ALLOWED_PREFIXES = ("/static", "/openapi.json", "/docs", "/redoc")
@@ -804,8 +807,15 @@ class AuthMiddleware(BaseHTTPMiddleware):
         path = request.url.path
         if path in _ALLOWED_PATHS or any(path.startswith(pref) for pref in _ALLOWED_PREFIXES):
             return await call_next(request)
-        if request.cookies.get(_AUTH_COOKIE) == "ok":
+        session_role = request.cookies.get(_AUTH_COOKIE)
+        if session_role == "ok":
             return await call_next(request)
+        if session_role == "rtis" and (path == "/rtis" or path.startswith("/rtis/")):
+            return await call_next(request)
+        if session_role == "rtis":
+            if path.startswith("/exports/") or request.headers.get("x-requested-with", "").lower() == "fetch":
+                return PlainTextResponse("This account only has access to RTIS and RTIS Analysis.", status_code=403)
+            return RedirectResponse(url="/rtis", status_code=302)
         if path.startswith("/exports/") or request.headers.get("x-requested-with", "").lower() == "fetch":
             return PlainTextResponse("Authentication required. Please sign in again and retry the export.", status_code=401)
         return RedirectResponse(url="/login", status_code=302)
@@ -5670,6 +5680,10 @@ async def login_submit(request: Request, username: str = Form(...), password: st
     if username == ADMIN_USER and password == ADMIN_PASS:
         response = RedirectResponse(url="/", status_code=302)
         response.set_cookie(_AUTH_COOKIE, "ok", httponly=True, max_age=86400, path="/", samesite="lax")
+        return response
+    if username == RTIS_USER and password == RTIS_PASS:
+        response = RedirectResponse(url="/rtis", status_code=302)
+        response.set_cookie(_AUTH_COOKIE, "rtis", httponly=True, max_age=86400, path="/", samesite="lax")
         return response
     return templates.TemplateResponse(
         "login.html",
