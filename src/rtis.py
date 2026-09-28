@@ -967,11 +967,14 @@ def rtis_analysis_run(request: Request, upload_id: int = Form(...), session: Ses
             else:
                 start_index, end_index = min(from_indices), min(to_indices)
         if start_index <= end_index:
-            points = points[start_index:end_index + 1]
+            # Keep the selected leg and continue plotting later timestamps
+            # after the To station so the onward route remains visible.
+            points = points[start_index:]
         else:
             # Preserve the user's requested From → To order when the GPS file
-            # is recorded in the opposite direction.
-            points = list(reversed(points[end_index:start_index + 1]))
+            # is recorded in the opposite direction, including timestamps
+            # before the To station on that reverse journey.
+            points = list(reversed(points[:start_index + 1]))
     elif not upload.time_from and not upload.time_to and signal_indices:
         start_index = min(index for _, index in signal_indices)
         end_index = max(index for _, index in signal_indices)
