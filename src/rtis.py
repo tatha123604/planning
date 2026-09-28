@@ -35,6 +35,7 @@ ANALYSIS_TYPES = {"passenger": "Passenger Train Analysis", "goods": "Goods Train
 MAX_UPLOAD_MB = 25
 MAX_BYTES = MAX_UPLOAD_MB * 1024 * 1024
 RTIS_RETENTION_DAYS = 2
+RTIS_ANALYSIS_RETENTION_COUNT = 10
 NS = {"s": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
 HEADERS = ("Sr.No.", "Device Id", "Loco No.", "Latitude", "Longitude", "Station",
            "Event Time", "Event Type", "Speed", "Division Code", "Reporting Time",
@@ -637,6 +638,28 @@ def rtis_analysis_page(request: Request, notice: str = "", session: Session = De
     )
 
 
+def prune_rtis_analysis_history(session: Session, keep: int = RTIS_ANALYSIS_RETENTION_COUNT) -> None:
+    """Keep only the newest analysis uploads and their optional primary files."""
+    uploads = session.exec(
+        select(RtisAnalysisUpload).order_by(RtisAnalysisUpload.id.desc())
+    ).all()
+    stale_uploads = uploads[max(0, keep):]
+    if not stale_uploads:
+        return
+    stale_ids = [upload.id for upload in stale_uploads if upload.id is not None]
+    if stale_ids:
+        primary_uploads = session.exec(
+            select(RtisAnalysisPrimaryUpload).where(
+                RtisAnalysisPrimaryUpload.analysis_upload_id.in_(stale_ids)
+            )
+        ).all()
+        for primary_upload in primary_uploads:
+            session.delete(primary_upload)
+    for upload in stale_uploads:
+        session.delete(upload)
+    session.commit()
+
+
 @router.post("/rtis/analysis/upload")
 def rtis_analysis_upload(
     analysis_date: str = Form(""),
@@ -719,6 +742,7 @@ def rtis_analysis_upload(
         if primary_content:
             session.add(RtisAnalysisPrimaryUpload(analysis_upload_id=upload.id or 0, filename=primary_filename, content=primary_content))
             session.commit()
+        prune_rtis_analysis_history(session)
         notice = f"GPS analysis file saved: {filename}."
     except ValueError as exc:
         session.rollback()
