@@ -967,7 +967,9 @@ def rtis_analysis_run(request: Request, upload_id: int = Form(...), session: Ses
     signals = matched_signals
     return templates.TemplateResponse(request=request, name="rtis_analysis_result.html", context={
         "request": request,
-        "active_page": "rtis_analysis", "upload": upload, "points": points[::max(1, len(points) // 2000)],
+        # Keep every GPS point for the map route. Downsampling here removes
+        # the intermediate geometry between two timestamped readings.
+        "active_page": "rtis_analysis", "upload": upload, "points": points,
         "signals": signals, "home_model": home_model,
     })
 
