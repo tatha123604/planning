@@ -26,7 +26,8 @@ stationCodes.forEach(code=>{const option=document.createElement('option');option
 function clearHighlights(){markers.forEach(marker=>marker.getElement().classList.remove('signal-highlight'));}
 function fitAll(){if(bounds.length)map.fitBounds(L.latLngBounds(bounds).pad(.06));else map.setView([22.57,88.36],10);}
 signals.forEach(signal=>{
-  const marker=L.marker([signal.lat,signal.lon],{icon}).addTo(map);
+  const mainLine=String(signal.line||'').toUpperCase().includes('MAIN');
+  const marker=L.marker([signal.lat,signal.lon],{icon,zIndexOffset:mainLine?1000:0}).addTo(map);
   marker.station=String(signal.station||'').trim().toUpperCase();
   const latitude=Number(signal.lat).toFixed(6),longitude=Number(signal.lon).toFixed(6);
   const details=`<strong>${signal.station||'—'}</strong><br>${signal.direction} Home · ${signal.type||'—'}<br>Line: ${signal.line||'—'}<br>Latitude: ${latitude}<br>Longitude: ${longitude}`;
