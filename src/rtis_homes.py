@@ -24,6 +24,44 @@ class RtisHomeModel(SQLModel, table=True):
     mapping_json: str
 
 
+# A source workbook contained a repeated longitude for the UP Home series from
+# TIT through DHN.  Those points form a false straight line and must not be
+# shown in the active model, even when an older model record is selected.
+_BAD_UP_HOME_LONGITUDE = 88.13194333333334
+_BAD_UP_HOME_LATITUDE_MIN = 23.288257 - 0.00001
+_BAD_UP_HOME_LATITUDE_MAX = 23.789305 + 0.00001
+
+
+def _is_known_bad_up_home(home, group):
+    try:
+        longitude = float(home.get('longitude'))
+        latitude = float(home.get('latitude'))
+    except (TypeError, ValueError):
+        return False
+    return (group.get('event') == 'J'
+            and str(home.get('line') or '').strip().upper().startswith('UP')
+            and abs(longitude - _BAD_UP_HOME_LONGITUDE) <= 0.000001
+            and _BAD_UP_HOME_LATITUDE_MIN <= latitude <= _BAD_UP_HOME_LATITUDE_MAX)
+
+
+def _remove_known_bad_home_series(mapping):
+    """Remove the false TIT-to-DHN UP Home series from an existing model."""
+    changed = False
+    cleaned = {}
+    for key, group in mapping.items():
+        homes = [home for home in group.get('homes', []) if not _is_known_bad_up_home(home, group)]
+        if len(homes) != len(group.get('homes', [])):
+            changed = True
+        if not homes:
+            changed = True
+            continue
+        if len(homes) != len(group.get('homes', [])):
+            group = dict(group)
+            group['homes'] = homes
+        cleaned[key] = group
+    return cleaned, changed
+
+
 def _number(value, label):
     try:
         result = float(value)
@@ -165,6 +203,7 @@ def save_home_model(session: Session, filename: str, content: bytes, geofence_po
         mapping = _merge_home_mappings(json.loads(previous_model.mapping_json), incoming_mapping)
     else:
         mapping = incoming_mapping
+    mapping, _ = _remove_known_bad_home_series(mapping)
     if geofence_polygons:
         mapped = enrich_home_model(mapping, geofence_polygons)
     else:
@@ -191,7 +230,18 @@ def save_home_model(session: Session, filename: str, content: bytes, geofence_po
 
 def selected_home_model(session: Session):
     model = session.exec(select(RtisHomeModel).order_by(RtisHomeModel.id.desc())).first()
-    return (model, json.loads(model.mapping_json)) if model else (None, {})
+    if not model:
+        return None, {}
+    mapping, changed = _remove_known_bad_home_series(json.loads(model.mapping_json))
+    if changed:
+        model.mapping_json = json.dumps(mapping)
+        model.signal_count = sum(len(value.get('homes', [])) for value in mapping.values())
+        model.station_count = len({value.get('station') for value in mapping.values() if value.get('station')})
+        model.mapped_station_count = sum(1 for value in mapping.values() if value.get('station_latitude') is not None)
+        session.add(model)
+        session.commit()
+        session.refresh(model)
+    return model, mapping
 
 
 def event_home_details(train_station, event_type, mapping):
