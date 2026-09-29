@@ -28,7 +28,10 @@ function fitAll(){if(bounds.length)map.fitBounds(L.latLngBounds(bounds).pad(.06)
 signals.forEach(signal=>{
   const marker=L.marker([signal.lat,signal.lon],{icon}).addTo(map);
   marker.station=String(signal.station||'').trim().toUpperCase();
-  marker.bindTooltip(`<strong>${signal.station||'—'}</strong><br>${signal.direction} Home · ${signal.type||'—'}<br>Line: ${signal.line||'—'}`,{sticky:true});
+  const latitude=Number(signal.lat).toFixed(6),longitude=Number(signal.lon).toFixed(6);
+  const details=`<strong>${signal.station||'—'}</strong><br>${signal.direction} Home · ${signal.type||'—'}<br>Line: ${signal.line||'—'}<br>Latitude: ${latitude}<br>Longitude: ${longitude}`;
+  marker.bindTooltip(details,{sticky:true});
+  marker.bindPopup(details);
   markers.push(marker); bounds.push([signal.lat,signal.lon]);
 });
 function searchStation(){
