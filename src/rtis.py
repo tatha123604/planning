@@ -983,14 +983,27 @@ def rtis_analysis_run(request: Request, upload_id: int = Form(...), session: Ses
             else:
                 start_index, end_index = min(from_indices), min(to_indices)
         if start_index <= end_index:
-            # Keep the selected leg and continue plotting later timestamps
-            # after the To station so the onward route remains visible.
-            points = points[start_index:]
+            # Keep the selected leg through the first timestamp of the next
+            # station.  Later GPS timestamps belong to a different leg and
+            # should not be plotted for this station-code search.
+            next_station_index = next(
+                (index for index in range(end_index + 1, len(points))
+                 if str(points[index].get('station') or '').strip().upper()
+                 and str(points[index].get('station') or '').strip().upper() != station_to),
+                None,
+            )
+            points = points[start_index:(next_station_index + 1 if next_station_index is not None else end_index + 1)]
         else:
             # Preserve the user's requested From → To order when the GPS file
-            # is recorded in the opposite direction, including timestamps
-            # before the To station on that reverse journey.
-            points = list(reversed(points[:start_index + 1]))
+            # is recorded in the opposite direction. Stop at the first
+            # station encountered after From in the requested reverse order.
+            previous_station_index = next(
+                (index for index in range(start_index - 1, -1, -1)
+                 if str(points[index].get('station') or '').strip().upper()
+                 and str(points[index].get('station') or '').strip().upper() != station_from),
+                end_index,
+            )
+            points = list(reversed(points[previous_station_index:start_index + 1]))
     elif not upload.time_from and not upload.time_to and signal_indices:
         start_index = min(index for _, index in signal_indices)
         end_index = max(index for _, index in signal_indices)
