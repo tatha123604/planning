@@ -602,7 +602,7 @@ def rtis_event_analysis(event_id: int, request: Request, session: Session = Depe
         signals_for_result = []
         seen_signal_keys = set()
         for _, group, home_item in candidates:
-            key = (group.get("event"), home_item.get("latitude"), home_item.get("longitude"))
+            key = (group.get("event"), home_item.get("line", ""), home_item.get("type", ""), home_item.get("latitude"), home_item.get("longitude"))
             if key in seen_signal_keys:
                 continue
             seen_signal_keys.add(key)
@@ -611,7 +611,7 @@ def rtis_event_analysis(event_id: int, request: Request, session: Session = Depe
         signals_for_result = []
         seen_signal_keys = set()
         for _, group, home_item in candidates:
-            key = (group.get("event"), home_item.get("latitude"), home_item.get("longitude"))
+            key = (group.get("event"), home_item.get("line", ""), home_item.get("type", ""), home_item.get("latitude"), home_item.get("longitude"))
             if key in seen_signal_keys:
                 continue
             seen_signal_keys.add(key)
