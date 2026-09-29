@@ -616,7 +616,7 @@ def rtis_event_analysis(event_id: int, request: Request, session: Session = Depe
                 continue
             seen_signal_keys.add(key)
             signals_for_result.append({"station": group.get("station", ""), "event": group.get("event", ""), "label": group.get("label", "FSD Home Signal"), "line": home_item.get("line", ""), "lat": home_item["latitude"], "lon": home_item["longitude"], "speed": event.speed or 0, "time": event.event_time.isoformat(), "active": group.get("event") == event_code})
-    upload = {"filename": f"RTIS event {event.id}", "analysis_date": event.event_time.strftime("%Y-%m-%d"), "train_type": "RTIS event"}
+    upload = {"filename": f"RTIS event {event.id}", "analysis_date": event.event_time.strftime("%Y-%m-%d"), "train_type": "RTIS event", "train_no": event.train or "", "loco_no": event.loco or ""}
     return templates.TemplateResponse(request=request, name="rtis_analysis_result.html", context={"request": request, "active_page": "rtis_analysis", "upload": upload, "points": route_points, "event_down": event_down, "signals": signals_for_result, "event_analysis": True, "event_direction": event_code, "event_direction_known": event_code != "H" or previous_direction_found, "event_markers": [{"lat": event.latitude, "lon": event.longitude, "event": event_code, "label": f"RTIS {event_code} event", "station": event.station, "speed": event.speed or 0, "time": event.event_time.isoformat()}], "home_model": home_model})
 
 
