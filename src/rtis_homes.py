@@ -124,6 +124,26 @@ def enrich_home_model(mapping, geofence_polygons):
     return mapped
 
 
+def _merge_home_mappings(existing_mapping, incoming_mapping):
+    """Union Home/I-Home signals without duplicating existing coordinates."""
+    merged = json.loads(json.dumps(existing_mapping))
+    for key, incoming in incoming_mapping.items():
+        if key not in merged:
+            merged[key] = incoming
+            continue
+        current = merged[key]
+        seen = {
+            (home.get('line', ''), home.get('type', ''), home.get('latitude'), home.get('longitude'))
+            for home in current.get('homes', [])
+        }
+        for home in incoming.get('homes', []):
+            identity = (home.get('line', ''), home.get('type', ''), home.get('latitude'), home.get('longitude'))
+            if identity not in seen:
+                current.setdefault('homes', []).append(home)
+                seen.add(identity)
+    return merged
+
+
 def save_home_model(session: Session, filename: str, content: bytes, geofence_polygons=None):
     if not filename.lower().endswith('.xlsx'):
         raise ValueError('Upload an .xlsx FSD workbook.')
@@ -139,9 +159,24 @@ def save_home_model(session: Session, filename: str, content: bytes, geofence_po
             session.commit()
             session.refresh(existing)
         return existing
-    mapping, signal_count = parse_home_model(content)
-    mapped = enrich_home_model(mapping, geofence_polygons or {})
-    model = RtisHomeModel(filename=filename.replace('\\', '/').split('/')[-1], digest=digest,
+    incoming_mapping, _ = parse_home_model(content)
+    previous_model = session.exec(select(RtisHomeModel).order_by(RtisHomeModel.id.desc())).first()
+    if previous_model:
+        mapping = _merge_home_mappings(json.loads(previous_model.mapping_json), incoming_mapping)
+    else:
+        mapping = incoming_mapping
+    if geofence_polygons:
+        mapped = enrich_home_model(mapping, geofence_polygons)
+    else:
+        for value in mapping.values():
+            for home in value.get('homes', []):
+                home.setdefault('distance_m', None)
+        mapped = sum(1 for value in mapping.values() if value.get('station_latitude') is not None)
+    signal_count = sum(len(value.get('homes', [])) for value in mapping.values())
+    model_name = filename.replace('\\', '/').split('/')[-1]
+    if previous_model:
+        model_name = f"Combined: {previous_model.filename} + {model_name}"
+    model = RtisHomeModel(filename=model_name, digest=digest,
                            signal_count=signal_count, station_count=len({v['station'] for v in mapping.values()}),
                            mapped_station_count=mapped, mapping_json=json.dumps(mapping))
     try:
