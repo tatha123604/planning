@@ -30,6 +30,7 @@ class RtisHomeModel(SQLModel, table=True):
 _BAD_UP_HOME_LONGITUDE = 88.13194333333334
 _BAD_UP_HOME_LATITUDE_MIN = 23.288257 - 0.00001
 _BAD_UP_HOME_LATITUDE_MAX = 23.789305 + 0.00001
+_NEARBY_DUPLICATE_HOME_METERS = 100.0
 
 
 def _is_known_bad_up_home(home, group):
@@ -60,6 +61,35 @@ def _remove_known_bad_home_series(mapping):
             group['homes'] = homes
         cleaned[key] = group
     return cleaned, changed
+
+
+def _remove_nearby_duplicate_homes(mapping):
+    """Keep the first (oldest) nearby signal for a station and line."""
+    changed = False
+    for group in mapping.values():
+        kept = []
+        for home in group.get('homes', []):
+            line = str(home.get('line') or '').strip().upper()
+            signal_type = str(home.get('type') or '').strip().upper()
+            duplicate = False
+            for previous in kept:
+                if line != str(previous.get('line') or '').strip().upper():
+                    continue
+                if signal_type != str(previous.get('type') or '').strip().upper():
+                    continue
+                try:
+                    distance = _haversine_m(float(home['latitude']), float(home['longitude']),
+                                            float(previous['latitude']), float(previous['longitude']))
+                except (KeyError, TypeError, ValueError):
+                    continue
+                if distance <= _NEARBY_DUPLICATE_HOME_METERS:
+                    duplicate = True
+                    changed = True
+                    break
+            if not duplicate:
+                kept.append(home)
+        group['homes'] = kept
+    return mapping, changed
 
 
 def _number(value, label):
@@ -204,6 +234,7 @@ def save_home_model(session: Session, filename: str, content: bytes, geofence_po
     else:
         mapping = incoming_mapping
     mapping, _ = _remove_known_bad_home_series(mapping)
+    mapping, _ = _remove_nearby_duplicate_homes(mapping)
     if geofence_polygons:
         mapped = enrich_home_model(mapping, geofence_polygons)
     else:
@@ -233,6 +264,8 @@ def selected_home_model(session: Session):
     if not model:
         return None, {}
     mapping, changed = _remove_known_bad_home_series(json.loads(model.mapping_json))
+    mapping, duplicate_changed = _remove_nearby_duplicate_homes(mapping)
+    changed = changed or duplicate_changed
     if changed:
         model.mapping_json = json.dumps(mapping)
         model.signal_count = sum(len(value.get('homes', [])) for value in mapping.values())
