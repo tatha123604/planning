@@ -813,7 +813,13 @@ def _rtis_analysis_points(content: bytes, upload: RtisAnalysisUpload) -> tuple[l
             continue
         if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
             continue
-        timestamp = str(row.get(fields["logging time"]) or "").strip()
+        raw_timestamp = row.get(fields["logging time"])
+        if isinstance(raw_timestamp, datetime):
+            # Excel may display only date + HH:MM while retaining seconds in
+            # the underlying serial value. Always serialize the full value.
+            timestamp = raw_timestamp.strftime("%d-%m-%Y %H:%M:%S")
+        else:
+            timestamp = str(raw_timestamp or "").strip()
         parsed_timestamp = _parse_gps_timestamp(timestamp)
         if upload.analysis_date and parsed_timestamp is not None:
             if parsed_timestamp.date().isoformat() != upload.analysis_date:
