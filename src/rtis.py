@@ -490,7 +490,7 @@ def rtis_analysis_excel(division: str = "ALL", day: str = "", event: str = "HJK"
     if selected_model:
         headers = (*headers, "Train Name", "HQ OF CREW")
     if home_model:
-        headers = (*headers, "Home Signal", "Home Distance (m)")
+        headers = (*headers, "Home Signal", "Estimated Home Distance (m)")
     rows = ([row.event_time.isoformat(sep=" "), row.division, row.station, row.event_type,
              row.train, row.loco, str(row.speed) if row.speed is not None else ""] +
             ([train_names[row.train]['name'], train_names[row.train]['hq']] if selected_model else []) +
