@@ -259,8 +259,11 @@ def save_home_model(session: Session, filename: str, content: bytes, geofence_po
     return model
 
 
-def selected_home_model(session: Session):
-    model = session.exec(select(RtisHomeModel).order_by(RtisHomeModel.id.desc())).first()
+def selected_home_model(session: Session, model_id: int = 0):
+    if model_id:
+        model = session.get(RtisHomeModel, model_id)
+    else:
+        model = session.exec(select(RtisHomeModel).order_by(RtisHomeModel.id.desc())).first()
     if not model:
         return None, {}
     mapping, changed = _remove_known_bad_home_series(json.loads(model.mapping_json))

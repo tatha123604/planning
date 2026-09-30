@@ -388,8 +388,8 @@ def rtis_ordering(sort_by="event_time", sort_order="desc"):
 
 
 @router.get("/rtis/home-model/map")
-def rtis_home_model_map(request: Request, session: Session = Depends(get_session)):
-    home_model, mapping = selected_home_model(session)
+def rtis_home_model_map(request: Request, home_model_id: int = 0, session: Session = Depends(get_session)):
+    home_model, mapping = selected_home_model(session, home_model_id)
     if not home_model:
         raise HTTPException(400, "Upload an FSD home signal model first.")
     signals = []
@@ -398,14 +398,15 @@ def rtis_home_model_map(request: Request, session: Session = Depends(get_session
             if home.get("latitude") is None or home.get("longitude") is None:
                 continue
             signals.append({"station": value.get("station", ""), "direction": "UP" if value.get("event") == "J" else "DOWN", "event": value.get("event", ""), "type": home.get("type", ""), "line": home.get("line", ""), "lat": home["latitude"], "lon": home["longitude"]})
-    return templates.TemplateResponse(request=request, name="rtis_home_map.html", context={"request": request, "active_page": "rtis", "home_model": home_model, "signals": signals})
+    home_models = session.exec(select(RtisHomeModel).order_by(RtisHomeModel.id.desc())).all()
+    return templates.TemplateResponse(request=request, name="rtis_home_map.html", context={"request": request, "active_page": "rtis", "home_model": home_model, "home_models": home_models, "home_model_id": home_model.id, "signals": signals})
 
 
 @router.get("/rtis")
 def rtis_page(request: Request, division: str = "ALL", day: str = "", event: str = "HJK",
               page: int = 1, analysis: str = "passenger", view: str = "classified",
               speed: str = "", time_from: str = "", time_to: str = "", train_no: str = "", station: str = "", home_station: str = "", train_name: str = "", loco_no: str = "", sort_by: str = "event_time", sort_order: str = "desc",
-              model_id: int = 0,
+              model_id: int = 0, home_model_id: int = 0,
               session: Session = Depends(get_session)):
     train_no = train_no.strip()
     station = station.strip()
@@ -416,7 +417,7 @@ def rtis_page(request: Request, division: str = "ALL", day: str = "", event: str
         raise HTTPException(400, "FSD station search must be 100 characters or fewer.")
     ordering = rtis_ordering(sort_by, sort_order)
     selected_model, train_names = selected_train_model(session, model_id, analysis)
-    home_model, home_mapping = selected_home_model(session)
+    home_model, home_mapping = selected_home_model(session, home_model_id)
     home_signal_rows = []
     for value in home_mapping.values():
         for home in value.get("homes", []):
@@ -455,6 +456,8 @@ def rtis_page(request: Request, division: str = "ALL", day: str = "", event: str
         "event": event, "counts": counts, "rows": rows, "total": total, "history": history,
         "page": page, "pages": pages,
         "model_id": model_id, "selected_model": selected_model, "train_names": train_names,
+        "home_model_id": home_model.id if home_model else 0,
+        "home_models": session.exec(select(RtisHomeModel).order_by(RtisHomeModel.id.desc())).all(),
         "home_model": home_model, "home_details": {row.id: event_home_details(row.station, row.event_type, home_mapping) for row in rows},
         "home_signal_rows": home_signal_rows,
         "home_signal_match_count": home_signal_match_count,
@@ -466,9 +469,9 @@ def rtis_page(request: Request, division: str = "ALL", day: str = "", event: str
         "train_name": train_name, "loco_no": loco_no,
         "sort_by": sort_by, "sort_order": sort_order,
         "train_name_options": sorted({str(value.get("name", "")).strip() for value in train_names.values() if value.get("name")}),
-        "division_query": urlencode({"day": day, "event": event, "analysis": analysis, "view": view, "speed": speed, "time_from": time_from, "time_to": time_to, "train_no": train_no, "station": station, "train_name": train_name, "loco_no": loco_no, "sort_by": sort_by, "sort_order": sort_order, "model_id": model_id}),
-        "switch_query": urlencode({"division": division, "day": day, "event": event, "speed": speed, "time_from": time_from, "time_to": time_to, "train_no": train_no, "station": station, "sort_by": sort_by, "sort_order": sort_order}),
-        "query": urlencode({"division": division, "day": day, "event": event, "analysis": analysis, "view": view, "speed": speed, "time_from": time_from, "time_to": time_to, "train_no": train_no, "station": station, "train_name": train_name, "loco_no": loco_no, "sort_by": sort_by, "sort_order": sort_order, "model_id": model_id}),
+        "division_query": urlencode({"day": day, "event": event, "analysis": analysis, "view": view, "speed": speed, "time_from": time_from, "time_to": time_to, "train_no": train_no, "station": station, "train_name": train_name, "loco_no": loco_no, "sort_by": sort_by, "sort_order": sort_order, "model_id": model_id, "home_model_id": home_model.id if home_model else 0}),
+        "switch_query": urlencode({"division": division, "day": day, "event": event, "speed": speed, "time_from": time_from, "time_to": time_to, "train_no": train_no, "station": station, "sort_by": sort_by, "sort_order": sort_order, "home_model_id": home_model.id if home_model else 0}),
+        "query": urlencode({"division": division, "day": day, "event": event, "analysis": analysis, "view": view, "speed": speed, "time_from": time_from, "time_to": time_to, "train_no": train_no, "station": station, "train_name": train_name, "loco_no": loco_no, "sort_by": sort_by, "sort_order": sort_order, "model_id": model_id, "home_model_id": home_model.id if home_model else 0}),
         "notice": request.query_params.get("notice", ""),
     })
 
@@ -477,10 +480,10 @@ def rtis_page(request: Request, division: str = "ALL", day: str = "", event: str
 def rtis_analysis_excel(division: str = "ALL", day: str = "", event: str = "HJK",
                         analysis: str = "passenger", view: str = "classified", speed: str = "",
                         time_from: str = "", time_to: str = "", train_no: str = "", station: str = "", train_name: str = "", loco_no: str = "", sort_by: str = "event_time", sort_order: str = "desc",
-                        model_id: int = 0,
+                        model_id: int = 0, home_model_id: int = 0,
                         session: Session = Depends(get_session)):
     selected_model, train_names = selected_train_model(session, model_id, analysis)
-    home_model, home_mapping = selected_home_model(session)
+    home_model, home_mapping = selected_home_model(session, home_model_id)
     ordering = rtis_ordering(sort_by, sort_order)
     filters, _, _ = analysis_filters(division, day, event, analysis, view, speed, time_from, time_to, train_no, station, train_names if selected_model else None, train_name, loco_no)
     events = session.exec(select(RtisEvent).where(*filters)
@@ -513,7 +516,7 @@ def _rtis_ssts_geofences():
 
 
 @router.get("/rtis/event-analysis/{event_id}")
-def rtis_event_analysis(event_id: int, request: Request, session: Session = Depends(get_session)):
+def rtis_event_analysis(event_id: int, request: Request, home_model_id: int = 0, session: Session = Depends(get_session)):
     def error_page(message: str, status_code: int = 400):
         response = templates.TemplateResponse(request=request, name="rtis_analysis_error.html", context={"request": request, "active_page": "rtis", "message": message})
         response.status_code = status_code
@@ -523,7 +526,7 @@ def rtis_event_analysis(event_id: int, request: Request, session: Session = Depe
         return error_page("RTIS event not found.", 404)
     if event.latitude is None or event.longitude is None:
         return error_page("This RTIS event has no latitude/longitude in the uploaded file.")
-    home_model, mapping = selected_home_model(session)
+    home_model, mapping = selected_home_model(session, home_model_id)
     if not home_model:
         return error_page("Upload an FSD signal model before running analysis.")
     candidates = []
@@ -617,7 +620,8 @@ def rtis_event_analysis(event_id: int, request: Request, session: Session = Depe
             seen_signal_keys.add(key)
             signals_for_result.append({"station": group.get("station", ""), "event": group.get("event", ""), "label": group.get("label", "FSD Home Signal"), "line": home_item.get("line", ""), "lat": home_item["latitude"], "lon": home_item["longitude"], "speed": event.speed or 0, "time": event.event_time.isoformat(), "active": group.get("event") == event_code})
     upload = {"filename": f"RTIS event {event.id}", "analysis_date": event.event_time.strftime("%Y-%m-%d"), "train_type": "RTIS event", "train_no": event.train or "", "loco_no": event.loco or ""}
-    return templates.TemplateResponse(request=request, name="rtis_analysis_result.html", context={"request": request, "active_page": "rtis_analysis", "upload": upload, "points": route_points, "event_down": event_down, "signals": signals_for_result, "event_analysis": True, "event_direction": event_code, "event_direction_known": event_code != "H" or previous_direction_found, "event_markers": [{"lat": event.latitude, "lon": event.longitude, "event": event_code, "label": f"RTIS {event_code} event", "station": event.station, "speed": event.speed or 0, "time": event.event_time.isoformat()}], "home_model": home_model})
+    home_models = session.exec(select(RtisHomeModel).order_by(RtisHomeModel.id.desc())).all()
+    return templates.TemplateResponse(request=request, name="rtis_analysis_result.html", context={"request": request, "active_page": "rtis_analysis", "upload": upload, "points": route_points, "event_down": event_down, "signals": signals_for_result, "event_analysis": True, "event_id": event.id, "event_direction": event_code, "event_direction_known": event_code != "H" or previous_direction_found, "event_markers": [{"lat": event.latitude, "lon": event.longitude, "event": event_code, "label": f"RTIS {event_code} event", "station": event.station, "speed": event.speed or 0, "time": event.event_time.isoformat()}], "home_model": home_model, "home_models": home_models, "home_model_id": home_model.id})
 
 
 @router.get("/rtis/analysis")
@@ -626,6 +630,7 @@ def rtis_analysis_page(request: Request, notice: str = "", session: Session = De
         select(RtisAnalysisUpload).order_by(RtisAnalysisUpload.id.desc()).limit(20)
     ).all()
     home_model, _ = selected_home_model(session)
+    home_models = session.exec(select(RtisHomeModel).order_by(RtisHomeModel.id.desc())).all()
     return templates.TemplateResponse(
         request=request,
         name="rtis_analysis.html",
@@ -634,6 +639,8 @@ def rtis_analysis_page(request: Request, notice: str = "", session: Session = De
             "notice": notice,
             "uploads": uploads,
             "home_model": home_model,
+            "home_models": home_models,
+            "home_model_id": home_model.id if home_model else 0,
         },
     )
 
@@ -868,7 +875,7 @@ def _infer_gps_metadata(filename: str, content: bytes) -> dict[str, str]:
 
 
 @router.post("/rtis/analysis/run")
-def rtis_analysis_run(request: Request, upload_id: int = Form(...), session: Session = Depends(get_session)):
+def rtis_analysis_run(request: Request, upload_id: int = Form(...), home_model_id: int = Form(0), session: Session = Depends(get_session)):
     upload = session.get(RtisAnalysisUpload, upload_id)
     if upload is None:
         raise HTTPException(404, "Analysis upload not found.")
@@ -917,7 +924,7 @@ def rtis_analysis_run(request: Request, upload_id: int = Form(...), session: Ses
         except ValueError:
             pass
     points.sort(key=lambda point: point.get("time", ""))
-    home_model, mapping = selected_home_model(session)
+    home_model, mapping = selected_home_model(session, home_model_id)
     signals = []
     for value in mapping.values():
         for home in value.get("homes", []):
@@ -1022,12 +1029,14 @@ def rtis_analysis_run(request: Request, upload_id: int = Form(...), session: Ses
             signal.update(speed=nearest["speed"], time=nearest["time"])
             matched_signals.append(signal)
     signals = matched_signals
+    home_models = session.exec(select(RtisHomeModel).order_by(RtisHomeModel.id.desc())).all()
     return templates.TemplateResponse(request=request, name="rtis_analysis_result.html", context={
         "request": request,
         # Keep every GPS point for the map route. Downsampling here removes
         # the intermediate geometry between two timestamped readings.
         "active_page": "rtis_analysis", "upload": upload, "points": points,
-        "signals": signals, "home_model": home_model,
+        "signals": signals, "home_model": home_model, "home_models": home_models,
+        "home_model_id": home_model.id if home_model else 0,
     })
 
 
@@ -1054,11 +1063,11 @@ def rtis_home_model_upload(home_file: UploadFile = File(...), division: str = Fo
 
 
 @router.get("/rtis/home-model.xlsx")
-def rtis_home_model_excel(home_station: str = "", session: Session = Depends(get_session)):
+def rtis_home_model_excel(home_station: str = "", home_model_id: int = 0, session: Session = Depends(get_session)):
     home_station = home_station.strip().upper()
     if len(home_station) > 100:
         raise HTTPException(400, "FSD station search must be 100 characters or fewer.")
-    home_model, mapping = selected_home_model(session)
+    home_model, mapping = selected_home_model(session, home_model_id)
     if home_model is None:
         raise HTTPException(404, "No FSD home signal model has been uploaded.")
     rows = []

@@ -3,6 +3,7 @@
 {% block content %}
 <header><div><h1>FSD Home Signals Map</h1><p>{{ home_model.filename }} · {{ signals|length }} mapped home signals</p></div><div class="header-actions"><a class="ghost small" href="/rtis">Back to RTIS</a></div></header>
 <section class="card fsd-home-map-card">
+  {% if home_models %}<form method="get" action="/rtis/home-model/map" class="home-model-map-picker"><label>Home signal model<select name="home_model_id" onchange="this.form.submit()">{% for model in home_models %}<option value="{{ model.id }}" {{ 'selected' if home_model_id == model.id else '' }}>{{ model.filename }} — {{ model.signal_count }} signals</option>{% endfor %}</select></label></form>{% endif %}
   <div class="home-map-search" role="search">
     <input id="home-map-station" list="home-map-stations" type="search" placeholder="Station code" aria-label="Station code" autocomplete="off">
     <datalist id="home-map-stations"></datalist>
@@ -53,6 +54,8 @@ fitAll();
 </script>
 <style>
 .fsd-home-map-card{position:relative}
+.home-model-map-picker{position:absolute;z-index:1000;left:14px;top:14px;padding:8px;background:rgba(15,23,42,.94);border:1px solid #334155;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.28)}
+.home-model-map-picker label{display:flex;flex-direction:column;gap:5px;color:#f8fafc;font-weight:700}.home-model-map-picker select{min-width:280px;padding:7px;border-radius:7px}
 .home-map-search{position:absolute;z-index:1000;right:14px;top:14px;display:flex;gap:8px;padding:8px;background:rgba(15,23,42,.94);border:1px solid #334155;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.28)}
 .home-map-search input{width:180px;padding:8px 10px;border:1px solid #64748b;border-radius:7px;background:#0f172a;color:#f8fafc}
 .home-map-search input::placeholder{color:#94a3b8}
