@@ -212,7 +212,7 @@ def _merge_home_mappings(existing_mapping, incoming_mapping):
     return merged
 
 
-def save_home_model(session: Session, filename: str, content: bytes, geofence_polygons=None):
+def save_home_model(session: Session, filename: str, content: bytes, geofence_polygons=None, merge_existing: bool = True):
     if not filename.lower().endswith('.xlsx'):
         raise ValueError('Upload an .xlsx FSD workbook.')
     digest = sha256(content).hexdigest()
@@ -228,7 +228,7 @@ def save_home_model(session: Session, filename: str, content: bytes, geofence_po
             session.refresh(existing)
         return existing
     incoming_mapping, _ = parse_home_model(content)
-    previous_model = session.exec(select(RtisHomeModel).order_by(RtisHomeModel.id.desc())).first()
+    previous_model = session.exec(select(RtisHomeModel).order_by(RtisHomeModel.id.desc())).first() if merge_existing else None
     if previous_model:
         mapping = _merge_home_mappings(json.loads(previous_model.mapping_json), incoming_mapping)
     else:

@@ -1048,16 +1048,16 @@ def rtis_analysis_run(request: Request, upload_id: int = Form(...), home_model_i
 
 @router.post("/rtis/home-model/upload")
 def rtis_home_model_upload(home_file: UploadFile = File(...), division: str = Form("ALL"),
-                           return_to: str = Form("rtis"),
+                           separate_model: str = Form(""), return_to: str = Form("rtis"),
                            session: Session = Depends(get_session)):
     if division not in (*DIVISIONS, "ALL"):
         raise HTTPException(400, "Invalid division.")
     try:
         content = home_file.file.read(MAX_BYTES + 1)
-        model = save_home_model(session, home_file.filename or '', content, _rtis_ssts_geofences())
+        model = save_home_model(session, home_file.filename or '', content, _rtis_ssts_geofences(), merge_existing=not bool(separate_model))
         mapped = f"{model.mapped_station_count} station mappings" if model.mapped_station_count else "SSTS station coordinates unavailable; distances will appear after a successful SSTS sync"
         params = {"division": division, "analysis": "passenger",
-                  "notice": f"FSD home model saved: {model.signal_count} signals, {mapped}."}
+                  "notice": f"FSD home model saved as {'separate' if separate_model else 'merged'} model: {model.signal_count} signals, {mapped}."}
     except ValueError as exc:
         session.rollback()
         params = {"division": division, "analysis": "passenger", "notice": f"FSD home model not saved: {exc}"}
