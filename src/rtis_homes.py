@@ -125,7 +125,7 @@ def parse_home_model(content: bytes):
                 station = str(row[indexes['STATION']] or '').strip().upper()
                 direction = str(row[indexes['DIRN']] or '').strip().upper()
                 signal_type = str(row[indexes['TYPE']] or '').strip()
-                if not station or not direction or signal_type.upper() not in ('HOME', 'I/HOME'):
+                if not station or not direction or signal_type.upper() not in ('HOME', 'I/HOME', 'INT HOME'):
                     continue
                 if direction.startswith('UP'):
                     event = 'J'
