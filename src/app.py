@@ -59,7 +59,6 @@ from .models import (
 from .seed import seed_all
 from .rtis import router as rtis_router
 from .table_pdf import _build_table_pdf_bytes, _normalize_export_text
-from processor import build_sheet2_df, build_summary_df
 
 BASE_PATH = Path(__file__).resolve().parent.parent
 GOOGLE_EMPLOYEE_STATION_TABS = ["North", "South", "KOAA", "DDJ", "RHA", "NH", "BT"]
@@ -11355,6 +11354,11 @@ async def upload_li_grading(
             )
         if upload_kind == "cli_matrix":
             report_date = infer_report_date(filename) or date.today()
+            # Keep pandas out of the web process until this spreadsheet-only
+            # report is requested. Importing it at startup adds avoidable RAM
+            # to every idle replica.
+            from processor import build_sheet2_df, build_summary_df
+
             summary_df = build_summary_df(content)
             overdue_df = build_sheet2_df(content)
             _save_cli_matrix_snapshots(session, report_date, summary_df, overdue_df)
