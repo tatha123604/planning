@@ -1093,23 +1093,6 @@ def rtis_home_model_excel(home_station: str = "", home_model_id: int = 0, sessio
                     headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 
-@router.post("/rtis/home-model/{model_id}/delete")
-def rtis_home_model_delete(model_id: int, division: str = Form("ALL"),
-                           analysis: str = Form("passenger"),
-                           session: Session = Depends(get_session)):
-    if division not in (*DIVISIONS, "ALL"):
-        raise HTTPException(400, "Invalid division.")
-    model = session.get(RtisHomeModel, model_id)
-    if model is None:
-        raise HTTPException(404, "FSD home signal model was not found.")
-    filename = model.filename
-    session.delete(model)
-    session.commit()
-    params = {"division": division, "analysis": analysis,
-              "notice": f"FSD home model deleted: {filename}."}
-    return RedirectResponse('/rtis?' + urlencode(params), status_code=303)
-
-
 @router.post("/rtis/train-model/upload")
 def rtis_model_upload(model_file: UploadFile = File(...), division: str = Form("ALL"),
                       session: Session = Depends(get_session)):
