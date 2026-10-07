@@ -28,7 +28,10 @@ from sqlmodel import Field, SQLModel, Session, select
 from .db import get_session
 from .rtis_exports import build_rtis_excel, build_rtis_pdf
 from .rtis_train_models import RtisTrainModel, save_train_model, selected_train_model
-from .rtis_homes import RtisHomeModel, event_home_details, save_home_model, selected_home_model
+from .rtis_homes import (
+    RtisHomeModel, _remove_known_bad_home_series, _remove_nearby_duplicate_homes,
+    enrich_home_model, event_home_details, save_home_model, selected_home_model,
+)
 
 DIVISIONS = ("SDAH", "HWH", "ASN", "MLDT")
 FOCUS_EVENTS = ("H", "J", "K")
@@ -393,18 +396,85 @@ def rtis_ordering(sort_by="event_time", sort_order="desc"):
 
 
 @router.get("/rtis/home-model/map")
-def rtis_home_model_map(request: Request, home_model_id: int = 0, session: Session = Depends(get_session)):
+def rtis_home_model_map(request: Request, home_model_id: int = 0, notice: str = "", session: Session = Depends(get_session)):
     home_model, mapping = selected_home_model(session, home_model_id)
     if not home_model:
         raise HTTPException(400, "Upload an FSD home signal model first.")
     signals = []
-    for value in mapping.values():
-        for home in value.get("homes", []):
+    for group_key, value in mapping.items():
+        for home_index, home in enumerate(value.get("homes", [])):
             if home.get("latitude") is None or home.get("longitude") is None:
                 continue
-            signals.append({"station": value.get("station", ""), "direction": "UP" if value.get("event") == "J" else "DOWN", "event": value.get("event", ""), "type": home.get("type", ""), "line": home.get("line", ""), "lat": home["latitude"], "lon": home["longitude"]})
+            signals.append({"key": group_key, "home_index": home_index, "station": value.get("station", ""), "direction": "UP" if value.get("event") == "J" else "DOWN", "event": value.get("event", ""), "type": home.get("type", ""), "line": home.get("line", ""), "lat": home["latitude"], "lon": home["longitude"]})
     home_models = session.exec(select(RtisHomeModel).order_by(RtisHomeModel.id.desc())).all()
-    return templates.TemplateResponse(request=request, name="rtis_home_map.html", context={"request": request, "active_page": "rtis", "home_model": home_model, "home_models": home_models, "home_model_id": home_model.id, "signals": signals})
+    return templates.TemplateResponse(request=request, name="rtis_home_map.html", context={"request": request, "active_page": "rtis", "home_model": home_model, "home_models": home_models, "home_model_id": home_model.id, "signals": signals, "notice": notice})
+
+
+def _persist_home_model_mapping(session: Session, model: RtisHomeModel, mapping: dict) -> None:
+    mapping, _ = _remove_known_bad_home_series(mapping)
+    mapping, _ = _remove_nearby_duplicate_homes(mapping)
+    model.mapping_json = json.dumps(mapping)
+    model.signal_count = sum(len(value.get("homes", [])) for value in mapping.values())
+    model.station_count = len({value.get("station") for value in mapping.values() if value.get("station")})
+    model.mapped_station_count = sum(1 for value in mapping.values() if value.get("station_latitude") is not None)
+    session.add(model)
+    session.commit()
+
+
+@router.post("/rtis/home-model/{model_id}/signal/save")
+def rtis_home_signal_save(model_id: int, station: str = Form(""), dirn: str = Form(""), signal_type: str = Form("Home"),
+                          latitude: str = Form(""), longitude: str = Form(""), group_key: str = Form(""),
+                          home_index: str = Form(""), session: Session = Depends(get_session)):
+    model = session.get(RtisHomeModel, model_id)
+    if model is None:
+        raise HTTPException(404, "FSD home signal model was not found.")
+    station = station.strip().upper()
+    dirn = " ".join(dirn.strip().upper().split())
+    signal_type = " ".join(signal_type.strip().split())
+    if not station or not dirn.startswith(("UP", "DN")) or signal_type.upper() not in ("HOME", "I/HOME", "INT HOME"):
+        raise HTTPException(400, "Station, DIRN and a valid Home type are required.")
+    try:
+        lat, lon = float(latitude), float(longitude)
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Latitude and Longitude must be numbers.") from None
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        raise HTTPException(400, "Latitude or Longitude is out of range.")
+    mapping = json.loads(model.mapping_json)
+    old_key = group_key.strip()
+    old_index = int(home_index) if home_index.strip().isdigit() else None
+    if old_key and old_key in mapping and old_index is not None and old_index < len(mapping[old_key].get("homes", [])):
+        old_group = mapping[old_key]
+        home = old_group["homes"].pop(old_index)
+        if not old_group["homes"]:
+            mapping.pop(old_key, None)
+    event = "J" if dirn.startswith("UP") else "K"
+    new_key = f"{station}|{event}"
+    group = mapping.setdefault(new_key, {"station": station, "event": event, "label": "UP HOME" if event == "J" else "DOWN HOME", "homes": []})
+    group["station"] = station
+    group["event"] = event
+    group["homes"].append({"line": dirn, "type": signal_type, "latitude": lat, "longitude": lon, "distance_m": None})
+    enrich_home_model(mapping, _rtis_ssts_geofences())
+    _persist_home_model_mapping(session, model, mapping)
+    return RedirectResponse(f"/rtis/home-model/map?home_model_id={model_id}&notice=Signal+saved", status_code=303)
+
+
+@router.post("/rtis/home-model/{model_id}/signal/delete")
+def rtis_home_signal_delete(model_id: int, group_key: str = Form(""), home_index: str = Form(""), session: Session = Depends(get_session)):
+    model = session.get(RtisHomeModel, model_id)
+    if model is None:
+        raise HTTPException(404, "FSD home signal model was not found.")
+    if not group_key or not home_index.strip().isdigit():
+        raise HTTPException(400, "Select a Home signal first.")
+    mapping = json.loads(model.mapping_json)
+    index = int(home_index)
+    group = mapping.get(group_key)
+    if not group or index >= len(group.get("homes", [])):
+        raise HTTPException(404, "Home signal was not found.")
+    group["homes"].pop(index)
+    if not group["homes"]:
+        mapping.pop(group_key, None)
+    _persist_home_model_mapping(session, model, mapping)
+    return RedirectResponse(f"/rtis/home-model/map?home_model_id={model_id}&notice=Signal+deleted", status_code=303)
 
 
 @router.get("/rtis")
