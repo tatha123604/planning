@@ -1152,7 +1152,7 @@ def rtis_home_model_upload(home_file: UploadFile = File(...), division: str = Fo
 
 
 @router.get("/rtis/home-model.xlsx")
-def rtis_home_model_excel(home_station: str = "", home_model_id: int = 0, mapped_only: int = 0, session: Session = Depends(get_session)):
+def rtis_home_model_excel(home_station: str = "", home_model_id: int = 0, mapped_only: int = 1, session: Session = Depends(get_session)):
     home_station = home_station.strip().upper()
     if len(home_station) > 100:
         raise HTTPException(400, "FSD station search must be 100 characters or fewer.")
