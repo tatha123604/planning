@@ -8,6 +8,7 @@
     <input id="home-map-station" list="home-map-stations" type="search" placeholder="Station code" aria-label="Station code" autocomplete="off">
     <datalist id="home-map-stations"></datalist>
     <button id="home-map-search-button" class="primary small" type="button">Search</button>
+    <button id="home-map-fullscreen-button" class="ghost small" type="button">Full screen</button>
   </div>
   <div id="fsd-home-map" style="height:82vh;min-height:620px;border-radius:12px"></div>
 </section>
@@ -23,6 +24,8 @@ const markers=[];
 const stationCodes=[...new Set(signals.map(signal=>String(signal.station||'').trim().toUpperCase()).filter(Boolean))].sort();
 const stationInput=document.getElementById('home-map-station');
 const stationList=document.getElementById('home-map-stations');
+const mapCard=document.querySelector('.fsd-home-map-card');
+const fullscreenButton=document.getElementById('home-map-fullscreen-button');
 stationCodes.forEach(code=>{const option=document.createElement('option');option.value=code;stationList.appendChild(option);});
 function clearHighlights(){markers.forEach(marker=>marker.getElement().classList.remove('signal-highlight'));}
 function fitAll(){if(bounds.length)map.fitBounds(L.latLngBounds(bounds).pad(.06));else map.setView([22.57,88.36],10);}
@@ -50,10 +53,15 @@ function searchStation(){
 document.getElementById('home-map-search-button').addEventListener('click',searchStation);
 stationInput.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();searchStation();}});
 stationInput.addEventListener('input',()=>{if(!stationInput.value.trim()){stationInput.setCustomValidity('');clearHighlights();fitAll();}});
+function updateFullscreenButton(){fullscreenButton.textContent=document.fullscreenElement===mapCard?'Exit full screen':'Full screen';setTimeout(()=>map.invalidateSize(),80);}
+fullscreenButton.addEventListener('click',async()=>{try{if(document.fullscreenElement===mapCard){await document.exitFullscreen();}else if(mapCard.requestFullscreen){await mapCard.requestFullscreen();}}catch(error){console.warn('Map full screen unavailable',error);}});
+document.addEventListener('fullscreenchange',updateFullscreenButton);
 fitAll();
 </script>
 <style>
 .fsd-home-map-card{position:relative}
+.fsd-home-map-card:fullscreen{width:100vw;height:100vh;margin:0;padding:0;background:#0b1220;border-radius:0;overflow:hidden}
+.fsd-home-map-card:fullscreen #fsd-home-map{height:100vh!important;min-height:100vh!important;border-radius:0!important}
 .home-model-map-picker{position:absolute;z-index:1000;left:14px;top:14px;padding:8px;background:rgba(15,23,42,.94);border:1px solid #334155;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.28)}
 .home-model-map-picker label{display:flex;flex-direction:column;gap:5px;color:#f8fafc;font-weight:700}.home-model-map-picker select{min-width:280px;padding:7px;border-radius:7px}
 .home-map-search{position:absolute;z-index:1000;right:14px;top:14px;display:flex;gap:8px;padding:8px;background:rgba(15,23,42,.94);border:1px solid #334155;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.28)}
@@ -65,6 +73,6 @@ fitAll();
 .rail-signal-icon .lamp.red{background:#991b1b}.rail-signal-icon .lamp.yellow{background:#a16207}.rail-signal-icon .lamp.green{background:#166534}
 .rail-signal-icon.signal-highlight{z-index:1000;transform:scale(1.22)}
 .rail-signal-icon.signal-highlight span{box-shadow:0 0 0 2px #f8fafc,0 0 12px 4px rgba(250,204,21,.9)}
-@media(max-width:640px){.home-map-search{left:10px;right:10px;top:10px}.home-map-search input{flex:1;width:auto}}
+@media(max-width:640px){.home-map-search{left:10px;right:10px;top:10px}.home-map-search input{flex:1;width:auto}.home-map-search button{padding-left:7px;padding-right:7px}}
 </style>
 {% endblock %}
