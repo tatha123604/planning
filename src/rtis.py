@@ -20,8 +20,9 @@ from openpyxl import load_workbook
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import Column, LargeBinary, UniqueConstraint, func
+from sqlalchemy import Column, LargeBinary, UniqueConstraint, delete, func
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import load_only
 from sqlmodel import Field, SQLModel, Session, select
 
 from .db import get_session
@@ -262,7 +263,11 @@ def import_rtis(session: Session, filename: str, content: bytes, division: str) 
     try:
         session.add(upload)
         session.flush()
-        session.add_all([RtisEvent(upload_id=upload.id, **row) for row in new])
+        # Insert in bounded batches so a large workbook does not create a second
+        # full list of ORM objects in memory before the commit.
+        for offset in range(0, len(new), 1000):
+            session.add_all([RtisEvent(upload_id=upload.id, **row) for row in new[offset:offset + 1000]])
+            session.flush()
         session.commit()
     except IntegrityError:
         session.rollback()
@@ -277,13 +282,13 @@ def prune_rtis_history(session: Session) -> None:
     if latest is None:
         return
     cutoff = latest.date() - timedelta(days=RTIS_RETENTION_DAYS - 1)
-    old_events = session.exec(select(RtisEvent).where(RtisEvent.event_time < datetime.combine(cutoff, clock_time.min))).all()
-    if not old_events:
+    cutoff_time = datetime.combine(cutoff, clock_time.min)
+    old_upload_ids = set(session.exec(
+        select(RtisEvent.upload_id).where(RtisEvent.event_time < cutoff_time).distinct()
+    ).all())
+    if not old_upload_ids:
         return
-    old_upload_ids = {event.upload_id for event in old_events}
-    for event in old_events:
-        session.delete(event)
-    session.flush()
+    session.exec(delete(RtisEvent).where(RtisEvent.event_time < cutoff_time))
     for upload_id in old_upload_ids:
         if session.exec(select(RtisEvent.id).where(RtisEvent.upload_id == upload_id)).first() is None:
             upload = session.get(RtisUpload, upload_id)
@@ -442,7 +447,11 @@ def rtis_page(request: Request, division: str = "ALL", day: str = "", event: str
     total = session.exec(select(func.count()).select_from(RtisEvent).where(*filters)).one()
     pages = max(1, (total + 99) // 100)
     page = min(max(1, page), pages)
-    rows = session.exec(select(RtisEvent).where(*filters).order_by(*ordering).offset((page - 1) * 100).limit(100)).all()
+    rows = session.exec(select(RtisEvent).options(load_only(
+        RtisEvent.id, RtisEvent.event_time, RtisEvent.division, RtisEvent.station,
+        RtisEvent.event_type, RtisEvent.train, RtisEvent.loco, RtisEvent.speed,
+        RtisEvent.latitude, RtisEvent.longitude, RtisEvent.upload_id
+    )).where(*filters).order_by(*ordering).offset((page - 1) * 100).limit(100)).all()
     # Select metadata only, never all the stored workbooks while rendering the page.
     history_filter = RtisUpload.division.in_(DIVISIONS) if division == "ALL" else RtisUpload.division == division
     history = session.exec(select(RtisUpload.id, RtisUpload.filename, RtisUpload.uploaded_at, RtisUpload.division,
@@ -552,7 +561,11 @@ def rtis_event_analysis(event_id: int, request: Request, home_model_id: int = 0,
         same_route_query = same_route_query.where(RtisEvent.train == event.train)
     else:
         same_route_query = same_route_query.where(RtisEvent.loco == event.loco)
-    route_events = session.exec(same_route_query.order_by(RtisEvent.event_time)).all()
+    route_events = session.exec(same_route_query.options(load_only(
+        RtisEvent.id, RtisEvent.event_time, RtisEvent.division, RtisEvent.station,
+        RtisEvent.event_type, RtisEvent.train, RtisEvent.loco, RtisEvent.speed,
+        RtisEvent.latitude, RtisEvent.longitude
+    )).order_by(RtisEvent.event_time)).all()
     route_points = [
         {"lat": row.latitude, "lon": row.longitude, "speed": row.speed or 0, "time": row.event_time.isoformat(), "station": row.station}
         for row in route_events if row.latitude is not None and row.longitude is not None
