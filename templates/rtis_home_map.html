@@ -10,7 +10,7 @@
     <datalist id="home-map-stations"></datalist>
     <button id="home-map-search-button" class="primary small" type="button">Search</button>
     <button id="home-map-fullscreen-button" class="ghost small" type="button">Full screen</button>
-    <a id="home-map-download" class="ghost small" href="/rtis/home-model.xlsx?home_model_id={{ home_model_id }}&amp;mapped_only=1">Download visible model</a>
+    <a id="home-map-download" class="ghost small" href="/rtis/home-model.xlsx?home_model_id={{ home_model_id }}&amp;mapped_only=1">Download full updated model</a>
   </div>
   <div id="fsd-home-map" style="height:82vh;min-height:620px;border-radius:12px"></div>
 </section>
@@ -58,7 +58,6 @@ signals.forEach(signal=>{
 });
 function searchStation(){
   const code=stationInput.value.trim().toUpperCase();
-  downloadLink.href=`/rtis/home-model.xlsx?home_model_id={{ home_model_id }}&mapped_only=1${code?`&home_station=${encodeURIComponent(code)}`:''}`;
   stationInput.setCustomValidity('');
   if(!code){clearHighlights();fitAll();return;}
   const matches=markers.filter(marker=>marker.station===code);
@@ -71,7 +70,6 @@ function searchStation(){
 document.getElementById('home-map-search-button').addEventListener('click',searchStation);
 stationInput.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();searchStation();}});
 stationInput.addEventListener('input',()=>{if(!stationInput.value.trim()){stationInput.setCustomValidity('');clearHighlights();fitAll();}});
-stationInput.addEventListener('input',()=>{const code=stationInput.value.trim().toUpperCase();downloadLink.href=`/rtis/home-model.xlsx?home_model_id={{ home_model_id }}&mapped_only=1${code?`&home_station=${encodeURIComponent(code)}`:''}`;});
 const editorForm=document.getElementById('home-signal-form');
 const editorDelete=document.getElementById('home-signal-delete');
 const editorSave=document.getElementById('home-signal-save');
