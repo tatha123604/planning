@@ -33,7 +33,7 @@
 const signals={{ signals|tojson }};
 const map=L.map('fsd-home-map');
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
-const icon=L.divIcon({className:'rail-signal-icon',html:'<span><i class="lamp red"></i><i class="lamp yellow"></i><i class="lamp green"></i></span>',iconSize:[24,44],iconAnchor:[12,42]});
+const icon=L.divIcon({className:'rail-signal-icon',html:'<span><i class="lamp yellow"></i></span>',iconSize:[24,30],iconAnchor:[12,28]});
 const bounds=[];
 const markers=[];
 const stationCodes=[...new Set(signals.map(signal=>String(signal.station||'').trim().toUpperCase()).filter(Boolean))].sort();
@@ -92,9 +92,8 @@ fitAll();
 .home-map-search input{width:180px;padding:8px 10px;border:1px solid #64748b;border-radius:7px;background:#0f172a;color:#f8fafc}
 .home-map-search input::placeholder{color:#94a3b8}
 .rail-signal-icon{background:transparent;border:0;transition:transform .2s}
-.rail-signal-icon span{display:block;width:14px;height:35px;margin:0 auto;background:#111827;border:2px solid #000;border-radius:8px 8px 2px 2px;box-shadow:0 0 0 2px #f8fafc}
-.rail-signal-icon .lamp{display:block;width:8px;height:8px;margin:3px auto;border-radius:50%;border:1px solid rgba(255,255,255,.45);background:#111827}
-.rail-signal-icon .lamp.red{background:#991b1b}.rail-signal-icon .lamp.yellow{background:#a16207}.rail-signal-icon .lamp.green{background:#166534}
+.rail-signal-icon span{display:block;width:14px;height:22px;margin:0 auto;background:#111827;border:2px solid #000;border-radius:8px 8px 2px 2px;box-shadow:0 0 0 2px #facc15,0 0 12px 3px rgba(250,204,21,.85)}
+.rail-signal-icon .lamp{display:block;width:9px;height:9px;margin:5px auto;border-radius:50%;border:1px solid #fff7ad;background:#facc15;box-shadow:0 0 8px 2px rgba(250,204,21,.95)}
 .rail-signal-icon.signal-highlight{z-index:1000;transform:scale(1.22)}
 .rail-signal-icon.signal-highlight span{box-shadow:0 0 0 2px #f8fafc,0 0 12px 4px rgba(250,204,21,.9)}
 @media(max-width:900px){.map-signal-editor .rtis-form{grid-template-columns:repeat(2,minmax(140px,1fr))}}@media(max-width:640px){.home-map-search{left:10px;right:10px;top:10px}.home-map-search input{flex:1;width:auto}.home-map-search button{padding-left:7px;padding-right:7px}.map-signal-editor .rtis-form{grid-template-columns:1fr}}
