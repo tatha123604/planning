@@ -99,7 +99,7 @@
       <section class="card">
         <h2>FSD Home Signals Map</h2>
         <p class="hint">View every home signal from the active FSD model on an interactive OpenStreetMap. Search by station code and focus the map on that station.</p>
-        <a class="primary small" href="/rtis/home-model/map?home_model_id={{ home_model_id }}">Open FSD Home Signals Map</a>
+        <a class="primary small fsd-map-link" href="/rtis/home-model/map?home_model_id={{ home_model_id }}">Open FSD Home Signals Map</a>
       </section>
       <details class="card collapsible" id="fsd-coordinates" {% if home_station %}open{% endif %}>
         <summary>FSD Home signal coordinates <span class="collapse-count">(<span id="fsd-match-count">{{ home_signal_match_count }}</span> signals)</span></summary>

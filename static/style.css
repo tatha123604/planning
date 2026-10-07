@@ -786,6 +786,7 @@ ul { padding-left: 18px; margin: 6px 0; }
 .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
 .actions-cell { white-space: nowrap; min-width: 116px; }
 .ghost.small, .danger.small { padding: 6px 10px; font-size: 12px; }
+.fsd-map-link { color: #facc15 !important; }
 .sensitive-inline-form {
   align-items: flex-end;
   gap: 12px;
