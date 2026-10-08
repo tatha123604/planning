@@ -454,6 +454,8 @@ def rtis_home_signal_save(model_id: int, station: str = Form(""), dirn: str = Fo
         raise HTTPException(404, "FSD home signal model was not found.")
     station = station.strip().upper()
     dirn = " ".join(dirn.strip().upper().split())
+    if dirn.startswith("DOWN"):
+        dirn = "DN" + dirn[4:]
     signal_type = " ".join(signal_type.strip().split())
     if not station or not dirn.startswith(("UP", "DN")) or signal_type.upper() not in ("HOME", "I/HOME", "INT HOME"):
         raise HTTPException(400, "Station, DIRN and a valid Home type are required.")
@@ -473,11 +475,16 @@ def rtis_home_signal_save(model_id: int, station: str = Form(""), dirn: str = Fo
     group = mapping.setdefault(new_key, {"station": station, "event": event, "label": "UP HOME" if event == "J" else "DOWN HOME", "homes": []})
     group["station"] = station
     group["event"] = event
+    before_count = sum(len(value.get("homes", [])) for value in mapping.values())
     group["homes"].append({"line": dirn, "type": signal_type, "latitude": lat, "longitude": lon, "distance_m": None})
     enrich_home_model(mapping, _rtis_ssts_geofences())
     _persist_home_model_mapping(session, model, mapping)
     action = "updated" if was_edit else "added"
-    notice = urlencode({"home_model_id": model_id, "notice": f"Signal {action}. Total signals: {model.signal_count}"})
+    if not was_edit and model.signal_count == before_count:
+        message = f"Signal was not added because a nearby duplicate already exists. Total signals: {model.signal_count}"
+    else:
+        message = f"Signal {action}. Total signals: {model.signal_count}"
+    notice = urlencode({"home_model_id": model_id, "notice": message})
     return RedirectResponse(f"/rtis/home-model/map?{notice}", status_code=303)
 
 
