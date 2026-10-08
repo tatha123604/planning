@@ -48,7 +48,8 @@ function clearHighlights(){markers.forEach(marker=>marker.getElement().classList
 function fitAll(){if(bounds.length)map.fitBounds(L.latLngBounds(bounds).pad(.06));else map.setView([22.57,88.36],10);}
 signals.forEach(signal=>{
   const mainLine=String(signal.line||'').toUpperCase().includes('MAIN');
-  const marker=L.marker([signal.lat,signal.lon],{icon,draggable:false,zIndexOffset:mainLine?1000:0}).addTo(map);
+  const marker=L.marker([signal.lat,signal.lon],{icon,draggable:true,zIndexOffset:mainLine?1000:0}).addTo(map);
+  marker.dragging.disable();
   marker.station=String(signal.station||'').trim().toUpperCase();
   const latitude=Number(signal.lat).toFixed(6),longitude=Number(signal.lon).toFixed(6);
   const signalIndex=signals.indexOf(signal);
