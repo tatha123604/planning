@@ -462,6 +462,7 @@ def rtis_home_signal_save(model_id: int, station: str = Form(""), dirn: str = Fo
     mapping = json.loads(model.mapping_json)
     old_key = group_key.strip()
     old_index = int(home_index) if home_index.strip().isdigit() else None
+    was_edit = bool(old_key and old_index is not None)
     if old_key and old_key in mapping and old_index is not None and old_index < len(mapping[old_key].get("homes", [])):
         old_group = mapping[old_key]
         home = old_group["homes"].pop(old_index)
@@ -475,7 +476,9 @@ def rtis_home_signal_save(model_id: int, station: str = Form(""), dirn: str = Fo
     group["homes"].append({"line": dirn, "type": signal_type, "latitude": lat, "longitude": lon, "distance_m": None})
     enrich_home_model(mapping, _rtis_ssts_geofences())
     _persist_home_model_mapping(session, model, mapping)
-    return RedirectResponse(f"/rtis/home-model/map?home_model_id={model_id}&notice=Signal+saved", status_code=303)
+    action = "updated" if was_edit else "added"
+    notice = urlencode({"home_model_id": model_id, "notice": f"Signal {action}. Total signals: {model.signal_count}"})
+    return RedirectResponse(f"/rtis/home-model/map?{notice}", status_code=303)
 
 
 @router.post("/rtis/home-model/{model_id}/signal/delete")
@@ -494,7 +497,8 @@ def rtis_home_signal_delete(model_id: int, group_key: str = Form(""), home_index
     if not group["homes"]:
         mapping.pop(group_key, None)
     _persist_home_model_mapping(session, model, mapping)
-    return RedirectResponse(f"/rtis/home-model/map?home_model_id={model_id}&notice=Signal+deleted", status_code=303)
+    notice = urlencode({"home_model_id": model_id, "notice": f"Signal deleted. Total signals: {model.signal_count}"})
+    return RedirectResponse(f"/rtis/home-model/map?{notice}", status_code=303)
 
 
 @router.get("/rtis")
