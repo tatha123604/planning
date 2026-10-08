@@ -47,6 +47,30 @@ HEADERS = ("Sr.No.", "Device Id", "Loco No.", "Latitude", "Longitude", "Station"
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent.parent / "templates"))
 IST = ZoneInfo("Asia/Kolkata")
+
+
+def _parse_map_coordinate(value: str, label: str, maximum: float) -> float:
+    """Parse decimal degrees or railway DDMM.mmm coordinates from the map form."""
+    try:
+        raw = float(str(value).strip())
+    except (TypeError, ValueError):
+        raise HTTPException(400, f"{label} must be a number.") from None
+    if not math.isfinite(raw):
+        raise HTTPException(400, f"{label} must be a finite number.")
+    if abs(raw) <= maximum:
+        return raw
+    sign = -1.0 if raw < 0 else 1.0
+    absolute = abs(raw)
+    degrees = math.floor(absolute / 100)
+    minutes = absolute - degrees * 100
+    if minutes >= 60 or degrees > maximum:
+        raise HTTPException(400, f"{label} must be decimal degrees or DDMM.mmm format.")
+    converted = sign * (degrees + minutes / 60)
+    if abs(converted) > maximum:
+        raise HTTPException(400, f"{label} is out of range.")
+    return converted
+
+
 def format_ist(value):
     if not value:
         return ""
@@ -433,12 +457,8 @@ def rtis_home_signal_save(model_id: int, station: str = Form(""), dirn: str = Fo
     signal_type = " ".join(signal_type.strip().split())
     if not station or not dirn.startswith(("UP", "DN")) or signal_type.upper() not in ("HOME", "I/HOME", "INT HOME"):
         raise HTTPException(400, "Station, DIRN and a valid Home type are required.")
-    try:
-        lat, lon = float(latitude), float(longitude)
-    except (TypeError, ValueError):
-        raise HTTPException(400, "Latitude and Longitude must be numbers.") from None
-    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
-        raise HTTPException(400, "Latitude or Longitude is out of range.")
+    lat = _parse_map_coordinate(latitude, "Latitude", 90)
+    lon = _parse_map_coordinate(longitude, "Longitude", 180)
     mapping = json.loads(model.mapping_json)
     old_key = group_key.strip()
     old_index = int(home_index) if home_index.strip().isdigit() else None

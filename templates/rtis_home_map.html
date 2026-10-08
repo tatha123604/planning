@@ -16,15 +16,15 @@
 </section>
 <section class="card map-signal-editor" id="map-signal-editor">
   <h2>Home signal editor</h2>
-  <p class="hint">Select a signal on the map to edit or delete it. Leave the selection blank to add a new signal.</p>
+  <p class="hint">Select a signal on the map to edit or delete it. Leave the selection blank to add a new signal. Latitude/Longitude accepts decimal degrees or DDMM.mmm (for example 2237.651).</p>
   <form method="post" action="/rtis/home-model/{{ home_model_id }}/signal/save" class="rtis-form" id="home-signal-form">
     <input type="hidden" name="group_key" id="home-signal-group-key" />
     <input type="hidden" name="home_index" id="home-signal-index" />
     <label>Station<input name="station" id="home-signal-station" required maxlength="20" /></label>
     <label>DIRN<input name="dirn" id="home-signal-dirn" placeholder="UP MAIN LINE / DN MAIN LINE" required maxlength="100" /></label>
     <label>TYPE<select name="signal_type" id="home-signal-type"><option>Home</option><option>I/Home</option><option>INT Home</option></select></label>
-    <label>Latitude<input name="latitude" id="home-signal-latitude" type="number" step="any" required /></label>
-    <label>Longitude<input name="longitude" id="home-signal-longitude" type="number" step="any" required /></label>
+    <label>Latitude<input name="latitude" id="home-signal-latitude" type="number" step="any" inputmode="decimal" placeholder="22.627517 or 2237.651" required /></label>
+    <label>Longitude<input name="longitude" id="home-signal-longitude" type="number" step="any" inputmode="decimal" placeholder="88.392817 or 8823.569" required /></label>
     <div class="editor-actions"><button class="primary small" type="submit" id="home-signal-save">Add signal</button><button class="danger small" type="button" id="home-signal-delete" hidden>Delete selected</button><button class="ghost small" type="button" id="home-signal-clear">Clear / new signal</button></div>
   </form>
 </section>
