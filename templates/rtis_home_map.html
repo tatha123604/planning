@@ -48,12 +48,23 @@ function clearHighlights(){markers.forEach(marker=>marker.getElement().classList
 function fitAll(){if(bounds.length)map.fitBounds(L.latLngBounds(bounds).pad(.06));else map.setView([22.57,88.36],10);}
 signals.forEach(signal=>{
   const mainLine=String(signal.line||'').toUpperCase().includes('MAIN');
-  const marker=L.marker([signal.lat,signal.lon],{icon,zIndexOffset:mainLine?1000:0}).addTo(map);
+  const marker=L.marker([signal.lat,signal.lon],{icon,draggable:false,zIndexOffset:mainLine?1000:0}).addTo(map);
   marker.station=String(signal.station||'').trim().toUpperCase();
   const latitude=Number(signal.lat).toFixed(6),longitude=Number(signal.lon).toFixed(6);
-  const details=`<strong>${signal.station||'—'}</strong><br>${signal.direction} Home · ${signal.type||'—'}<br>Line: ${signal.line||'—'}<br>Latitude: ${latitude}<br>Longitude: ${longitude}<br><button type="button" class="map-edit-signal" data-signal-index="${signals.indexOf(signal)}">Edit signal</button>`;
+  const signalIndex=signals.indexOf(signal);
+  const details=`<strong>${signal.station||'—'}</strong><br>${signal.direction} Home · ${signal.type||'—'}<br>Line: ${signal.line||'—'}<br>Latitude: ${latitude}<br>Longitude: ${longitude}<br><button type="button" class="map-edit-signal" data-signal-index="${signalIndex}">Edit signal</button> <button type="button" class="map-drag-signal" data-signal-index="${signalIndex}">Drag signal</button>`;
   marker.bindTooltip(details,{sticky:true});
   marker.bindPopup(details);
+  marker.on('dragend',()=>{
+    const point=marker.getLatLng();
+    signal.lat=point.lat;signal.lon=point.lng;
+    document.getElementById('home-signal-latitude').value=point.lat.toFixed(8);
+    document.getElementById('home-signal-longitude').value=point.lng.toFixed(8);
+    const updatedDetails=`<strong>${signal.station||'—'}</strong><br>${signal.direction} Home · ${signal.type||'—'}<br>Line: ${signal.line||'—'}<br>Latitude: ${point.lat.toFixed(6)}<br>Longitude: ${point.lng.toFixed(6)}<br><button type="button" class="map-edit-signal" data-signal-index="${signalIndex}">Edit signal</button> <button type="button" class="map-fix-signal primary" data-signal-index="${signalIndex}">Fix signal</button>`;
+    marker.bindTooltip(updatedDetails,{sticky:true});
+    marker.bindPopup(updatedDetails);
+    marker.openPopup();
+  });
   markers.push(marker); bounds.push([signal.lat,signal.lon]);
 });
 function searchStation(){
@@ -76,6 +87,8 @@ const editorSave=document.getElementById('home-signal-save');
 function clearSignalEditor(){editorForm.reset();document.getElementById('home-signal-group-key').value='';document.getElementById('home-signal-index').value='';editorSave.textContent='Add signal';editorDelete.hidden=true;}
 function selectSignal(index){const signal=signals[index];if(!signal)return;document.getElementById('home-signal-group-key').value=signal.key;document.getElementById('home-signal-index').value=signal.home_index;document.getElementById('home-signal-station').value=signal.station||'';document.getElementById('home-signal-dirn').value=signal.line||'';document.getElementById('home-signal-type').value=signal.type||'Home';document.getElementById('home-signal-latitude').value=signal.lat;document.getElementById('home-signal-longitude').value=signal.lon;editorSave.textContent='Save changes';editorDelete.hidden=false;document.getElementById('map-signal-editor').scrollIntoView({behavior:'smooth',block:'center'});}
 document.addEventListener('click',event=>{const button=event.target.closest('.map-edit-signal');if(button){event.preventDefault();selectSignal(Number(button.dataset.signalIndex));}});
+document.addEventListener('click',event=>{const button=event.target.closest('.map-drag-signal');if(!button)return;event.preventDefault();const index=Number(button.dataset.signalIndex),marker=markers[index];if(!marker)return;selectSignal(index);marker.dragging.enable();button.textContent='Fix signal';button.classList.add('primary');button.classList.remove('map-drag-signal');button.classList.add('map-fix-signal');});
+document.addEventListener('click',event=>{const button=event.target.closest('.map-fix-signal');if(!button)return;event.preventDefault();const index=Number(button.dataset.signalIndex),marker=markers[index];if(marker)marker.dragging.disable();editorForm.requestSubmit();});
 document.getElementById('home-signal-clear').addEventListener('click',clearSignalEditor);
 editorDelete.addEventListener('click',()=>{if(!confirm('Delete this Home signal from the selected model?'))return;const form=document.createElement('form');form.method='post';form.action='/rtis/home-model/{{ home_model_id }}/signal/delete';[['group_key',document.getElementById('home-signal-group-key').value],['home_index',document.getElementById('home-signal-index').value]].forEach(([name,value])=>{const input=document.createElement('input');input.type='hidden';input.name=name;input.value=value;form.appendChild(input);});document.body.appendChild(form);form.submit();});
 function updateFullscreenButton(){fullscreenButton.textContent=document.fullscreenElement===mapCard?'Exit full screen':'Full screen';setTimeout(()=>map.invalidateSize(),80);}
