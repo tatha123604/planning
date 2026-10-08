@@ -64,7 +64,7 @@ def _remove_known_bad_home_series(mapping):
 
 
 def _remove_nearby_duplicate_homes(mapping):
-    """Keep the first (oldest) nearby signal for a station and line."""
+    """Keep the first nearby signal, including exact cross-line repeats."""
     changed = False
     for group in mapping.values():
         kept = []
@@ -73,16 +73,19 @@ def _remove_nearby_duplicate_homes(mapping):
             signal_type = str(home.get('type') or '').strip().upper()
             duplicate = False
             for previous in kept:
-                if line != str(previous.get('line') or '').strip().upper():
-                    continue
                 if signal_type != str(previous.get('type') or '').strip().upper():
                     continue
+                previous_line = str(previous.get('line') or '').strip().upper()
                 try:
                     distance = _haversine_m(float(home['latitude']), float(home['longitude']),
                                             float(previous['latitude']), float(previous['longitude']))
                 except (KeyError, TypeError, ValueError):
                     continue
-                if distance <= _NEARBY_DUPLICATE_HOME_METERS:
+                # Different line labels at the exact same coordinate represent
+                # one physical signal; retain the first source row. For the
+                # same line, keep the existing 100 m proximity cleanup.
+                threshold = 1.0 if line != previous_line else _NEARBY_DUPLICATE_HOME_METERS
+                if distance <= threshold:
                     duplicate = True
                     changed = True
                     break
