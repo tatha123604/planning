@@ -33,7 +33,10 @@
 <script>
 const signals={{ signals|tojson }};
 const map=L.map('fsd-home-map');
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
+const fallbackTiles=L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{maxZoom:20,attribution:'&copy; OpenStreetMap &copy; CARTO'});
+const baseTiles=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
+let fallbackShown=false;
+baseTiles.on('tileerror',()=>{if(!fallbackShown){fallbackShown=true;fallbackTiles.addTo(map);}});
 const icon=L.divIcon({className:'rail-signal-icon',html:'<span><i class="lamp red"></i><i class="lamp yellow"></i><i class="lamp green"></i></span>',iconSize:[24,44],iconAnchor:[12,42]});
 const bounds=[];
 const markers=[];
@@ -96,6 +99,7 @@ function updateFullscreenButton(){fullscreenButton.textContent=document.fullscre
 fullscreenButton.addEventListener('click',async()=>{try{if(document.fullscreenElement===mapCard){await document.exitFullscreen();}else if(mapCard.requestFullscreen){await mapCard.requestFullscreen();}}catch(error){console.warn('Map full screen unavailable',error);}});
 document.addEventListener('fullscreenchange',updateFullscreenButton);
 fitAll();
+setTimeout(()=>map.invalidateSize(),150);
 const focusParams=new URLSearchParams(window.location.search);
 const focusLat=Number(focusParams.get('focus_lat')),focusLon=Number(focusParams.get('focus_lon'));
 if(Number.isFinite(focusLat)&&Number.isFinite(focusLon)){
