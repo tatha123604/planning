@@ -33,8 +33,8 @@
 <script>
 const signals={{ signals|tojson }};
 const map=L.map('fsd-home-map');
-const fallbackTiles=L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{maxZoom:20,attribution:'&copy; OpenStreetMap &copy; CARTO'});
-const baseTiles=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
+const fallbackTiles=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap contributors'});
+const baseTiles=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'&copy; Esri'}).addTo(map);
 let fallbackShown=false;
 baseTiles.on('tileerror',()=>{if(!fallbackShown){fallbackShown=true;fallbackTiles.addTo(map);}});
 const icon=L.divIcon({className:'rail-signal-icon',html:'<span><i class="lamp red"></i><i class="lamp yellow"></i><i class="lamp green"></i></span>',iconSize:[24,44],iconAnchor:[12,42]});
