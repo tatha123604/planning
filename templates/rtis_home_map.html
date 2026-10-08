@@ -1,7 +1,7 @@
 {% extends "rtis.html" %}
 {% block title %}FSD Home Signals Map{% endblock %}
 {% block content %}
-<header><div><h1>FSD Home Signals Map</h1><p>{{ home_model.filename }} · {{ signals|length }} mapped home signals</p></div><div class="header-actions"><a class="ghost small" href="/rtis">Back to RTIS</a></div></header>
+<header><div><h1>FSD Home Signals Map</h1><p>{{ home_model.filename }} · <strong>Total signals: {{ signals|length }}</strong></p></div><div class="header-actions"><a class="ghost small" href="/rtis">Back to RTIS</a></div></header>
 <section class="card fsd-home-map-card">
   {% if notice %}<p class="notice">{{ notice }}</p>{% endif %}
   {% if home_models %}<form method="get" action="/rtis/home-model/map" class="home-model-map-picker"><label>Home signal model<select id="home-map-model-select" name="home_model_id" onchange="this.form.submit()">{% for model in home_models %}<option value="{{ model.id }}" {{ 'selected' if home_model_id == model.id else '' }}>{{ model.filename }} — {{ model.signal_count }} signals</option>{% endfor %}</select></label></form><form id="home-map-model-delete-form" method="post" action="/rtis/home-model/{{ home_model_id }}/delete" class="home-model-delete-form"><button class="danger small" type="submit">Delete selected model</button></form><script>document.getElementById('home-map-model-delete-form')?.addEventListener('submit',event=>{const id=document.getElementById('home-map-model-select')?.value;if(!id){event.preventDefault();return;}event.currentTarget.action='/rtis/home-model/'+encodeURIComponent(id)+'/delete';if(!confirm('Delete the selected FSD home signal model?'))event.preventDefault();});</script>{% endif %}
@@ -15,7 +15,7 @@
   <div id="fsd-home-map" style="height:82vh;min-height:620px;border-radius:12px"></div>
 </section>
 <section class="card map-signal-editor" id="map-signal-editor">
-  <h2>Home signal editor</h2>
+  <h2>Home signal editor <span class="signal-total-badge">Total signals: {{ signals|length }}</span></h2>
   <p class="hint">Select a signal on the map to edit or delete it. Leave the selection blank to add a new signal. Latitude/Longitude accepts decimal degrees or DDMM.mmm (for example 2237.651).</p>
   <form method="post" action="/rtis/home-model/{{ home_model_id }}/signal/save" class="rtis-form" id="home-signal-form">
     <input type="hidden" name="group_key" id="home-signal-group-key" />
@@ -87,7 +87,7 @@ fitAll();
 .fsd-home-map-card{position:relative}
 .fsd-home-map-card:fullscreen{width:100vw;height:100vh;margin:0;padding:0;background:#0b1220;border-radius:0;overflow:hidden}
 .fsd-home-map-card:fullscreen #fsd-home-map{height:100vh!important;min-height:100vh!important;border-radius:0!important}
-.map-signal-editor{margin-top:16px}.map-signal-editor h2{margin-top:0}.map-signal-editor .rtis-form{display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));align-items:end;gap:10px}.map-signal-editor label{display:flex;flex-direction:column;gap:5px;font-weight:700}.map-signal-editor input,.map-signal-editor select{padding:8px;border:1px solid #64748b;border-radius:7px;background:#0f172a;color:#f8fafc}.editor-actions{grid-column:1/-1;display:flex;gap:8px}.map-edit-signal{margin-top:6px;padding:4px 8px;border:1px solid #94a3b8;border-radius:5px;background:#1e293b;color:#f8fafc;cursor:pointer}
+.map-signal-editor{margin-top:16px}.map-signal-editor h2{margin-top:0}.signal-total-badge{font-size:.75em;color:#facc15;margin-left:8px}.map-signal-editor .rtis-form{display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));align-items:end;gap:10px}.map-signal-editor label{display:flex;flex-direction:column;gap:5px;font-weight:700}.map-signal-editor input,.map-signal-editor select{padding:8px;border:1px solid #64748b;border-radius:7px;background:#0f172a;color:#f8fafc}.editor-actions{grid-column:1/-1;display:flex;gap:8px}.map-edit-signal{margin-top:6px;padding:4px 8px;border:1px solid #94a3b8;border-radius:5px;background:#1e293b;color:#f8fafc;cursor:pointer}
 .home-model-map-picker{position:absolute;z-index:1000;left:14px;top:14px;padding:8px;background:rgba(15,23,42,.94);border:1px solid #334155;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.28)}
 .home-model-delete-form{position:absolute;z-index:1000;left:14px;top:104px}
 .home-model-map-picker label{display:flex;flex-direction:column;gap:5px;color:#f8fafc;font-weight:700}.home-model-map-picker select{min-width:280px;padding:7px;border-radius:7px}
