@@ -82,6 +82,13 @@ function updateFullscreenButton(){fullscreenButton.textContent=document.fullscre
 fullscreenButton.addEventListener('click',async()=>{try{if(document.fullscreenElement===mapCard){await document.exitFullscreen();}else if(mapCard.requestFullscreen){await mapCard.requestFullscreen();}}catch(error){console.warn('Map full screen unavailable',error);}});
 document.addEventListener('fullscreenchange',updateFullscreenButton);
 fitAll();
+const focusParams=new URLSearchParams(window.location.search);
+const focusLat=Number(focusParams.get('focus_lat')),focusLon=Number(focusParams.get('focus_lon'));
+if(Number.isFinite(focusLat)&&Number.isFinite(focusLon)){
+  let nearestIndex=-1,nearestDistance=Infinity;
+  signals.forEach((signal,index)=>{const distance=(Number(signal.lat)-focusLat)**2+(Number(signal.lon)-focusLon)**2;if(distance<nearestDistance){nearestDistance=distance;nearestIndex=index;}});
+  if(nearestIndex>=0){const target=markers[nearestIndex];map.setView([focusLat,focusLon],Math.max(map.getZoom(),16),{animate:true});target.getElement().classList.add('signal-highlight');target.openPopup();}
+}
 </script>
 <style>
 .fsd-home-map-card{position:relative}

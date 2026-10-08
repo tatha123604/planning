@@ -484,7 +484,10 @@ def rtis_home_signal_save(model_id: int, station: str = Form(""), dirn: str = Fo
         message = f"Signal was not added because a nearby duplicate already exists. Total signals: {model.signal_count}"
     else:
         message = f"Signal {action}. Total signals: {model.signal_count}"
-    notice = urlencode({"home_model_id": model_id, "notice": message})
+    notice_values = {"home_model_id": model_id, "notice": message}
+    if model.signal_count > before_count or was_edit:
+        notice_values.update({"focus_lat": f"{lat:.8f}", "focus_lon": f"{lon:.8f}"})
+    notice = urlencode(notice_values)
     return RedirectResponse(f"/rtis/home-model/map?{notice}", status_code=303)
 
 
