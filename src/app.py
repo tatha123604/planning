@@ -763,7 +763,7 @@ SSTS_PF_REPORT_CACHE_TTL_MINUTES = 20
 SSTS_PF_ANALYSIS_TASK_TTL_MINUTES = 180
 SSTS_PF_CACHE_MAX_ENTRIES = 8
 SSTS_PF_POSITIONS_CACHE_MAX_ENTRIES = 12
-SSTS_PF_COUNSELLING_LOOKBACK_DAYS = 7
+SSTS_PF_COUNSELLING_LOOKBACK_DAYS = 3
 SSTS_PF_COUNSELLING_SPEED_THRESHOLD = 42
 SSTS_PF_SMART_ENTRY_DISTANCE_TARGET_M = 265
 SSTS_PF_SMART_ENTRY_DISTANCE_TOLERANCE_M = 25
@@ -3064,7 +3064,14 @@ def _save_ssts_pf_counselling_history(report_day: date, rows: list[dict[str, obj
             session.delete(existing)
         for history_row in history_rows:
             session.add(history_row)
+        cutoff_day = report_day - timedelta(days=SSTS_PF_COUNSELLING_LOOKBACK_DAYS - 1)
+        stale_rows = session.exec(
+            select(SstsPfCounsellingHistory).where(SstsPfCounsellingHistory.report_date < cutoff_day)
+        ).all()
+        for stale_row in stale_rows:
+            session.delete(stale_row)
         session.commit()
+    compact_database()
 
 
 def _history_row_to_pf_counselling_detail(row: SstsPfCounsellingHistory) -> dict[str, object]:
@@ -3247,7 +3254,14 @@ def _save_ssts_pf_daily_source_statistics(report_day: date, rows: list[dict[str,
                 **statistics,
             )
         )
+        cutoff_day = report_day - timedelta(days=SSTS_PF_COUNSELLING_LOOKBACK_DAYS - 1)
+        stale_rows = session.exec(
+            select(SstsPfDailyAnalysisStats).where(SstsPfDailyAnalysisStats.report_date < cutoff_day)
+        ).all()
+        for stale_row in stale_rows:
+            session.delete(stale_row)
         session.commit()
+    compact_database()
 
 
 def _load_ssts_pf_daily_source_statistics(start_day: date, end_day: date) -> list[dict[str, object]]:
