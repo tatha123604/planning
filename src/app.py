@@ -763,7 +763,7 @@ SSTS_PF_REPORT_CACHE_TTL_MINUTES = 20
 SSTS_PF_ANALYSIS_TASK_TTL_MINUTES = 180
 SSTS_PF_COUNSELLING_LOOKBACK_DAYS = 7
 SSTS_PF_COUNSELLING_SPEED_THRESHOLD = 42
-SSTS_PF_SMART_ENTRY_DISTANCE_TARGET_M = 210
+SSTS_PF_SMART_ENTRY_DISTANCE_TARGET_M = 265
 SSTS_PF_SMART_ENTRY_DISTANCE_TOLERANCE_M = 25
 SSTS_EXCLUDED_RAKE_NAMES = {"TEST1", "TEST2"}
 SSTS_PF_SPIKE_FILTER_TRAIN_OVERRIDES: dict[str, set[str]] = {
@@ -2908,17 +2908,9 @@ def _pf_speed_matches_threshold(speed: float | None, threshold: int) -> bool:
 
 
 def _pf_is_platform_entry_measurement(row: dict[str, object]) -> bool:
-    """PF speed is sampled near the configured distance before the stop."""
+    """PF speed is sampled near 265m before a 12-coach train reaches the platform."""
     pf_distance = _pf_speed_value(row.get("pf_distance"))
-    return _pf_is_near_platform_entry_distance(pf_distance)
-
-
-def _pf_is_near_platform_entry_distance(pf_distance: float | None) -> bool:
-    if pf_distance is None:
-        return False
-    target = float(SSTS_PF_SMART_ENTRY_DISTANCE_TARGET_M)
-    tolerance = float(SSTS_PF_SMART_ENTRY_DISTANCE_TOLERANCE_M)
-    return max(0.0, target - tolerance) <= pf_distance <= target + tolerance
+    return pf_distance is not None and 240 <= pf_distance <= 320
 
 
 def _pf_normalize_schedule_time(value: object | None) -> str:
@@ -3408,7 +3400,7 @@ def _pf_suspected_spike_reason(
                 for point in chart_points[max(0, len(chart_points) - 18) :]
             ]
             trailing_window = [speed for speed in trailing_window if speed is not None]
-            if trailing_window and _pf_is_near_platform_entry_distance(pf_distance):
+            if trailing_window and pf_distance is not None and 240 <= pf_distance <= 320:
                 trailing_peak = max(trailing_window)
                 trailing_end = trailing_window[-1]
                 trailing_zero_run = 0
@@ -3565,7 +3557,7 @@ def _pf_suspected_spike_reason(
                         return "Entry speed collapsed to zero too quickly after a local spike."
                     if (
                         pf_distance is not None
-                        and _pf_is_near_platform_entry_distance(pf_distance)
+                        and 240 <= pf_distance <= 320
                         and pf_speed >= max(40.0, threshold)
                         and geofence_speed is not None
                         and near_entry_peak is not None
@@ -3583,7 +3575,7 @@ def _pf_suspected_spike_reason(
                         return "Entry speed fell to zero shortly after a 250m-300m local spike."
                     if (
                         pf_distance is not None
-                        and _pf_is_near_platform_entry_distance(pf_distance)
+                        and 240 <= pf_distance <= 320
                         and pf_speed >= max(40.0, threshold)
                         and geofence_speed is not None
                         and abs(pf_speed - geofence_speed) <= 6
@@ -3595,10 +3587,10 @@ def _pf_suspected_spike_reason(
                         and first_zero_index <= 24
                         and longest_zero_run >= 10
                     ):
-                        return "Entry speed stayed high only briefly before a sustained zero collapse near the PF entry distance."
+                        return "Entry speed stayed high only briefly before a sustained zero collapse near 250m-300m."
                     if (
                         pf_distance is not None
-                        and _pf_is_near_platform_entry_distance(pf_distance)
+                        and 240 <= pf_distance <= 320
                         and stop_time_seconds is not None
                         and stop_time_seconds <= 45
                         and geofence_speed is not None
@@ -3609,10 +3601,10 @@ def _pf_suspected_spike_reason(
                         and first_zero_index <= 18
                         and longest_zero_run >= 5
                     ):
-                        return "Short-stop entry showed a sharp local peak before collapsing to zero near the PF entry distance."
+                        return "Short-stop entry showed a sharp local peak before collapsing to zero near 250m-300m."
                     if (
                         pf_distance is not None
-                        and _pf_is_near_platform_entry_distance(pf_distance)
+                        and 240 <= pf_distance <= 320
                         and stop_time_seconds is not None
                         and stop_time_seconds <= 240
                         and stop_time_seconds >= 46
@@ -3624,10 +3616,10 @@ def _pf_suspected_spike_reason(
                         and first_zero_index <= 30
                         and longest_zero_run >= 8
                     ):
-                        return "Platform entry held a local peak before a sustained zero collapse near the PF entry distance."
+                        return "Platform entry held a local peak before a sustained zero collapse near 250m-300m."
                     if (
                         pf_distance is not None
-                        and _pf_is_near_platform_entry_distance(pf_distance)
+                        and 240 <= pf_distance <= 320
                         and stop_time_seconds is not None
                         and stop_time_seconds <= 420
                         and stop_time_seconds >= 241
@@ -3639,7 +3631,7 @@ def _pf_suspected_spike_reason(
                         and first_zero_index <= 20
                         and longest_zero_run >= 8
                     ):
-                        return "Platform approach showed a strong local peak before a longer zero collapse near the PF entry distance."
+                        return "Platform approach showed a strong local peak before a longer zero collapse near 250m-300m."
 
         pre_entry_speeds = [
             _pf_chart_speed_kmph(point)
@@ -3662,7 +3654,7 @@ def _pf_suspected_spike_reason(
                     and stop_time_seconds is not None
                     and stop_time_seconds <= 90
                     and pf_distance is not None
-                    and _pf_is_near_platform_entry_distance(pf_distance)
+                    and 240 <= pf_distance <= 320
                     and abs(entry_speed - geofence_speed) <= 8
                     and entry_speed <= 15
                     and local_peak >= pf_speed - 8
@@ -3682,7 +3674,7 @@ def _pf_suspected_spike_reason(
                 for point in chart_points[station_window_start : station_window_limit + 1]
             ]
             station_window_speeds = [speed for speed in station_window_speeds if speed is not None]
-            if len(station_window_speeds) >= 6 and _pf_is_near_platform_entry_distance(pf_distance):
+            if len(station_window_speeds) >= 6 and pf_distance is not None and 240 <= pf_distance <= 320:
                 deltas = [
                     station_window_speeds[idx] - station_window_speeds[idx - 1]
                     for idx in range(1, len(station_window_speeds))
@@ -3707,10 +3699,10 @@ def _pf_suspected_spike_reason(
                     and sharp_drop
                     and (sharp_rise or direction_flips >= 1)
                 ):
-                    return "Sharp pre-stop chart swing near the PF entry distance, likely network/GPS spike."
+                    return "Sharp pre-stop chart swing near 250m-300m, likely network/GPS spike."
         if stop_time_seconds is not None and stop_time_seconds <= 90:
             pf_distance = _pf_speed_value(row.get("pf_distance"))
-            if _pf_is_near_platform_entry_distance(pf_distance):
+            if pf_distance is not None and 240 <= pf_distance <= 320:
                 near_stop_end = min(
                     len(chart_points) - 1,
                     max(window_end, end_pos if end_pos is not None and end_pos >= 0 else window_end) + 2,
