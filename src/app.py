@@ -761,6 +761,8 @@ SSTS_BACKGROUND_SYNC_INTERVAL_MINUTES = 60
 SSTS_SNAPSHOT_RETENTION_DAYS = 7
 SSTS_PF_REPORT_CACHE_TTL_MINUTES = 20
 SSTS_PF_ANALYSIS_TASK_TTL_MINUTES = 180
+SSTS_PF_CACHE_MAX_ENTRIES = 8
+SSTS_PF_POSITIONS_CACHE_MAX_ENTRIES = 12
 SSTS_PF_COUNSELLING_LOOKBACK_DAYS = 7
 SSTS_PF_COUNSELLING_SPEED_THRESHOLD = 42
 SSTS_PF_SMART_ENTRY_DISTANCE_TARGET_M = 265
@@ -801,6 +803,15 @@ _SSTS_GEOFENCE_CACHE: tuple[datetime, dict[str, list[tuple[float, float]]]] | No
 _SSTS_SHED_NOTICE_CACHE: dict[str, tuple[datetime, dict[str, list[dict[str, str]]]]] = {}
 _SSTS_BACKGROUND_SYNC_STOP = threading.Event()
 _SSTS_BACKGROUND_SYNC_THREAD: threading.Thread | None = None
+
+
+def _trim_ssts_timestamp_cache(cache: dict, max_entries: int) -> None:
+    """Bound API response caches so repeated train/date requests cannot grow RAM forever."""
+    while len(cache) > max_entries:
+        oldest_key = min(cache, key=lambda key: cache[key][0])
+        cache.pop(oldest_key, None)
+
+
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         path = request.url.path
@@ -2290,6 +2301,7 @@ def _fetch_ssts_positions(source: dict[str, object], token: str) -> list[dict[st
     for stale_key, (cached_at, _) in list(_SSTS_PF_POSITIONS_CACHE.items()):
         if (now_utc - cached_at) >= timedelta(minutes=SSTS_PF_REPORT_CACHE_TTL_MINUTES):
             _SSTS_PF_POSITIONS_CACHE.pop(stale_key, None)
+    _trim_ssts_timestamp_cache(_SSTS_PF_POSITIONS_CACHE, SSTS_PF_POSITIONS_CACHE_MAX_ENTRIES)
     return [dict(point) for point in points]
 
 
@@ -2516,6 +2528,7 @@ def fetch_ssts_shed_notice_lookup(report_day: date, token: str) -> dict[str, lis
     ]
     for stale_key in stale_keys:
         _SSTS_SHED_NOTICE_CACHE.pop(stale_key, None)
+    _trim_ssts_timestamp_cache(_SSTS_SHED_NOTICE_CACHE, SSTS_PF_CACHE_MAX_ENTRIES)
     return {key: [dict(row) for row in rows] for key, rows in lookup.items()}
 
 
@@ -2659,6 +2672,7 @@ def _build_pf_report_rows_for_train(
                 for stale_key, (cached_at, _) in list(_SSTS_PF_PUNCT_CACHE.items()):
                     if (now_utc - cached_at) >= timedelta(minutes=SSTS_PF_REPORT_CACHE_TTL_MINUTES):
                         _SSTS_PF_PUNCT_CACHE.pop(stale_key, None)
+                _trim_ssts_timestamp_cache(_SSTS_PF_PUNCT_CACHE, SSTS_PF_CACHE_MAX_ENTRIES)
     except (urlerror.URLError, RuntimeError, ValueError, json.JSONDecodeError):
         response = []
     if not isinstance(response, list) or not response:
@@ -2864,6 +2878,7 @@ def build_ssts_pf_entering_context(
         "pf_report_missing_count": missing_count,
     }
     _SSTS_PF_REPORT_CACHE[cache_key] = (now_utc, payload)
+    _trim_ssts_timestamp_cache(_SSTS_PF_REPORT_CACHE, SSTS_PF_CACHE_MAX_ENTRIES)
     stale_keys = [
         key
         for key, (cached_at, _) in _SSTS_PF_REPORT_CACHE.items()
@@ -4542,6 +4557,14 @@ def _cleanup_ssts_pf_analysis_tasks() -> None:
                 stale_ids.append(task_id)
         for task_id in stale_ids:
             _SSTS_PF_ANALYSIS_TASKS.pop(task_id, None)
+        if len(_SSTS_PF_ANALYSIS_TASKS) > 3:
+            ordered = sorted(
+                _SSTS_PF_ANALYSIS_TASKS.items(),
+                key=lambda item: item[1].get("updated_at") or datetime.min,
+                reverse=True,
+            )
+            for task_id, _ in ordered[3:]:
+                _SSTS_PF_ANALYSIS_TASKS.pop(task_id, None)
 
 
 def _set_ssts_pf_analysis_task(task_id: str, **values: object) -> None:
@@ -5099,6 +5122,7 @@ def _run_background_ssts_sync_once(force: bool = False) -> None:
         report_day = _utc_now().astimezone(IST).date()
         train_rows = fetch_ssts_trains_report(report_day, token)
         _SSTS_TRAIN_REPORT_CACHE[report_day.isoformat()] = (_utc_now(), train_rows)
+        _trim_ssts_timestamp_cache(_SSTS_TRAIN_REPORT_CACHE, SSTS_PF_CACHE_MAX_ENTRIES)
     except (urlerror.URLError, RuntimeError, ValueError, json.JSONDecodeError):
         pass
 
