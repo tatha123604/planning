@@ -57,7 +57,7 @@ from .models import (
     SstsSnapshotRun,
 )
 from .seed import seed_all
-from .rtis import router as rtis_router
+from .rtis import prune_rtis_history, router as rtis_router
 from .table_pdf import _build_table_pdf_bytes, _normalize_export_text
 
 BASE_PATH = Path(__file__).resolve().parent.parent
@@ -5690,6 +5690,7 @@ def on_startup() -> None:
     _prune_pf_history_on_startup()
     session = next(get_session())
     try:
+        prune_rtis_history(session)
         seed_all(session)
     finally:
         session.close()
