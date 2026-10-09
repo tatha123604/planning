@@ -1,5 +1,7 @@
 import os
 import json
+import threading
+import time
 from pathlib import Path
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
@@ -13,6 +15,32 @@ DB_PATH = Path(
 )
 DATABASE_URL = f"sqlite:///{DB_PATH.as_posix()}"
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+_COMPACTION_LOCK = threading.Lock()
+_LAST_COMPACTION_MONOTONIC = 0.0
+_COMPACTION_INTERVAL_SECONDS = 6 * 60 * 60
+
+
+def compact_database() -> bool:
+    """Reclaim SQLite pages after retention cleanup without vacuuming on every request."""
+    global _LAST_COMPACTION_MONOTONIC
+    if not DATABASE_URL.startswith("sqlite"):
+        return False
+    now = time.monotonic()
+    if now - _LAST_COMPACTION_MONOTONIC < _COMPACTION_INTERVAL_SECONDS:
+        return False
+    with _COMPACTION_LOCK:
+        now = time.monotonic()
+        if now - _LAST_COMPACTION_MONOTONIC < _COMPACTION_INTERVAL_SECONDS:
+            return False
+        try:
+            with engine.connect() as connection:
+                connection = connection.execution_options(isolation_level="AUTOCOMMIT")
+                connection.exec_driver_sql("PRAGMA wal_checkpoint(TRUNCATE)")
+                connection.exec_driver_sql("VACUUM")
+            _LAST_COMPACTION_MONOTONIC = now
+            return True
+        except OperationalError:
+            return False
 
 
 def init_db() -> None:

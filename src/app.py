@@ -31,7 +31,7 @@ from sqlalchemy import case, func, text
 from sqlmodel import Session, select
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from .db import DB_PATH, engine, get_session, init_db
+from .db import DB_PATH, compact_database, engine, get_session, init_db
 from .logic import (
     ROLE_ORDER,
     apply_promotions,
@@ -5040,6 +5040,7 @@ def _prune_old_ssts_snapshots(
         session.delete(run)
 
     session.commit()
+    compact_database()
     return {"deleted_runs": len(old_runs), "deleted_snapshots": deleted_snapshots}
 
 

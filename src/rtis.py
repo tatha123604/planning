@@ -25,7 +25,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import load_only
 from sqlmodel import Field, SQLModel, Session, select
 
-from .db import get_session
+from .db import compact_database, get_session
 from .rtis_exports import build_rtis_excel, build_rtis_pdf
 from .rtis_train_models import RtisTrainModel, save_train_model, selected_train_model
 from .rtis_homes import (
@@ -322,6 +322,7 @@ def prune_rtis_history(session: Session) -> None:
             if upload:
                 session.delete(upload)
     session.commit()
+    compact_database()
 
 
 def analysis_filters(division, day, event, analysis, view, speed, time_from="", time_to="", train_no="", station="", model_trains=None, train_name="", loco_no=""):
@@ -782,6 +783,7 @@ def prune_rtis_analysis_history(session: Session, keep: int = RTIS_ANALYSIS_RETE
     for upload in stale_uploads:
         session.delete(upload)
     session.commit()
+    compact_database()
 
 
 @router.post("/rtis/analysis/upload")
