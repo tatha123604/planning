@@ -5687,6 +5687,7 @@ def build_ssts_report_context(
 @app.on_event("startup")
 def on_startup() -> None:
     init_db()
+    _prune_pf_history_on_startup()
     session = next(get_session())
     try:
         seed_all(session)
@@ -8869,6 +8870,28 @@ def _serialize_employee_master_snapshot(records: dict[str, dict[str, object]]) -
             }
         )
     return payload
+
+
+def _prune_pf_history_on_startup() -> None:
+    """Remove PF history older than the newest three stored report dates."""
+    with Session(engine) as session:
+        latest_history_day = session.exec(select(func.max(SstsPfCounsellingHistory.report_date))).one()
+        latest_stats_day = session.exec(select(func.max(SstsPfDailyAnalysisStats.report_date))).one()
+        latest_day = max((day for day in (latest_history_day, latest_stats_day) if day is not None), default=None)
+        if latest_day is None:
+            return
+        cutoff_day = latest_day - timedelta(days=SSTS_PF_COUNSELLING_LOOKBACK_DAYS - 1)
+        history_rows = session.exec(
+            select(SstsPfCounsellingHistory).where(SstsPfCounsellingHistory.report_date < cutoff_day)
+        ).all()
+        stats_rows = session.exec(
+            select(SstsPfDailyAnalysisStats).where(SstsPfDailyAnalysisStats.report_date < cutoff_day)
+        ).all()
+        for row in [*history_rows, *stats_rows]:
+            session.delete(row)
+        if history_rows or stats_rows:
+            session.commit()
+            compact_database()
 
 
 def _save_employee_master_source_snapshot(records: dict[str, dict[str, object]]) -> None:
