@@ -250,6 +250,7 @@ def init_db() -> None:
                     "ON sstspfcounsellinghistory (crew_id, crew_name, report_date);"
                 )
             )
+    compact_database()
 
 
 def get_session() -> Session:
