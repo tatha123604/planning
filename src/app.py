@@ -3024,54 +3024,8 @@ def _flatten_pf_rows_by_train(rows_by_train: dict[str, list[dict[str, object]]])
 
 
 def _save_ssts_pf_counselling_history(report_day: date, rows: list[dict[str, object]]) -> None:
-    history_rows: list[SstsPfCounsellingHistory] = []
-    for row in rows:
-        detail_row = _pf_counselling_detail_row(row, report_day)
-        if detail_row is None:
-            continue
-        pf_speed = _pf_speed_value(detail_row.get("pf_enter_speed"))
-        if pf_speed is None:
-            continue
-        history_rows.append(
-            SstsPfCounsellingHistory(
-                report_date=report_day,
-                report_date_label=_pf_counselling_report_date(detail_row, report_day),
-                train_no=str(detail_row.get("train_no") or "").strip(),
-                rake_no=_pf_history_text(detail_row.get("rake_no")),
-                crew_id=_pf_history_text(detail_row.get("crew_id")),
-                crew_name=_pf_history_text(detail_row.get("crew_name")),
-                org=_pf_history_text(detail_row.get("org")),
-                dest=_pf_history_text(detail_row.get("dest")),
-                station=_pf_history_text(detail_row.get("station")),
-                srl_no=_pf_history_int(detail_row.get("srl_no")),
-                sch_arr=_pf_history_text(detail_row.get("sch_arr")),
-                act_arr=_pf_history_text(detail_row.get("act_arr")),
-                sch_dep=_pf_history_text(detail_row.get("sch_dep")),
-                act_dep=_pf_history_text(detail_row.get("act_dep")),
-                stop_time=_pf_history_text(detail_row.get("stop_time")),
-                geofence_enter_speed=_pf_history_number(detail_row.get("geofence_enter_speed")),
-                pf_enter_speed=pf_speed,
-                pf_distance=_pf_history_number(detail_row.get("pf_distance")),
-                remarks=_pf_history_text(detail_row.get("remarks")),
-                chart_link=_pf_history_text(detail_row.get("chart_link")),
-            )
-        )
-    with Session(engine) as session:
-        existing_rows = session.exec(
-            select(SstsPfCounsellingHistory).where(SstsPfCounsellingHistory.report_date == report_day)
-        ).all()
-        for existing in existing_rows:
-            session.delete(existing)
-        for history_row in history_rows:
-            session.add(history_row)
-        cutoff_day = report_day - timedelta(days=SSTS_PF_COUNSELLING_LOOKBACK_DAYS - 1)
-        stale_rows = session.exec(
-            select(SstsPfCounsellingHistory).where(SstsPfCounsellingHistory.report_date < cutoff_day)
-        ).all()
-        for stale_row in stale_rows:
-            session.delete(stale_row)
-        session.commit()
-    compact_database()
+    """Retired storage hook; PF entering output is no longer persisted here."""
+    return
 
 
 def _history_row_to_pf_counselling_detail(row: SstsPfCounsellingHistory) -> dict[str, object]:
@@ -3240,28 +3194,8 @@ def _build_pf_daily_source_statistics(rows: list[dict[str, object]]) -> dict[str
 
 
 def _save_ssts_pf_daily_source_statistics(report_day: date, rows: list[dict[str, object]]) -> None:
-    statistics = _build_pf_daily_source_statistics(rows)
-    with Session(engine) as session:
-        existing_rows = session.exec(
-            select(SstsPfDailyAnalysisStats).where(SstsPfDailyAnalysisStats.report_date == report_day)
-        ).all()
-        for existing in existing_rows:
-            session.delete(existing)
-        session.add(
-            SstsPfDailyAnalysisStats(
-                report_date=report_day,
-                report_date_label=report_day.strftime("%d-%m-%Y"),
-                **statistics,
-            )
-        )
-        cutoff_day = report_day - timedelta(days=SSTS_PF_COUNSELLING_LOOKBACK_DAYS - 1)
-        stale_rows = session.exec(
-            select(SstsPfDailyAnalysisStats).where(SstsPfDailyAnalysisStats.report_date < cutoff_day)
-        ).all()
-        for stale_row in stale_rows:
-            session.delete(stale_row)
-        session.commit()
-    compact_database()
+    """Retired storage hook; PF entering output is no longer persisted here."""
+    return
 
 
 def _load_ssts_pf_daily_source_statistics(start_day: date, end_day: date) -> list[dict[str, object]]:
@@ -4850,13 +4784,7 @@ def _build_ssts_pf_speed_analysis_result(
         )
     except Exception as exc:
         report_progress(96, f"PF source statistics save skipped: {exc}")
-    report_progress(96, "Building 7-day counselling priority...")
-    weekly_counselling_context = _build_ssts_pf_weekly_counselling_context(
-        report_day,
-        current_raw_context=raw_context,
-        current_output_rows=detailed_daily_report_rows,
-        progress_callback=report_progress,
-    )
+    weekly_counselling_context = {}
 
     report_progress(99, "Finalizing detailed PF report...")
 
@@ -8874,20 +8802,10 @@ def _serialize_employee_master_snapshot(records: dict[str, dict[str, object]]) -
 
 
 def _prune_pf_history_on_startup() -> None:
-    """Remove PF history older than the newest three stored report dates."""
+    """Delete retired PF counselling/statistics data from the database."""
     with Session(engine) as session:
-        latest_history_day = session.exec(select(func.max(SstsPfCounsellingHistory.report_date))).one()
-        latest_stats_day = session.exec(select(func.max(SstsPfDailyAnalysisStats.report_date))).one()
-        latest_day = max((day for day in (latest_history_day, latest_stats_day) if day is not None), default=None)
-        if latest_day is None:
-            return
-        cutoff_day = latest_day - timedelta(days=SSTS_PF_COUNSELLING_LOOKBACK_DAYS - 1)
-        history_rows = session.exec(
-            select(SstsPfCounsellingHistory).where(SstsPfCounsellingHistory.report_date < cutoff_day)
-        ).all()
-        stats_rows = session.exec(
-            select(SstsPfDailyAnalysisStats).where(SstsPfDailyAnalysisStats.report_date < cutoff_day)
-        ).all()
+        history_rows = session.exec(select(SstsPfCounsellingHistory)).all()
+        stats_rows = session.exec(select(SstsPfDailyAnalysisStats)).all()
         for row in [*history_rows, *stats_rows]:
             session.delete(row)
         if history_rows or stats_rows:
