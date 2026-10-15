@@ -38,7 +38,7 @@ FOCUS_EVENTS = ("H", "J", "K")
 ANALYSIS_TYPES = {"passenger": "Passenger Train Analysis", "goods": "Goods Train Analysis"}
 MAX_UPLOAD_MB = 25
 MAX_BYTES = MAX_UPLOAD_MB * 1024 * 1024
-RTIS_RETENTION_DAYS = 2
+RTIS_RETENTION_DAYS = 3
 RTIS_ANALYSIS_RETENTION_COUNT = 10
 NS = {"s": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
 HEADERS = ("Sr.No.", "Device Id", "Loco No.", "Latitude", "Longitude", "Station",
@@ -304,7 +304,7 @@ def import_rtis(session: Session, filename: str, content: bytes, division: str) 
 
 
 def prune_rtis_history(session: Session) -> None:
-    """Keep RTIS events for the latest two event dates in the database."""
+    """Keep RTIS events for the latest three event dates in the database."""
     latest = session.exec(select(func.max(RtisEvent.event_time))).one()
     if latest is None:
         return
