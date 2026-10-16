@@ -1267,7 +1267,7 @@ def rtis_upload(division: str = Form(...), files: list[UploadFile] = File(...),
         finally:
             file.file.close()
         messages.append(f"{filename}: {message}")
-    return RedirectResponse("/rtis?" + urlencode({"division": division, "analysis": analysis, "notice": " | ".join(messages)}), status_code=303)
+    return RedirectResponse("/rtis?" + urlencode({"division": "ALL", "analysis": analysis, "notice": " | ".join(messages)}), status_code=303)
 
 
 @router.get("/rtis/uploads/{upload_id}/download")
