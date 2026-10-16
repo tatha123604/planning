@@ -55,7 +55,7 @@
       </nav>
       {% if notice %}<section class="card" role="status"><p>{{ notice }}</p></section>{% endif %}
       <section class="card">
-        <h2>Upload RTIS Excel</h2>
+        <h2>Upload RTIS Excel (Home-Arrival Pair Event Report)</h2>
         <div class="rtis-upload-grid">
           {% for code in divisions %}
           <form method="post" action="/rtis/upload" enctype="multipart/form-data" class="rtis-upload-form" aria-labelledby="rtis-upload-label-{{ code }}">
