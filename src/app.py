@@ -10696,9 +10696,22 @@ def _normalize_li_grading_header(value: object | None) -> str:
 
 
 def _load_cli_upload_rows(content: bytes) -> list[tuple[object, ...]]:
-    workbook = load_workbook(filename=BytesIO(content), data_only=True)
-    worksheet = workbook.active
-    return list(worksheet.iter_rows(values_only=True))
+    workbook = load_workbook(filename=BytesIO(content), data_only=True, read_only=True)
+    try:
+        return list(workbook.active.iter_rows(values_only=True))
+    finally:
+        workbook.close()
+
+
+def _detect_cli_upload_kind_from_content(content: bytes) -> str:
+    # Upload routing only needs the header rows. Avoid loading every cell into
+    # memory just to classify a workbook before its actual importer runs.
+    workbook = load_workbook(filename=BytesIO(content), data_only=True, read_only=True)
+    try:
+        rows = list(workbook.active.iter_rows(min_row=1, max_row=8, values_only=True))
+        return _detect_cli_upload_kind(rows)
+    finally:
+        workbook.close()
 
 
 def _detect_cli_upload_kind(rows: list[tuple[object, ...]]) -> str:
@@ -11270,7 +11283,7 @@ async def upload_li_grading(
             if not filename.lower().endswith((".xlsx", ".xlsm")):
                 raise HTTPException(status_code=400, detail="Upload the CLI Grading .xlsx workbook.")
             content = await file.read()
-            upload_kind = _detect_cli_upload_kind(_load_cli_upload_rows(content))
+            upload_kind = _detect_cli_upload_kind_from_content(content)
         nomination_notice = ""
         nomination_warning = ""
         nomination_details: list[str] = []
@@ -11306,7 +11319,7 @@ async def upload_li_grading(
             if not bio_name.lower().endswith((".xlsx", ".xlsm")):
                 raise HTTPException(status_code=400, detail="Upload the CLITI Biodata file as .xlsx.")
             bio_content = await bio_data_file.read()
-            bio_kind = _detect_cli_upload_kind(_load_cli_upload_rows(bio_content))
+            bio_kind = _detect_cli_upload_kind_from_content(bio_content)
             if bio_kind != "cli_biodata":
                 raise HTTPException(status_code=400, detail="The uploaded file is not recognized as CLITI Biodata.")
             bio_records, warnings = _parse_cli_biodata_workbook(bio_content)
@@ -11352,7 +11365,7 @@ async def upload_li_grading(
                 if not bio_name.lower().endswith((".xlsx", ".xlsm")):
                     raise HTTPException(status_code=400, detail="Upload the CLITI Biodata file as .xlsx.")
                 bio_content = await bio_data_file.read()
-                bio_kind = _detect_cli_upload_kind(_load_cli_upload_rows(bio_content))
+                bio_kind = _detect_cli_upload_kind_from_content(bio_content)
                 if bio_kind != "cli_biodata":
                     raise HTTPException(status_code=400, detail="The second file must be a CLITI Biodata workbook.")
                 bio_records, warnings = _parse_cli_biodata_workbook(bio_content)
