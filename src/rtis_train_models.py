@@ -117,14 +117,7 @@ def save_train_model(session: Session, filename: str, content: bytes):
     return model
 
 
-def selected_train_model(session: Session, model_id: int, analysis: str):
-    if not model_id:
-        return None, {}
-    if analysis != 'passenger':
-        raise HTTPException(400, 'Train number models apply to Passenger analysis only.')
-    model = session.get(RtisTrainModel, model_id)
-    if model is None:
-        raise HTTPException(404, 'Train number model not found. Select an available model.')
+def _ensure_model_entries(model: RtisTrainModel):
     mapping = json.loads(model.mapping_json)
     changed = False
     for train_number, details in _REQUIRED_TRAIN_ENTRIES.items():
@@ -134,6 +127,31 @@ def selected_train_model(session: Session, model_id: int, analysis: str):
     if changed:
         model.mapping_json = json.dumps(mapping)
         model.train_count = len(mapping)
+    return mapping, changed
+
+
+def ensure_required_train_entries(session: Session):
+    """Merge manually requested train mappings into saved models once."""
+    changed = False
+    for model in session.exec(select(RtisTrainModel)).all():
+        _, model_changed = _ensure_model_entries(model)
+        if model_changed:
+            session.add(model)
+            changed = True
+    if changed:
+        session.commit()
+
+
+def selected_train_model(session: Session, model_id: int, analysis: str):
+    if not model_id:
+        return None, {}
+    if analysis != 'passenger':
+        raise HTTPException(400, 'Train number models apply to Passenger analysis only.')
+    model = session.get(RtisTrainModel, model_id)
+    if model is None:
+        raise HTTPException(404, 'Train number model not found. Select an available model.')
+    mapping, changed = _ensure_model_entries(model)
+    if changed:
         session.add(model)
         session.commit()
         session.refresh(model)

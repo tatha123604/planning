@@ -27,7 +27,12 @@ from sqlmodel import Field, SQLModel, Session, select
 
 from .db import compact_database, get_session
 from .rtis_exports import build_rtis_excel, build_rtis_pdf
-from .rtis_train_models import RtisTrainModel, save_train_model, selected_train_model
+from .rtis_train_models import (
+    RtisTrainModel,
+    ensure_required_train_entries,
+    save_train_model,
+    selected_train_model,
+)
 from .rtis_homes import (
     RtisHomeModel, _remove_known_bad_home_series, _remove_nearby_duplicate_homes,
     enrich_home_model, event_home_details, save_home_model, selected_home_model,
@@ -526,6 +531,7 @@ def rtis_page(request: Request, division: str = "ALL", day: str = "", event: str
     if len(home_station) > 100:
         raise HTTPException(400, "FSD station search must be 100 characters or fewer.")
     ordering = rtis_ordering(sort_by, sort_order)
+    ensure_required_train_entries(session)
     selected_model, train_names = selected_train_model(session, model_id, analysis)
     home_model, home_mapping = selected_home_model(session, home_model_id)
     home_signal_rows = []
