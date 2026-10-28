@@ -5078,7 +5078,7 @@ def _background_ssts_sync_worker() -> None:
             pass
         # Keep the stored snapshot within the same freshness window used by
         # the report page, so normal page loads never need to block on SSTS.
-        wait_seconds = max(60, SSTS_REFRESH_INTERVAL_MINUTES * 60)
+        wait_seconds = max(60, SSTS_BACKGROUND_SYNC_INTERVAL_MINUTES * 60)
         if _SSTS_BACKGROUND_SYNC_STOP.wait(wait_seconds):
             break
 
