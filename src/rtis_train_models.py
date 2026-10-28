@@ -13,6 +13,11 @@ from openpyxl import load_workbook
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Field, SQLModel, Session, select
 
+_REQUIRED_TRAIN_ENTRIES = {
+    "13149": {"name": "KANCHANKANYA", "hq": "SDAH"},
+    "13150": {"name": "KANCHANKANYA", "hq": "SDAH"},
+}
+
 
 class RtisTrainModel(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
@@ -120,4 +125,16 @@ def selected_train_model(session: Session, model_id: int, analysis: str):
     model = session.get(RtisTrainModel, model_id)
     if model is None:
         raise HTTPException(404, 'Train number model not found. Select an available model.')
-    return model, json.loads(model.mapping_json)
+    mapping = json.loads(model.mapping_json)
+    changed = False
+    for train_number, details in _REQUIRED_TRAIN_ENTRIES.items():
+        if mapping.get(train_number) != details:
+            mapping[train_number] = details
+            changed = True
+    if changed:
+        model.mapping_json = json.dumps(mapping)
+        model.train_count = len(mapping)
+        session.add(model)
+        session.commit()
+        session.refresh(model)
+    return model, mapping
