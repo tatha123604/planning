@@ -91,6 +91,10 @@
           <label class="checkbox-label"><input type="checkbox" name="separate_model" value="1" /> Save as separate map model</label>
           <button type="submit">Upload FSD home model</button>
         </form>
+        <form method="post" action="/rtis/home-model/convert" enctype="multipart/form-data" class="rtis-form">
+          <label>Convert full FSD Excel/CSV<input type="file" name="home_file" accept=".xlsx,.csv" required /></label>
+          <button class="ghost small" type="submit">Download converted model</button>
+        </form>
         <div class="rtis-coordinate-converter" id="rtis-coordinate-converter">
           <strong>Coordinate converter</strong>
           <span class="hint">Decimal degrees ↔ railway DDMM.mmm format</span>

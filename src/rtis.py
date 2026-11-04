@@ -35,7 +35,7 @@ from .rtis_train_models import (
 )
 from .rtis_homes import (
     RtisHomeModel, _remove_known_bad_home_series, _remove_nearby_duplicate_homes,
-    enrich_home_model, event_home_details, save_home_model, selected_home_model,
+    enrich_home_model, event_home_details, parse_home_model, save_home_model, selected_home_model,
 )
 
 DIVISIONS = ("SDAH", "HWH", "ASN", "MLDT")
@@ -1191,6 +1191,33 @@ def rtis_home_model_upload(home_file: UploadFile = File(...), division: str = Fo
     if return_to == "analysis":
         return RedirectResponse('/rtis/analysis?' + urlencode({"notice": params["notice"]}), status_code=303)
     return RedirectResponse('/rtis?' + urlencode(params), status_code=303)
+
+
+@router.post("/rtis/home-model/convert")
+def rtis_home_model_convert(home_file: UploadFile = File(...)):
+    filename = (home_file.filename or "").replace("\\", "/").split("/")[-1]
+    try:
+        content = home_file.file.read(MAX_BYTES + 1)
+        mapping, _ = parse_home_model(content, filename)
+        mapping, _ = _remove_known_bad_home_series(mapping)
+        mapping, _ = _remove_nearby_duplicate_homes(mapping)
+        enrich_home_model(mapping, _rtis_ssts_geofences())
+        rows = []
+        for value in mapping.values():
+            for home in value.get("homes", []):
+                rows.append([value["station"], "UP" if value["event"] == "J" else "DOWN", home.get("type", ""),
+                             str(value.get("station_latitude", "")), str(value.get("station_longitude", "")),
+                             str(home.get("latitude", "")), str(home.get("longitude", "")), home.get("line", ""),
+                             str(home.get("distance_m", "")) if home.get("distance_m") is not None else ""])
+        rows.sort(key=lambda row: (row[0], row[1], row[5], row[2], row[3], row[4]))
+        headers = ("Station", "Direction", "Type", "Station Latitude", "Station Longitude", "Latitude", "Longitude", "Station DIRN", "Linear distance (m)")
+        return Response(content=build_rtis_excel(headers, rows),
+                        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        headers={"Content-Disposition": 'attachment; filename="RTIS_FSD_Signals_converted.xlsx"'})
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from None
+    finally:
+        home_file.file.close()
 
 
 @router.get("/rtis/home-model.xlsx")
