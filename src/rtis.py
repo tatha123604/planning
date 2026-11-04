@@ -734,7 +734,8 @@ def rtis_event_analysis(event_id: int, request: Request, home_model_id: int = 0,
                 continue
             seen_signal_keys.add(key)
             signal_type = str(home_item.get("type") or "").strip()
-            signal_label = " ".join(part for part in (str(group.get("station") or "").strip(), signal_type) if part) or group.get("label", "FSD Signal")
+            signal_direction = "UP" if group.get("event") == "J" else "DOWN"
+            signal_label = " ".join(part for part in (signal_direction, str(group.get("station") or "").strip(), signal_type) if part) or group.get("label", "FSD Signal")
             signals_for_result.append({"station": group.get("station", ""), "event": group.get("event", ""), "label": signal_label, "type": signal_type, "line": home_item.get("line", ""), "lat": home_item["latitude"], "lon": home_item["longitude"], "speed": event.speed or 0, "time": event.event_time.isoformat(), "active": True})
     else:
         signals_for_result = []
@@ -745,7 +746,8 @@ def rtis_event_analysis(event_id: int, request: Request, home_model_id: int = 0,
                 continue
             seen_signal_keys.add(key)
             signal_type = str(home_item.get("type") or "").strip()
-            signal_label = " ".join(part for part in (str(group.get("station") or "").strip(), signal_type) if part) or group.get("label", "FSD Signal")
+            signal_direction = "UP" if group.get("event") == "J" else "DOWN"
+            signal_label = " ".join(part for part in (signal_direction, str(group.get("station") or "").strip(), signal_type) if part) or group.get("label", "FSD Signal")
             signals_for_result.append({"station": group.get("station", ""), "event": group.get("event", ""), "label": signal_label, "type": signal_type, "line": home_item.get("line", ""), "lat": home_item["latitude"], "lon": home_item["longitude"], "speed": event.speed or 0, "time": event.event_time.isoformat(), "active": group.get("event") == event_code})
     upload = {"filename": f"RTIS event {event.id}", "analysis_date": event.event_time.strftime("%Y-%m-%d"), "train_type": "RTIS event", "train_no": event.train or "", "loco_no": event.loco or ""}
     home_models = session.exec(select(RtisHomeModel).order_by(RtisHomeModel.id.desc())).all()
@@ -1064,7 +1066,8 @@ def rtis_analysis_run(request: Request, upload_id: int = Form(...), home_model_i
     for value in mapping.values():
         for home in value.get("homes", []):
             signal_type = str(home.get("type") or "").strip()
-            signal_label = " ".join(part for part in (str(value.get("station") or "").strip(), signal_type) if part) or value.get("label", "FSD Signal")
+            signal_direction = "UP" if value.get("event") == "J" else "DOWN"
+            signal_label = " ".join(part for part in (signal_direction, str(value.get("station") or "").strip(), signal_type) if part) or value.get("label", "FSD Signal")
             signals.append({
                 "station": value.get("station", ""), "event": value.get("event", ""),
                 "label": signal_label, "type": signal_type, "line": home.get("line", ""),
