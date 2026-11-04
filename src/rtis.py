@@ -733,7 +733,9 @@ def rtis_event_analysis(event_id: int, request: Request, home_model_id: int = 0,
             if key in seen_signal_keys:
                 continue
             seen_signal_keys.add(key)
-            signals_for_result.append({"station": group.get("station", ""), "event": group.get("event", ""), "label": group.get("label", "FSD Home Signal"), "line": home_item.get("line", ""), "lat": home_item["latitude"], "lon": home_item["longitude"], "speed": event.speed or 0, "time": event.event_time.isoformat(), "active": True})
+            signal_type = str(home_item.get("type") or "").strip()
+            signal_label = " ".join(part for part in (str(group.get("station") or "").strip(), signal_type) if part) or group.get("label", "FSD Signal")
+            signals_for_result.append({"station": group.get("station", ""), "event": group.get("event", ""), "label": signal_label, "type": signal_type, "line": home_item.get("line", ""), "lat": home_item["latitude"], "lon": home_item["longitude"], "speed": event.speed or 0, "time": event.event_time.isoformat(), "active": True})
     else:
         signals_for_result = []
         seen_signal_keys = set()
@@ -742,7 +744,9 @@ def rtis_event_analysis(event_id: int, request: Request, home_model_id: int = 0,
             if key in seen_signal_keys:
                 continue
             seen_signal_keys.add(key)
-            signals_for_result.append({"station": group.get("station", ""), "event": group.get("event", ""), "label": group.get("label", "FSD Home Signal"), "line": home_item.get("line", ""), "lat": home_item["latitude"], "lon": home_item["longitude"], "speed": event.speed or 0, "time": event.event_time.isoformat(), "active": group.get("event") == event_code})
+            signal_type = str(home_item.get("type") or "").strip()
+            signal_label = " ".join(part for part in (str(group.get("station") or "").strip(), signal_type) if part) or group.get("label", "FSD Signal")
+            signals_for_result.append({"station": group.get("station", ""), "event": group.get("event", ""), "label": signal_label, "type": signal_type, "line": home_item.get("line", ""), "lat": home_item["latitude"], "lon": home_item["longitude"], "speed": event.speed or 0, "time": event.event_time.isoformat(), "active": group.get("event") == event_code})
     upload = {"filename": f"RTIS event {event.id}", "analysis_date": event.event_time.strftime("%Y-%m-%d"), "train_type": "RTIS event", "train_no": event.train or "", "loco_no": event.loco or ""}
     home_models = session.exec(select(RtisHomeModel).order_by(RtisHomeModel.id.desc())).all()
     return templates.TemplateResponse(request=request, name="rtis_analysis_result.html", context={"request": request, "active_page": "rtis_analysis", "upload": upload, "points": route_points, "event_down": event_down, "signals": signals_for_result, "event_analysis": True, "event_id": event.id, "event_direction": event_code, "event_direction_known": event_code != "H" or previous_direction_found, "event_markers": [{"lat": event.latitude, "lon": event.longitude, "event": event_code, "label": f"RTIS {event_code} event", "station": event.station, "speed": event.speed or 0, "time": event.event_time.isoformat()}], "home_model": home_model, "home_models": home_models, "home_model_id": home_model.id})
@@ -1059,9 +1063,11 @@ def rtis_analysis_run(request: Request, upload_id: int = Form(...), home_model_i
     signals = []
     for value in mapping.values():
         for home in value.get("homes", []):
+            signal_type = str(home.get("type") or "").strip()
+            signal_label = " ".join(part for part in (str(value.get("station") or "").strip(), signal_type) if part) or value.get("label", "FSD Signal")
             signals.append({
                 "station": value.get("station", ""), "event": value.get("event", ""),
-                "label": value.get("label", ""), "line": home.get("line", ""),
+                "label": signal_label, "type": signal_type, "line": home.get("line", ""),
                 "lat": home.get("latitude"), "lon": home.get("longitude"),
             })
     if not signals:
