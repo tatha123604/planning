@@ -87,7 +87,7 @@
         <h2>FSD home signal model</h2>
         <form method="post" action="/rtis/home-model/upload" enctype="multipart/form-data" class="rtis-form">
           <input type="hidden" name="division" value="{{ division }}" />
-          <label>FSD source Excel<input type="file" name="home_file" accept=".xlsx" required /></label>
+          <label>FSD source Excel/CSV<input type="file" name="home_file" accept=".xlsx,.csv" required /></label>
           <label class="checkbox-label"><input type="checkbox" name="separate_model" value="1" /> Save as separate map model</label>
           <button type="submit">Upload FSD home model</button>
         </form>

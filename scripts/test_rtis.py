@@ -116,6 +116,12 @@ class RtisTests(unittest.TestCase):
         self.assertEqual(event_home_details('bp', 'J', mapping)[0], 'UP HOME')
         self.assertGreater(event_home_details('BP', 'J', mapping)[1], 0)
         self.assertEqual(event_home_details('BP', 'H', mapping), ('', ''))
+        route_csv = b"1,SDAH-NH-ML,2,D,,,,,,,,,,\n1,SDAH,SDAH HOME,500,20,2234.2117,8822.6303,S,333.44,7,E,E,E,STR\n2,DDJ,DDJ INT HOME,500,20,2237.0767,8823.6073,S,333.44,31,E,E,E,STR\n"
+        route_mapping, route_signals = parse_home_model(route_csv, 'ROUTE1.CSV')
+        self.assertEqual(route_signals, 2)
+        self.assertEqual(route_mapping['SDAH|K']['homes'][0]['type'], 'Home')
+        self.assertEqual(route_mapping['DDJ|K']['homes'][0]['type'], 'INT Home')
+        self.assertAlmostEqual(route_mapping['SDAH|K']['homes'][0]['latitude'], 22 + 34.2117 / 60, places=6)
         save_home_model(self.session, 'fsd.xlsx', home_workbook())
         refreshed = save_home_model(self.session, 'same-fsd.xlsx', home_workbook(), {'BP': [(88.0, 22.0), (88.0, 22.01), (88.01, 22.01)]})
         self.assertEqual(refreshed.mapped_station_count, 2)
