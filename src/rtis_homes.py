@@ -177,8 +177,9 @@ def parse_home_model(content: bytes, filename: str = ""):
                 continue
             header, *data_rows = sheet_rows
             labels = [' '.join(str(value or '').upper().split()) for value in header]
-            required = ('STATION', 'DIRN', 'TYPE', 'LATITUDE', 'LONGITUDE')
-            if not all(name in labels for name in required):
+            direction_name = next((name for name in ('DIRN', 'STATION DIRN', 'DIRECTION') if name in labels), None)
+            required = ('STATION', direction_name, 'TYPE', 'LATITUDE', 'LONGITUDE')
+            if not direction_name or not all(name in labels for name in required):
                 route_sheets.append((sheet.title, sheet_rows))
                 continue
             indexes = {name: labels.index(name) for name in required}
