@@ -185,7 +185,7 @@ def parse_home_model(content: bytes, filename: str = ""):
             indexes = {name: labels.index(name) for name in required}
             for row_number, row in enumerate(data_rows, 2):
                 station = str(row[indexes['STATION']] or '').strip().upper()
-                direction = str(row[indexes['DIRN']] or '').strip().upper()
+                direction = str(row[indexes[direction_name]] or '').strip().upper()
                 signal_type = str(row[indexes['TYPE']] or '').strip()
                 if not station or not direction or not signal_type:
                     continue
