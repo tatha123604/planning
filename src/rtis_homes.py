@@ -134,7 +134,7 @@ def _parse_route_home_model_rows(rows, source_name):
     direction = "UP MAIN LINE" if direction_token == "U" else "DN MAIN LINE"
     mapping = {}
     for row_number, row in enumerate(rows, 1):
-        if len(row) < 7:
+        if len(row) < 7 or row[5] in (None, "") or row[6] in (None, ""):
             continue
         station = str(row[1] or "").strip().upper()
         signal_name = str(row[2] or "").strip().upper()
