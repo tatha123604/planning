@@ -15,14 +15,15 @@
   <div id="fsd-home-map" style="height:82vh;min-height:620px;border-radius:12px"></div>
 </section>
 <section class="card map-signal-editor" id="map-signal-editor">
-  <h2>Home signal editor <span class="signal-total-badge">Total signals: {{ signals|length }}</span></h2>
-  <p class="hint">Select a signal on the map to edit or delete it. Leave the selection blank to add a new signal. Latitude/Longitude accepts decimal degrees or DDMM.mmm (for example 2237.651).</p>
+  <h2>FSD signal editor <span class="signal-total-badge">Total signals: {{ signals|length }}</span></h2>
+  <p class="hint">Select a signal on the map to edit or delete it. Leave the selection blank to add a new signal. All signal types are supported. Latitude/Longitude accepts decimal degrees or DDMM.mmm (for example 2237.651).</p>
   <form method="post" action="/rtis/home-model/{{ home_model_id }}/signal/save" class="rtis-form" id="home-signal-form">
     <input type="hidden" name="group_key" id="home-signal-group-key" />
     <input type="hidden" name="home_index" id="home-signal-index" />
     <label>Station<input name="station" id="home-signal-station" required maxlength="20" /></label>
     <label>DIRN<input name="dirn" id="home-signal-dirn" placeholder="UP MAIN LINE / DN MAIN LINE" required maxlength="100" /></label>
-    <label>TYPE<select name="signal_type" id="home-signal-type"><option>Home</option><option>I/Home</option><option>INT Home</option></select></label>
+    <label>TYPE<input name="signal_type" id="home-signal-type" list="home-signal-types" placeholder="HOME / STR / ADV STR" required /></label>
+    <datalist id="home-signal-types"><option value="Home"></option><option value="I/Home"></option><option value="INT Home"></option><option value="STR"></option><option value="ADV STR"></option><option value="INT STR"></option></datalist>
     <label>Latitude<input name="latitude" id="home-signal-latitude" type="number" step="any" inputmode="decimal" placeholder="22.627517 or 2237.651" required /></label>
     <label>Longitude<input name="longitude" id="home-signal-longitude" type="number" step="any" inputmode="decimal" placeholder="88.392817 or 8823.569" required /></label>
     <div class="editor-actions"><button class="primary small" type="submit" id="home-signal-save">Add signal</button><button class="danger small" type="button" id="home-signal-delete" hidden>Delete selected</button><button class="ghost small" type="button" id="home-signal-clear">Clear / new signal</button></div>
@@ -65,7 +66,7 @@ signals.forEach(signal=>{
   const marker=L.marker([signal.lat,signal.lon],{icon,zIndexOffset:mainLine?1000:0}).addTo(map);
   marker.station=String(signal.station||'').trim().toUpperCase();
   const latitude=Number(signal.lat).toFixed(6),longitude=Number(signal.lon).toFixed(6);
-  const details=`<strong>${signal.station||'—'}</strong><br>${signal.direction} Home · ${signal.type||'—'}<br>Line: ${signal.line||'—'}<br>Latitude: ${latitude}<br>Longitude: ${longitude}<br><button type="button" class="map-edit-signal" data-signal-index="${signals.indexOf(signal)}">Edit signal</button>`;
+  const details=`<strong>${signal.station||'—'}</strong><br>${signal.direction} · ${signal.type||'—'}<br>Line: ${signal.line||'—'}<br>Latitude: ${latitude}<br>Longitude: ${longitude}<br><button type="button" class="map-edit-signal" data-signal-index="${signals.indexOf(signal)}">Edit signal</button>`;
   marker.bindTooltip(details,{sticky:true});
   marker.bindPopup(details);
   markers.push(marker); bounds.push([signal.lat,signal.lon]);
@@ -91,7 +92,7 @@ function clearSignalEditor(){editorForm.reset();document.getElementById('home-si
 function selectSignal(index){const signal=signals[index];if(!signal)return;document.getElementById('home-signal-group-key').value=signal.key;document.getElementById('home-signal-index').value=signal.home_index;document.getElementById('home-signal-station').value=signal.station||'';document.getElementById('home-signal-dirn').value=signal.line||'';document.getElementById('home-signal-type').value=signal.type||'Home';document.getElementById('home-signal-latitude').value=signal.lat;document.getElementById('home-signal-longitude').value=signal.lon;editorSave.textContent='Save changes';editorDelete.hidden=false;document.getElementById('map-signal-editor').scrollIntoView({behavior:'smooth',block:'center'});}
 document.addEventListener('click',event=>{const button=event.target.closest('.map-edit-signal');if(button){event.preventDefault();selectSignal(Number(button.dataset.signalIndex));}});
 document.getElementById('home-signal-clear').addEventListener('click',clearSignalEditor);
-editorDelete.addEventListener('click',()=>{if(!confirm('Delete this Home signal from the selected model?'))return;const form=document.createElement('form');form.method='post';form.action='/rtis/home-model/{{ home_model_id }}/signal/delete';[['group_key',document.getElementById('home-signal-group-key').value],['home_index',document.getElementById('home-signal-index').value]].forEach(([name,value])=>{const input=document.createElement('input');input.type='hidden';input.name=name;input.value=value;form.appendChild(input);});document.body.appendChild(form);form.submit();});
+editorDelete.addEventListener('click',()=>{if(!confirm('Delete this signal from the selected model?'))return;const form=document.createElement('form');form.method='post';form.action='/rtis/home-model/{{ home_model_id }}/signal/delete';[['group_key',document.getElementById('home-signal-group-key').value],['home_index',document.getElementById('home-signal-index').value]].forEach(([name,value])=>{const input=document.createElement('input');input.type='hidden';input.name=name;input.value=value;form.appendChild(input);});document.body.appendChild(form);form.submit();});
 function updateFullscreenButton(){fullscreenButton.textContent=document.fullscreenElement===mapCard?'Exit full screen':'Full screen';setTimeout(()=>map.invalidateSize(),80);}
 fullscreenButton.addEventListener('click',async()=>{try{if(document.fullscreenElement===mapCard){await document.exitFullscreen();}else if(mapCard.requestFullscreen){await mapCard.requestFullscreen();}}catch(error){console.warn('Map full screen unavailable',error);}});
 document.addEventListener('fullscreenchange',updateFullscreenButton);

@@ -138,9 +138,10 @@ def _parse_route_home_model_rows(rows, source_name):
             continue
         station = str(row[1] or "").strip().upper()
         signal_name = str(row[2] or "").strip().upper()
-        if not station or "HOME" not in signal_name:
+        if not station or not signal_name:
             continue
-        signal_type = "INT Home" if "INT HOME" in signal_name or "I/HOME" in signal_name else "Home"
+        signal_type = signal_name[len(station):].strip(" -") if signal_name.startswith(station) else signal_name
+        signal_type = {"HOME": "Home", "I/HOME": "I/Home", "INT HOME": "INT Home"}.get(signal_type, signal_type)
         latitude = _parse_coordinate(row[5], 90, f"{source_name} row {row_number} Latitude")
         longitude = _parse_coordinate(row[6], 180, f"{source_name} row {row_number} Longitude")
         event = "J" if direction_token == "U" else "K"
@@ -150,7 +151,7 @@ def _parse_route_home_model_rows(rows, source_name):
             "line": direction, "type": signal_type, "latitude": latitude, "longitude": longitude,
         })
     if not mapping:
-        raise ValueError("No Home or I/Home rows found in the route file.")
+        raise ValueError("No signal rows found in the route file.")
     return mapping, sum(len(value["homes"]) for value in mapping.values())
 
 
@@ -185,7 +186,7 @@ def parse_home_model(content: bytes, filename: str = ""):
                 station = str(row[indexes['STATION']] or '').strip().upper()
                 direction = str(row[indexes['DIRN']] or '').strip().upper()
                 signal_type = str(row[indexes['TYPE']] or '').strip()
-                if not station or not direction or signal_type.upper() not in ('HOME', 'I/HOME', 'INT HOME'):
+                if not station or not direction or not signal_type:
                     continue
                 if direction.startswith('UP'):
                     event = 'J'
@@ -223,7 +224,7 @@ def parse_home_model(content: bytes, filename: str = ""):
                     seen.add(identity)
             total = sum(len(group["homes"]) for group in route_mapping.values())
         if not route_mapping:
-            raise ValueError("No Home or I/Home rows with UP/DN direction found.")
+            raise ValueError("No signal rows with UP/DN direction found.")
         return route_mapping, total
     return mapping, sum(len(value['homes']) for value in mapping.values())
 

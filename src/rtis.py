@@ -463,8 +463,8 @@ def rtis_home_signal_save(model_id: int, station: str = Form(""), dirn: str = Fo
     if dirn.startswith("DOWN"):
         dirn = "DN" + dirn[4:]
     signal_type = " ".join(signal_type.strip().split())
-    if not station or not dirn.startswith(("UP", "DN")) or signal_type.upper() not in ("HOME", "I/HOME", "INT HOME"):
-        raise HTTPException(400, "Station, DIRN and a valid Home type are required.")
+    if not station or not dirn.startswith(("UP", "DN")) or not signal_type:
+        raise HTTPException(400, "Station, DIRN and signal type are required.")
     lat = _parse_map_coordinate(latitude, "Latitude", 90)
     lon = _parse_map_coordinate(longitude, "Longitude", 180)
     mapping = json.loads(model.mapping_json)
