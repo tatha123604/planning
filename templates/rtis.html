@@ -130,7 +130,7 @@
           <label>Show<select name="view"><option value="classified" {{ 'selected' if view == 'classified' else '' }}>{{ 'Passenger trains' if analysis == 'passenger' else 'Goods trains' }}</option><option value="unclassified" {{ 'selected' if view == 'unclassified' else '' }}>Unclassified events</option></select></label>
           <label>Event date_time<input type="date" name="day" value="{{ day }}" /></label>
           <label>Train no.<input type="search" name="train_no" value="{{ train_no }}" maxlength="100" placeholder="Full or partial train no." /></label>
-          {% if analysis == 'passenger' %}<label>Loco no.<input type="search" name="loco_no" value="{{ loco_no }}" maxlength="100" placeholder="Full or partial loco no." /></label>{% endif %}
+          <label>Loco no.<input type="search" name="loco_no" value="{{ loco_no }}" maxlength="100" placeholder="Full or partial loco no." /></label>
           <label>Station<input type="search" name="station" value="{{ station }}" maxlength="100" placeholder="Full or partial station" /></label>
           <label>From time<input type="time" name="time_from" value="{{ time_from }}" step="1" /></label>
           <label>To time<input type="time" name="time_to" value="{{ time_to }}" step="1" /></label>
