@@ -168,17 +168,17 @@ def parse_home_model(content: bytes, filename: str = ""):
     except Exception as exc:
         raise ValueError("Cannot read FSD file. Upload a valid .xlsx workbook.") from exc
     mapping = {}
-    all_rows = []
+    route_sheets = []
     try:
         for sheet in book:
             sheet_rows = list(sheet.iter_rows(values_only=True))
             if not sheet_rows:
                 continue
             header, *data_rows = sheet_rows
-            all_rows.extend(sheet_rows)
             labels = [' '.join(str(value or '').upper().split()) for value in header]
             required = ('STATION', 'DIRN', 'TYPE', 'LATITUDE', 'LONGITUDE')
             if not all(name in labels for name in required):
+                route_sheets.append((sheet.title, sheet_rows))
                 continue
             indexes = {name: labels.index(name) for name in required}
             for row_number, row in enumerate(data_rows, 2):
@@ -206,7 +206,17 @@ def parse_home_model(content: bytes, filename: str = ""):
     finally:
         book.close()
     if not mapping:
-        return _parse_route_home_model_rows(all_rows, filename)
+        route_mapping = {}
+        total = 0
+        for sheet_name, rows in route_sheets:
+            sheet_mapping, sheet_count = _parse_route_home_model_rows(rows, f"{filename} ({sheet_name})")
+            for key, group in sheet_mapping.items():
+                route_mapping.setdefault(key, {"station": group["station"], "event": group["event"],
+                                               "label": group["label"], "homes": []})["homes"].extend(group["homes"])
+            total += sheet_count
+        if not route_mapping:
+            raise ValueError("No Home or I/Home rows with UP/DN direction found.")
+        return route_mapping, total
     return mapping, sum(len(value['homes']) for value in mapping.values())
 
 
