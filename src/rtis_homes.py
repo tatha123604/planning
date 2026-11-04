@@ -211,9 +211,17 @@ def parse_home_model(content: bytes, filename: str = ""):
         for sheet_name, rows in route_sheets:
             sheet_mapping, sheet_count = _parse_route_home_model_rows(rows, f"{filename} ({sheet_name})")
             for key, group in sheet_mapping.items():
-                route_mapping.setdefault(key, {"station": group["station"], "event": group["event"],
-                                               "label": group["label"], "homes": []})["homes"].extend(group["homes"])
-            total += sheet_count
+                target = route_mapping.setdefault(key, {"station": group["station"], "event": group["event"],
+                                                        "label": group["label"], "homes": []})
+                seen = {(home.get("line", ""), home.get("type", ""), home.get("latitude"), home.get("longitude"))
+                        for home in target["homes"]}
+                for home in group["homes"]:
+                    identity = (home.get("line", ""), home.get("type", ""), home.get("latitude"), home.get("longitude"))
+                    if identity in seen:
+                        continue
+                    target["homes"].append(home)
+                    seen.add(identity)
+            total = sum(len(group["homes"]) for group in route_mapping.values())
         if not route_mapping:
             raise ValueError("No Home or I/Home rows with UP/DN direction found.")
         return route_mapping, total
