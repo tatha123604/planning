@@ -45,7 +45,7 @@
 const signals={{ signals|tojson }};
 const map=L.map('fsd-home-map');
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
-const icon=L.divIcon({className:'rail-signal-icon',html:'<span><i class="lamp red"></i><i class="lamp yellow"></i><i class="lamp green"></i></span>',iconSize:[24,44],iconAnchor:[12,42]}),levelCrossingIcon=L.icon({iconUrl:'/static/level-crossing-icon.webp',iconSize:[34,34],iconAnchor:[17,17],popupAnchor:[0,-17]});
+const icon=L.divIcon({className:'rail-signal-icon',html:'<span><i class="lamp red"></i><i class="lamp yellow"></i><i class="lamp green"></i></span>',iconSize:[24,44],iconAnchor:[12,42]}),levelCrossingIcon=L.icon({iconUrl:'/static/level-crossing-icon.webp',iconSize:[34,34],iconAnchor:[17,17],popupAnchor:[0,-17]}),psrIcon=L.icon({iconUrl:'/static/psr-caution-icon.png',iconSize:[38,38],iconAnchor:[19,19],popupAnchor:[0,-19]});
 const bounds=[];
 const markers=[];
 const stationCodes=[...new Set(signals.map(signal=>String(signal.station||'').trim().toUpperCase()).filter(Boolean))].sort();
@@ -63,7 +63,8 @@ function clearHighlights(){markers.forEach(marker=>marker.getElement().classList
 function fitAll(){if(bounds.length)map.fitBounds(L.latLngBounds(bounds).pad(.06));else map.setView([22.57,88.36],10);}
 signals.forEach(signal=>{
   const mainLine=String(signal.line||'').toUpperCase().includes('MAIN');
-  const signalIcon=String(signal.type||'').toUpperCase().includes('LXING')?levelCrossingIcon:icon;
+  const signalType=String(signal.type||'').toUpperCase();
+  const signalIcon=signalType.includes('LXING')?levelCrossingIcon:signalType.includes('PSR')?psrIcon:icon;
   const marker=L.marker([signal.lat,signal.lon],{icon:signalIcon,zIndexOffset:mainLine?1000:0}).addTo(map);
   marker.station=String(signal.station||'').trim().toUpperCase();
   const latitude=Number(signal.lat).toFixed(6),longitude=Number(signal.lon).toFixed(6);
