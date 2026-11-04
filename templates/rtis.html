@@ -91,6 +91,16 @@
           <label class="checkbox-label"><input type="checkbox" name="separate_model" value="1" /> Save as separate map model</label>
           <button type="submit">Upload FSD home model</button>
         </form>
+        <div class="rtis-coordinate-converter" id="rtis-coordinate-converter">
+          <strong>Coordinate converter</strong>
+          <span class="hint">Decimal degrees ↔ railway DDMM.mmm format</span>
+          <div class="rtis-coordinate-fields">
+            <label>Latitude<input id="rtis-converter-latitude" type="text" inputmode="decimal" placeholder="22.627517 or 2237.651" /></label>
+            <label>Longitude<input id="rtis-converter-longitude" type="text" inputmode="decimal" placeholder="88.392817 or 8823.569" /></label>
+            <button class="ghost small" type="button" id="rtis-converter-button">Convert</button>
+          </div>
+          <span id="rtis-converter-result" class="rtis-converter-result" role="status" aria-live="polite"></span>
+        </div>
         <p class="hint">Maps FSD UP Home to RTIS J and DN Home to RTIS K by station code. New uploads are merged with the active model by default; select Save as separate map model to keep this workbook independent. The upload attempts to read station geofence coordinates from SSTS and calculates nearest home straight-line distance in metres.</p>
         {% if home_model %}<p class="hint">Active model: {{ home_model.filename }} — {{ home_model.signal_count }} home signals across {{ home_model.station_count }} stations; SSTS coordinates mapped for {{ home_model.mapped_station_count }} station directions.</p>{% else %}<p class="hint">Upload the FSD workbook to show Home signal and Home distance columns beside RTIS events.</p>{% endif %}
         {% if home_models %}<form method="get" action="/rtis" class="rtis-form home-model-picker"><input type="hidden" name="division" value="{{ division }}" /><input type="hidden" name="analysis" value="{{ analysis }}" /><label>Home signal model<select id="rtis-home-model-select" name="home_model_id">{% for model in home_models %}<option value="{{ model.id }}" {{ 'selected' if home_model_id == model.id else '' }}>{{ model.filename }} — {{ model.signal_count }} signals</option>{% endfor %}</select></label><button type="submit">Use selected model</button>{% if home_model %}<a class="ghost small" href="/rtis/home-model.xlsx?home_model_id={{ home_model_id }}&amp;mapped_only=1">Download model</a>{% endif %}</form><form id="rtis-home-model-delete-form" method="post" action="/rtis/home-model/{{ home_model_id }}/delete" class="home-model-delete-inline"><input type="hidden" name="division" value="{{ division }}" /><input type="hidden" name="analysis" value="{{ analysis }}" /><button type="submit" class="danger small">Delete selected model</button></form><script>document.getElementById('rtis-home-model-delete-form')?.addEventListener('submit',event=>{const id=document.getElementById('rtis-home-model-select')?.value;if(!id){event.preventDefault();return;}event.currentTarget.action='/rtis/home-model/'+encodeURIComponent(id)+'/delete';if(!confirm('Delete the selected FSD home signal model?'))event.preventDefault();});</script>{% endif %}
@@ -167,6 +177,12 @@
   <style>
     .rtis-form {display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;margin:16px 0;}
     .rtis-form label {display:flex;flex-direction:column;gap:8px;min-width:150px;}
+    .rtis-coordinate-converter {margin-top:12px;padding:12px;border:1px solid var(--card-border);border-radius:10px;background:rgba(255,255,255,0.03);display:flex;flex-direction:column;gap:8px;}
+    .rtis-coordinate-fields {display:flex;align-items:end;gap:12px;flex-wrap:wrap;}
+    .rtis-coordinate-fields label {display:flex;flex-direction:column;gap:5px;min-width:190px;font-weight:700;}
+    .rtis-coordinate-fields input {padding:8px;border:1px solid #64748b;border-radius:7px;background:#0f172a;color:#f8fafc;}
+    .rtis-converter-result {color:#facc15;font-weight:700;}
+    .rtis-converter-result.is-error {color:#f87171;}
     .rtis-upload-grid {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:16px;margin:16px 0;}
     .rtis-upload-form {display:flex;flex-direction:column;gap:12px;min-width:0;padding:16px;border:1px solid var(--card-border);border-radius:12px;background:rgba(255,255,255,0.03);}
     .rtis-upload-form label {font-size:1.1rem;font-weight:800;}
@@ -190,6 +206,41 @@
       .content > header .header-actions .ghost {flex:0 0 auto;min-height:40px;display:flex;align-items:center;justify-content:center;}
     }
   </style>
+  <script>
+    (function () {
+      const button = document.getElementById('rtis-converter-button');
+      if (!button) return;
+      const result = document.getElementById('rtis-converter-result');
+      const parseCoordinate = function (value, maximum, label) {
+        const raw = Number(String(value || '').trim());
+        if (!Number.isFinite(raw)) throw new Error(label + ' must be a number.');
+        const absolute = Math.abs(raw);
+        if (absolute <= maximum) return raw;
+        const degrees = Math.floor(absolute / 100);
+        const minutes = absolute - degrees * 100;
+        if (degrees > maximum || minutes >= 60) throw new Error(label + ' must be decimal degrees or DDMM.mmm.');
+        return Math.sign(raw || 1) * (degrees + minutes / 60);
+      };
+      const railwayCoordinate = function (value) {
+        const sign = value < 0 ? '-' : '';
+        const absolute = Math.abs(value);
+        const degrees = Math.floor(absolute);
+        const minutes = ((absolute - degrees) * 60).toFixed(3);
+        return sign + degrees + minutes.padStart(6, '0');
+      };
+      button.addEventListener('click', function () {
+        try {
+          const latitude = parseCoordinate(document.getElementById('rtis-converter-latitude').value, 90, 'Latitude');
+          const longitude = parseCoordinate(document.getElementById('rtis-converter-longitude').value, 180, 'Longitude');
+          result.textContent = 'Decimal: ' + latitude.toFixed(6) + ', ' + longitude.toFixed(6) + ' | DDMM.mmm: ' + railwayCoordinate(latitude) + ', ' + railwayCoordinate(longitude);
+          result.classList.remove('is-error');
+        } catch (error) {
+          result.textContent = error.message;
+          result.classList.add('is-error');
+        }
+      });
+    }());
+  </script>
   <script>
     document.querySelectorAll('.rtis-upload-form').forEach(function (form) {
       form.addEventListener('submit', function () {
