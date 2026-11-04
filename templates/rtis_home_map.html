@@ -28,6 +28,16 @@
     <div class="editor-actions"><button class="primary small" type="submit" id="home-signal-save">Add signal</button><button class="danger small" type="button" id="home-signal-delete" hidden>Delete selected</button><button class="ghost small" type="button" id="home-signal-clear">Clear / new signal</button></div>
   </form>
 </section>
+<section class="card coordinate-converter" id="coordinate-converter">
+  <h2>Coordinate converter</h2>
+  <p class="hint">Convert decimal degrees and railway DDMM.mmm coordinates. Example: latitude 22.627517 ↔ 2237.651, longitude 88.392817 ↔ 8823.569.</p>
+  <div class="converter-fields">
+    <label>Latitude<input id="coordinate-converter-latitude" type="text" inputmode="decimal" placeholder="22.627517 or 2237.651" /></label>
+    <label>Longitude<input id="coordinate-converter-longitude" type="text" inputmode="decimal" placeholder="88.392817 or 8823.569" /></label>
+    <button class="primary small" type="button" id="coordinate-converter-button">Convert</button>
+  </div>
+  <p id="coordinate-converter-result" class="converter-result" role="status" aria-live="polite"></p>
+</section>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 <script>
@@ -43,7 +53,11 @@ const stationList=document.getElementById('home-map-stations');
 const mapCard=document.querySelector('.fsd-home-map-card');
 const fullscreenButton=document.getElementById('home-map-fullscreen-button');
 const downloadLink=document.getElementById('home-map-download');
+const converterResult=document.getElementById('coordinate-converter-result');
 stationCodes.forEach(code=>{const option=document.createElement('option');option.value=code;stationList.appendChild(option);});
+function parseCoordinate(value,maximum,label){const raw=Number(String(value||'').trim());if(!Number.isFinite(raw))throw new Error(`${label} must be a number.`);const absolute=Math.abs(raw);if(absolute<=maximum)return raw;const degrees=Math.floor(absolute/100),minutes=absolute-degrees*100;if(degrees>maximum||minutes>=60)throw new Error(`${label} must be decimal degrees or DDMM.mmm.`);return Math.sign(raw||1)*(degrees+minutes/60);}
+function railwayCoordinate(value){const sign=value<0?'-':'';const absolute=Math.abs(value),degrees=Math.floor(absolute),minutes=((absolute-degrees)*60).toFixed(3);return `${sign}${degrees}${minutes.padStart(6,'0')}`;}
+document.getElementById('coordinate-converter-button').addEventListener('click',()=>{try{const latitude=parseCoordinate(document.getElementById('coordinate-converter-latitude').value,90,'Latitude'),longitude=parseCoordinate(document.getElementById('coordinate-converter-longitude').value,180,'Longitude');converterResult.textContent=`Decimal: ${latitude.toFixed(6)}, ${longitude.toFixed(6)} | DDMM.mmm: ${railwayCoordinate(latitude)}, ${railwayCoordinate(longitude)}`;converterResult.classList.remove('converter-error');}catch(error){converterResult.textContent=error.message;converterResult.classList.add('converter-error');}});
 function clearHighlights(){markers.forEach(marker=>marker.getElement().classList.remove('signal-highlight'));}
 function fitAll(){if(bounds.length)map.fitBounds(L.latLngBounds(bounds).pad(.06));else map.setView([22.57,88.36],10);}
 signals.forEach(signal=>{
@@ -95,6 +109,7 @@ if(Number.isFinite(focusLat)&&Number.isFinite(focusLon)){
 .fsd-home-map-card:fullscreen{width:100vw;height:100vh;margin:0;padding:0;background:#0b1220;border-radius:0;overflow:hidden}
 .fsd-home-map-card:fullscreen #fsd-home-map{height:100vh!important;min-height:100vh!important;border-radius:0!important}
 .map-signal-editor{margin-top:16px}.map-signal-editor h2{margin-top:0}.signal-total-badge{font-size:.75em;color:#facc15;margin-left:8px}.map-signal-editor .rtis-form{display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));align-items:end;gap:10px}.map-signal-editor label{display:flex;flex-direction:column;gap:5px;font-weight:700}.map-signal-editor input,.map-signal-editor select{padding:8px;border:1px solid #64748b;border-radius:7px;background:#0f172a;color:#f8fafc}.editor-actions{grid-column:1/-1;display:flex;gap:8px}.map-edit-signal{margin-top:6px;padding:4px 8px;border:1px solid #94a3b8;border-radius:5px;background:#1e293b;color:#f8fafc;cursor:pointer}
+.coordinate-converter{margin-top:16px}.coordinate-converter h2{margin-top:0}.converter-fields{display:flex;align-items:end;gap:12px;flex-wrap:wrap}.converter-fields label{display:flex;flex-direction:column;gap:5px;font-weight:700}.converter-fields input{width:190px;padding:8px;border:1px solid #64748b;border-radius:7px;background:#0f172a;color:#f8fafc}.converter-result{margin:12px 0 0;color:#facc15;font-weight:700}.converter-error{color:#f87171}
 .home-model-map-picker{position:absolute;z-index:1000;left:14px;top:14px;padding:8px;background:rgba(15,23,42,.94);border:1px solid #334155;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.28)}
 .home-model-delete-form{position:absolute;z-index:1000;left:14px;top:104px}
 .home-model-map-picker label{display:flex;flex-direction:column;gap:5px;color:#f8fafc;font-weight:700}.home-model-map-picker select{min-width:280px;padding:7px;border-radius:7px}
