@@ -45,7 +45,7 @@
 const signals={{ signals|tojson }};
 const map=L.map('fsd-home-map');
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
-const icon=L.divIcon({className:'rail-signal-icon',html:'<span><i class="lamp red"></i><i class="lamp yellow"></i><i class="lamp green"></i></span>',iconSize:[24,44],iconAnchor:[12,42]}),levelCrossingIcon=L.icon({iconUrl:'/static/level-crossing-icon.webp?v=20261104',iconSize:[34,34],iconAnchor:[17,17],popupAnchor:[0,-17]}),psrIcon=L.icon({iconUrl:'/static/psr-caution-icon.png?v=20261104',iconSize:[38,38],iconAnchor:[19,19],popupAnchor:[0,-19]});
+const icon=L.divIcon({className:'rail-signal-icon',html:'<span><i class="lamp red"></i><i class="lamp yellow"></i><i class="lamp green"></i></span>',iconSize:[24,44],iconAnchor:[12,42]}),levelCrossingIcon=L.icon({iconUrl:'/static/level-crossing-icon.webp?v=20261104',iconSize:[34,34],iconAnchor:[17,17],popupAnchor:[0,-17]}),psrIcon=L.icon({iconUrl:'/static/psr-caution-icon.png?v=20261104',iconSize:[38,38],iconAnchor:[19,19],popupAnchor:[0,-19]}),haltIcon=L.divIcon({className:'halt-signal-icon',html:'<span>H</span>',iconSize:[30,30],iconAnchor:[15,15],popupAnchor:[0,-15]});
 const bounds=[];
 const markers=[];
 const stationCodes=[...new Set(signals.map(signal=>String(signal.station||'').trim().toUpperCase()).filter(Boolean))].sort();
@@ -64,7 +64,7 @@ function fitAll(){if(bounds.length)map.fitBounds(L.latLngBounds(bounds).pad(.06)
 signals.forEach(signal=>{
   const mainLine=String(signal.line||'').toUpperCase().includes('MAIN');
   const signalType=String(signal.type||signal.label||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
-  const signalIcon=signalType.includes('LXING')?levelCrossingIcon:signalType.includes('PSR')?psrIcon:icon;
+  const signalIcon=signalType.includes('LXING')?levelCrossingIcon:signalType.includes('PSR')?psrIcon:(signalType.includes('HALT')||signalType==='H')?haltIcon:icon;
   const marker=L.marker([signal.lat,signal.lon],{icon:signalIcon,zIndexOffset:mainLine?1000:0}).addTo(map);
   marker.station=String(signal.station||'').trim().toUpperCase();
   const latitude=Number(signal.lat).toFixed(6),longitude=Number(signal.lon).toFixed(6);
@@ -119,7 +119,7 @@ if(Number.isFinite(focusLat)&&Number.isFinite(focusLon)){
 .home-map-search{position:absolute;z-index:1000;right:14px;top:14px;display:flex;gap:8px;padding:8px;background:rgba(15,23,42,.94);border:1px solid #334155;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.28)}
 .home-map-search input{width:180px;padding:8px 10px;border:1px solid #64748b;border-radius:7px;background:#0f172a;color:#f8fafc}
 .home-map-search input::placeholder{color:#94a3b8}
-.rail-signal-icon{background:transparent;border:0;transition:transform .2s}
+.halt-signal-icon{background:transparent;border:0}.halt-signal-icon span{display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:#2563eb;color:#fff;border:2px solid #fff;font:bold 18px/1 sans-serif;box-shadow:0 0 0 2px #1e3a8a}.rail-signal-icon{background:transparent;border:0;transition:transform .2s}
 .rail-signal-icon span{display:block;width:14px;height:35px;margin:0 auto;background:#111827;border:2px solid #000;border-radius:8px 8px 2px 2px;box-shadow:0 0 0 2px #f8fafc}
 .rail-signal-icon .lamp{display:block;width:8px;height:8px;margin:3px auto;border-radius:50%;border:1px solid rgba(255,255,255,.45);background:#111827}
 .rail-signal-icon .lamp.red{background:#991b1b}.rail-signal-icon .lamp.yellow{background:#a16207}.rail-signal-icon .lamp.green{background:#166534}
