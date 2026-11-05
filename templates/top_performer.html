@@ -152,7 +152,7 @@
           </div>
           <div class="top-performer-poster-grid">
             {% for row in result.top_rows %}
-            <article class="top-performer-item">
+            <article class="top-performer-item{% if row.rank == 1 %} top-performer-item-first{% endif %}">
               <div class="top-performer-avatar-wrap">
                 {% if row.photo_url %}
                 <img class="top-performer-photo" src="{{ row.photo_url }}" alt="{{ row.crew_name }}" />
@@ -311,7 +311,7 @@
           </div>
           <div class="top-performer-poster-grid">
             {% for row in comparison.get('rows', []) %}
-            <article class="top-performer-item">
+            <article class="top-performer-item{% if row.get('rank', loop.index) == 1 %} top-performer-item-first{% endif %}">
               <div class="top-performer-avatar-wrap">
                 {% if row.get('photo_url') %}
                 <img class="top-performer-photo" src="{{ row.get('photo_url') }}" alt="{{ row.get('crew_name', '') }}" />
