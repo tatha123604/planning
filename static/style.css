@@ -1639,22 +1639,20 @@ ul { padding-left: 18px; margin: 6px 0; }
   box-shadow: inset 0 0 0 1px rgba(255, 245, 199, 0.24), 0 0 16px rgba(255, 211, 89, 0.2);
 }
 .top-performer-item-first::after {
-  content: "♛\A MONTHLY\A CHAMPION";
+  content: "★";
   position: absolute;
   top: 50%;
   right: 34px;
   transform: translateY(-50%);
-  width: 154px;
+  width: 112px;
   height: 112px;
   display: grid;
   place-content: center;
   text-align: center;
-  white-space: pre-line;
-  color: #fff0b1;
-  font-size: 0.78rem;
+  color: #ffe27a;
+  font-size: 4rem;
   font-weight: 900;
-  line-height: 1.35;
-  letter-spacing: 0.12em;
+  line-height: 1;
   border: 1px solid rgba(255, 224, 132, 0.58);
   border-radius: 18px;
   background: linear-gradient(145deg, rgba(255, 213, 103, 0.2), rgba(12, 34, 102, 0.42));
@@ -1814,9 +1812,9 @@ ul { padding-left: 18px; margin: 6px 0; }
   }
   .top-performer-item-first::after {
     right: 16px;
-    width: 112px;
-    height: 92px;
-    font-size: 0.62rem;
+    width: 88px;
+    height: 88px;
+    font-size: 3.2rem;
   }
   .top-performer-item-first .top-performer-avatar-wrap {
     flex-basis: 108px;
@@ -1840,9 +1838,9 @@ ul { padding-left: 18px; margin: 6px 0; }
     top: auto;
     right: 14px;
     bottom: 10px;
-    width: auto;
-    height: 36px;
-    padding: 0 12px;
+    width: 40px;
+    height: 40px;
+    font-size: 2rem;
     transform: none;
   }
   .top-performer-item-first .top-performer-copy {
