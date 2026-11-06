@@ -1208,7 +1208,9 @@ def rtis_home_model_convert(home_file: UploadFile = File(...)):
     try:
         content = home_file.file.read(MAX_BYTES + 1)
         mapping, _ = parse_home_model(content, filename)
-        mapping, _ = _remove_known_bad_home_series(mapping)
+        # Keep the raw converter lossless.  The known bad UP Home cleanup is
+        # applied when saving an active model, but must not remove non-Home
+        # signals from a user's downloadable full-signal conversion.
         mapping, _ = _remove_nearby_duplicate_homes(mapping)
         enrich_home_model(mapping, _rtis_ssts_geofences())
         rows = []
