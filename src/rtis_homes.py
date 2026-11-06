@@ -296,14 +296,22 @@ def save_home_model(session: Session, filename: str, content: bytes, geofence_po
     digest = sha256(content).hexdigest()
     existing = session.exec(select(RtisHomeModel).where(RtisHomeModel.digest == digest)).first()
     if existing:
-        if geofence_polygons:
-            mapping = json.loads(existing.mapping_json)
-            mapped = enrich_home_model(mapping, geofence_polygons)
-            existing.mapping_json = json.dumps(mapping)
-            existing.mapped_station_count = mapped
-            session.add(existing)
-            session.commit()
-            session.refresh(existing)
+        # Re-parse an already uploaded digest as well.  Earlier versions could
+        # have stored an over-cleaned mapping; returning it unchanged made a
+        # re-upload of the same corrected workbook unable to restore signals.
+        incoming_mapping, _ = parse_home_model(content, filename)
+        mapping = _merge_home_mappings(json.loads(existing.mapping_json), incoming_mapping)
+        mapping, _ = _remove_nearby_duplicate_homes(mapping)
+        mapped = enrich_home_model(mapping, geofence_polygons) if geofence_polygons else sum(
+            1 for value in mapping.values() if value.get("station_latitude") is not None
+        )
+        existing.mapping_json = json.dumps(mapping)
+        existing.signal_count = sum(len(value.get("homes", [])) for value in mapping.values())
+        existing.station_count = len({v['station'] for v in mapping.values()})
+        existing.mapped_station_count = mapped
+        session.add(existing)
+        session.commit()
+        session.refresh(existing)
         return existing
     incoming_mapping, _ = parse_home_model(content, filename)
     previous_model = session.exec(select(RtisHomeModel).order_by(RtisHomeModel.id.desc())).first() if merge_existing else None
