@@ -441,6 +441,7 @@ def rtis_home_model_map(request: Request, home_model_id: int = 0, notice: str = 
 
 
 def _persist_home_model_mapping(session: Session, model: RtisHomeModel, mapping: dict) -> None:
+    mapping, _ = _remove_known_bad_home_series(mapping)
     mapping, _ = _remove_nearby_duplicate_homes(mapping)
     model.mapping_json = json.dumps(mapping)
     model.signal_count = sum(len(value.get("homes", [])) for value in mapping.values())

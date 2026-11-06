@@ -301,6 +301,7 @@ def save_home_model(session: Session, filename: str, content: bytes, geofence_po
         # re-upload of the same corrected workbook unable to restore signals.
         incoming_mapping, _ = parse_home_model(content, filename)
         mapping = _merge_home_mappings(json.loads(existing.mapping_json), incoming_mapping)
+        mapping, _ = _remove_known_bad_home_series(mapping)
         mapping, _ = _remove_nearby_duplicate_homes(mapping)
         mapped = enrich_home_model(mapping, geofence_polygons) if geofence_polygons else sum(
             1 for value in mapping.values() if value.get("station_latitude") is not None
@@ -319,6 +320,7 @@ def save_home_model(session: Session, filename: str, content: bytes, geofence_po
         mapping = _merge_home_mappings(json.loads(previous_model.mapping_json), incoming_mapping)
     else:
         mapping = incoming_mapping
+    mapping, _ = _remove_known_bad_home_series(mapping)
     mapping, _ = _remove_nearby_duplicate_homes(mapping)
     if geofence_polygons:
         mapped = enrich_home_model(mapping, geofence_polygons)
@@ -352,7 +354,9 @@ def selected_home_model(session: Session, model_id: int = 0):
     if not model:
         return None, {}
     mapping = json.loads(model.mapping_json)
-    mapping, changed = _remove_nearby_duplicate_homes(mapping)
+    mapping, changed = _remove_known_bad_home_series(mapping)
+    mapping, duplicate_changed = _remove_nearby_duplicate_homes(mapping)
+    changed = changed or duplicate_changed
     if changed:
         model.mapping_json = json.dumps(mapping)
         model.signal_count = sum(len(value.get('homes', [])) for value in mapping.values())
