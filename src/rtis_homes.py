@@ -192,7 +192,7 @@ def parse_home_model(content: bytes, filename: str = ""):
                 if direction.startswith('UP'):
                     event = 'J'
                     label = 'UP HOME'
-                elif direction.startswith('DN'):
+                elif direction.startswith(('DN', 'DOWN')):
                     event = 'K'
                     label = 'DOWN HOME'
                 else:
