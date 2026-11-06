@@ -311,7 +311,6 @@ def save_home_model(session: Session, filename: str, content: bytes, geofence_po
         mapping = _merge_home_mappings(json.loads(previous_model.mapping_json), incoming_mapping)
     else:
         mapping = incoming_mapping
-    mapping, _ = _remove_known_bad_home_series(mapping)
     mapping, _ = _remove_nearby_duplicate_homes(mapping)
     if geofence_polygons:
         mapped = enrich_home_model(mapping, geofence_polygons)
@@ -344,9 +343,8 @@ def selected_home_model(session: Session, model_id: int = 0):
         model = session.exec(select(RtisHomeModel).order_by(RtisHomeModel.id.desc())).first()
     if not model:
         return None, {}
-    mapping, changed = _remove_known_bad_home_series(json.loads(model.mapping_json))
-    mapping, duplicate_changed = _remove_nearby_duplicate_homes(mapping)
-    changed = changed or duplicate_changed
+    mapping = json.loads(model.mapping_json)
+    mapping, changed = _remove_nearby_duplicate_homes(mapping)
     if changed:
         model.mapping_json = json.dumps(mapping)
         model.signal_count = sum(len(value.get('homes', [])) for value in mapping.values())
