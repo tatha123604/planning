@@ -1359,6 +1359,12 @@ ul { padding-left: 18px; margin: 6px 0; }
   width: 100%;
   min-width: 0;
 }
+.detail-date-filter input[type="date"]::-webkit-calendar-picker-indicator,
+.detail-date-filter input[type="time"]::-webkit-calendar-picker-indicator {
+  filter: brightness(0) saturate(100%) invert(79%) sepia(96%) saturate(1050%) hue-rotate(4deg) brightness(104%) contrast(103%);
+  opacity: 1;
+  cursor: pointer;
+}
 .detail-panels {
   display: grid;
   gap: 18px;
