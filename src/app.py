@@ -2425,6 +2425,41 @@ def _fetch_ssts_bulk_analysis_crew_fallbacks(report_day: date, token: str) -> di
     return fallbacks
 
 
+def _fetch_ssts_bft_bpt_zero_rows(report_day: date, token: str) -> list[dict[str, object]]:
+    """Return Detailed Results rows where BFT or BPT is exactly zero."""
+    preset_id = _fetch_ssts_default_config_preset_id(token)
+    if not preset_id:
+        return []
+    response = _ssts_get_json_with_params(
+        f"{SSTS_API_BASE_URL}/timetable/tc/bulk_analysis_results",
+        {"date": report_day.isoformat(), "configPresetId": preset_id},
+        headers={"Authorization": token},
+    )
+    raw_rows = response.get("detailedResults") if isinstance(response, dict) else None
+    if not isinstance(raw_rows, list):
+        return []
+    selected: list[dict[str, object]] = []
+    for raw in raw_rows:
+        if not isinstance(raw, dict):
+            continue
+        zero_fields: list[str] = []
+        for key, value in raw.items():
+            normalized_key = re.sub(r"[^A-Z0-9]", "", str(key).upper())
+            if not (normalized_key == "BFT" or normalized_key == "BPT" or normalized_key.startswith(("BFT", "BPT"))):
+                continue
+            try:
+                numeric = float(str(value).strip().replace(",", ""))
+            except (TypeError, ValueError):
+                continue
+            if numeric == 0:
+                zero_fields.append(str(key))
+        if zero_fields:
+            row = dict(raw)
+            row["_zero_bft_bpt_fields"] = ", ".join(zero_fields)
+            selected.append(row)
+    return selected
+
+
 def _build_ssts_pf_crew_fallbacks(report_day: date, token: str) -> dict[str, str]:
     fallbacks = _fetch_ssts_bulk_analysis_crew_fallbacks(report_day, token)
     return {key.upper(): value for key, value in fallbacks.items() if value}
@@ -6897,11 +6932,13 @@ def _build_ssts_report_response(
     pf_gps_task_id: str | None = None,
     pf_train: str | None = None,
     pf_detail_mode: str | None = None,
+    bft_bpt_day: str | None = None,
+    bft_bpt_run: int = 0,
     junk_cleanup_notice: str = "",
     junk_cleanup_error: str = "",
     status_code: int = 200,
 ):
-    active_report_tab = report_tab if report_tab in {"online_offline", "pf_entering"} else "online_offline"
+    active_report_tab = report_tab if report_tab in {"online_offline", "pf_entering", "bft_bpt"} else "online_offline"
     # Rendering PF results must never wait for the remote device API. The
     # background synchronizer keeps the online/offline snapshot up to date.
     if active_report_tab == "online_offline" and force:
@@ -6925,6 +6962,7 @@ def _build_ssts_report_response(
         {"value": 51, "label": "Above 50"}
     ]
     parsed_pf_day = _parse_report_date(pf_day)
+    bft_bpt_day_value = _parse_report_date(bft_bpt_day) or date.today()
     if parsed_pf_day is not None:
         pf_day_value = parsed_pf_day
     context = (
@@ -6988,6 +7026,11 @@ def _build_ssts_report_response(
         "pf_analysis_task_id": pf_task_id or "",
         "pf_analysis_message": "",
         "pf_report_error": None,
+        "bft_bpt_day": bft_bpt_day_value.isoformat(),
+        "bft_bpt_day_label": bft_bpt_day_value.strftime("%d-%m-%Y"),
+        "bft_bpt_run": bool(bft_bpt_run),
+        "bft_bpt_rows": [],
+        "bft_bpt_error": "",
     }
     if active_report_tab == "pf_entering":
         task_payload = _get_ssts_pf_analysis_task(pf_task_id)
@@ -7050,6 +7093,12 @@ def _build_ssts_report_response(
                 "This analysis is no longer available (the server may have restarted or the result expired). "
                 "Press Analysis to run it again in the background."
             )
+    elif active_report_tab == "bft_bpt" and bft_bpt_run:
+        try:
+            token = fetch_ssts_token()
+            pf_context["bft_bpt_rows"] = _fetch_ssts_bft_bpt_zero_rows(bft_bpt_day_value, token)
+        except (RuntimeError, ValueError, urlerror.URLError, json.JSONDecodeError) as exc:
+            pf_context["bft_bpt_error"] = str(exc)
     latest_run = context.get("latest_run")
     junk_cleanup_summary = _ssts_cleanup_junk_summary()
     latest_summary = {
@@ -7101,6 +7150,8 @@ def ssts_report_page(
     pf_gps_task_id: str | None = None,
     pf_train: str | None = None,
     pf_detail_mode: str | None = None,
+    bft_bpt_day: str | None = None,
+    bft_bpt_run: int = 0,
     session: Session = Depends(get_session),
 ):
     return _build_ssts_report_response(
@@ -7118,6 +7169,8 @@ def ssts_report_page(
         pf_gps_task_id=pf_gps_task_id,
         pf_train=pf_train,
         pf_detail_mode=pf_detail_mode,
+        bft_bpt_day=bft_bpt_day,
+        bft_bpt_run=bft_bpt_run,
     )
 
 
