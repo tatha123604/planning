@@ -2477,6 +2477,24 @@ def _fetch_ssts_bft_bpt_zero_rows(report_day: date, token: str) -> list[dict[str
             row["_zero_bft_bpt_fields"] = ", ".join(zero_fields)
             row["_bft_score"] = bft_value
             row["_bpt_score"] = bpt_value
+            crew = raw.get("crew") if isinstance(raw.get("crew"), dict) else {}
+            row["_crew_name"] = (
+                raw.get("crewName")
+                or raw.get("crew_name")
+                or crew.get("name")
+                or crew.get("crewName")
+                or "—"
+            )
+            row["_crew_id"] = (
+                raw.get("crewId")
+                or raw.get("crew_id")
+                or raw.get("cmsId")
+                or raw.get("cms_id")
+                or crew.get("id")
+                or crew.get("crewId")
+                or crew.get("cmsId")
+                or "—"
+            )
             selected.append(row)
     return selected
 
