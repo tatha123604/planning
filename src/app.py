@@ -2443,6 +2443,23 @@ def _fetch_ssts_bft_bpt_zero_rows(report_day: date, token: str) -> list[dict[str
         if not isinstance(raw, dict):
             continue
         zero_fields: list[str] = []
+        breakdown = raw.get("breakdown") if isinstance(raw.get("breakdown"), dict) else {}
+        bft_details = breakdown.get("bft") if isinstance(breakdown.get("bft"), dict) else {}
+        bpt_details = breakdown.get("bpt") if isinstance(breakdown.get("bpt"), dict) else {}
+        bft_value = bft_details.get("score") if bft_details.get("score") is not None else raw.get("bftScore")
+        bpt_value = bpt_details.get("score") if bpt_details.get("score") is not None else raw.get("bptScore")
+        try:
+            bft_numeric = float(bft_value)
+        except (TypeError, ValueError):
+            bft_numeric = None
+        try:
+            bpt_numeric = float(bpt_value)
+        except (TypeError, ValueError):
+            bpt_numeric = None
+        if bft_numeric == 0:
+            zero_fields.append("BFT")
+        if bpt_numeric == 0:
+            zero_fields.append("BPT")
         for key, value in raw.items():
             normalized_key = re.sub(r"[^A-Z0-9]", "", str(key).upper())
             if not (normalized_key == "BFT" or normalized_key == "BPT" or normalized_key.startswith(("BFT", "BPT"))):
@@ -2452,10 +2469,14 @@ def _fetch_ssts_bft_bpt_zero_rows(report_day: date, token: str) -> list[dict[str
             except (TypeError, ValueError):
                 continue
             if numeric == 0:
-                zero_fields.append(str(key))
+                label = "BFT" if normalized_key.startswith("BFT") else "BPT"
+                if label not in zero_fields:
+                    zero_fields.append(label)
         if zero_fields:
             row = dict(raw)
             row["_zero_bft_bpt_fields"] = ", ".join(zero_fields)
+            row["_bft_score"] = bft_value
+            row["_bpt_score"] = bpt_value
             selected.append(row)
     return selected
 

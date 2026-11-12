@@ -1005,19 +1005,20 @@
         <p class="hint">{{ bft_bpt_rows|length }} Detailed Results row(s) found with BFT/BPT value 0 for {{ bft_bpt_day_label }}.</p>
         <div class="table-wrap">
           <table class="data-table">
-            <thead><tr><th>Train No.</th><th>Rake</th><th>Station</th><th>Test</th><th>BFT/BPT value</th><th>Detailed Result</th></tr></thead>
+            <thead><tr><th>Train No.</th><th>Origin</th><th>Destination</th><th>BFT Score</th><th>BPT Score</th><th>Zero test</th><th>Detailed Result</th></tr></thead>
             <tbody>
               {% for row in bft_bpt_rows %}
               <tr>
                 <td>{{ row.get('trainNo', row.get('train_no', row.get('train', '—'))) }}</td>
-                <td>{{ row.get('rakeNo', row.get('rake_no', row.get('rake', '—'))) }}</td>
-                <td>{{ row.get('station', row.get('stationName', '—')) }}</td>
+                <td>{{ row.get('origin', '—') }}</td>
+                <td>{{ row.get('destination', '—') }}</td>
+                <td>{{ row.get('_bft_score', '—') }}</td>
+                <td>{{ row.get('_bpt_score', '—') }}</td>
                 <td>{{ row.get('_zero_bft_bpt_fields', 'BFT/BPT') }}</td>
-                <td>0</td>
                 <td><details><summary>View row</summary><pre class="bft-bpt-json">{{ row }}</pre></details></td>
               </tr>
               {% else %}
-              <tr><td colspan="6">No BFT/BPT zero result found for this date.</td></tr>
+              <tr><td colspan="7">No BFT/BPT zero result found for this date.</td></tr>
               {% endfor %}
             </tbody>
           </table>
