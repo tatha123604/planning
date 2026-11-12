@@ -90,6 +90,7 @@
 
   const buildSnapshot = (table, tableIndex, options = {}) => {
     const { excludeMarkedPdfRows = false } = options;
+    const selectedOnly = table?.dataset?.exportSelectedOnly === "true";
     const scopedReportDateInput = table.closest("section, .card, details")?.querySelector('[data-export-report-date-source="true"]');
     const reportDateInput = document.querySelector('input[name="report_date"]');
     const sourceReportDateInput = document.querySelector("#source-report-date");
@@ -107,6 +108,9 @@
     const includedRows = bodyRows
       .filter((row) => row?.dataset?.filterHidden !== "true")
       .filter((row) => row?.dataset?.smartDistanceHidden !== "true")
+      .filter((row) => (
+        !selectedOnly || Boolean(row.querySelector('input[data-export-row-select]:checked'))
+      ))
       .filter((row) => (
         !excludeMarkedPdfRows || !row.querySelector('input[data-skip-pdf-row]:checked')
       ));
