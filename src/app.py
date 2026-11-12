@@ -2438,6 +2438,10 @@ def _fetch_ssts_bft_bpt_zero_rows(report_day: date, token: str) -> list[dict[str
     raw_rows = response.get("detailedResults") if isinstance(response, dict) else None
     if not isinstance(raw_rows, list):
         return []
+    try:
+        crew_lookup = fetch_ssts_crew_lookup(token)
+    except (RuntimeError, urlerror.URLError, ValueError, json.JSONDecodeError):
+        crew_lookup = {}
     selected: list[dict[str, object]] = []
     for raw in raw_rows:
         if not isinstance(raw, dict):
@@ -2478,14 +2482,14 @@ def _fetch_ssts_bft_bpt_zero_rows(report_day: date, token: str) -> list[dict[str
             row["_bft_score"] = bft_value
             row["_bpt_score"] = bpt_value
             crew = raw.get("crew") if isinstance(raw.get("crew"), dict) else {}
-            row["_crew_name"] = (
+            crew_name_value = (
                 raw.get("crewName")
                 or raw.get("crew_name")
                 or crew.get("name")
                 or crew.get("crewName")
                 or "—"
             )
-            row["_crew_id"] = (
+            crew_id_value = (
                 raw.get("crewId")
                 or raw.get("crew_id")
                 or raw.get("cmsId")
@@ -2495,6 +2499,14 @@ def _fetch_ssts_bft_bpt_zero_rows(report_day: date, token: str) -> list[dict[str
                 or crew.get("cmsId")
                 or "—"
             )
+            if not crew_id_value or str(crew_id_value).strip() in {"—", "-"}:
+                for lookup_key in _ssts_crew_primary_lookup_keys(crew_name_value):
+                    mapped_crew_id = crew_lookup.get(lookup_key)
+                    if mapped_crew_id:
+                        crew_id_value = mapped_crew_id
+                        break
+            row["_crew_name"] = crew_name_value
+            row["_crew_id"] = crew_id_value
             selected.append(row)
     return selected
 
