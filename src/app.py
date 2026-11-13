@@ -2439,6 +2439,15 @@ def _fetch_ssts_bft_bpt_zero_rows(report_day: date, token: str) -> list[dict[str
     if not isinstance(raw_rows, list):
         return []
     try:
+        train_rows = fetch_ssts_trains_report(report_day, token)
+    except (RuntimeError, urlerror.URLError, ValueError, json.JSONDecodeError):
+        train_rows = []
+    train_lookup = {
+        _normalize_pf_train_no(train.get("train_no")): train
+        for train in train_rows
+        if isinstance(train, dict) and _normalize_pf_train_no(train.get("train_no"))
+    }
+    try:
         crew_lookup = fetch_ssts_crew_lookup(token)
     except (RuntimeError, urlerror.URLError, ValueError, json.JSONDecodeError):
         crew_lookup = {}
@@ -2478,9 +2487,13 @@ def _fetch_ssts_bft_bpt_zero_rows(report_day: date, token: str) -> list[dict[str
                     zero_fields.append(label)
         if zero_fields:
             row = dict(raw)
+            train_info = train_lookup.get(_normalize_pf_train_no(raw.get("trainNo") or raw.get("train_no") or raw.get("train")), {})
             row["_zero_bft_bpt_fields"] = ", ".join(zero_fields)
             row["_bft_score"] = bft_value
             row["_bpt_score"] = bpt_value
+            row["_rake_no"] = str(train_info.get("device_name") or raw.get("rakeNo") or raw.get("rake_no") or "—").strip()
+            row["_sch_dep"] = _format_time_value(train_info.get("dep") or raw.get("schDep") or raw.get("sch_dep")) or "—"
+            row["_sch_arr"] = _format_time_value(train_info.get("arr") or raw.get("schArr") or raw.get("sch_arr")) or "—"
             crew = raw.get("crew") if isinstance(raw.get("crew"), dict) else {}
             crew_name_value = (
                 raw.get("crewName")
