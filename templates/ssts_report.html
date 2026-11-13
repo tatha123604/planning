@@ -1475,18 +1475,38 @@
         });
       };
 
+      const wireBftBptRowSelection = () => {
+        const table = document.querySelector('table[data-export-selected-only="true"]');
+        if (!table || table.dataset.rowSelectionBound) return;
+        table.dataset.rowSelectionBound = '1';
+        table.querySelectorAll('tbody tr').forEach((row) => {
+          const checkbox = row.querySelector('input[data-export-row-select]');
+          if (!checkbox) return;
+          const syncHighlight = () => row.classList.toggle('bft-bpt-row-selected', checkbox.checked);
+          checkbox.addEventListener('change', syncHighlight);
+          row.addEventListener('click', (event) => {
+            if (event.target.closest('input, button, a, details')) return;
+            checkbox.checked = !checkbox.checked;
+            syncHighlight();
+          });
+          syncHighlight();
+        });
+      };
+
       if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', () => {
           wirePasswordGate();
           wirePfCardCollapses();
           wirePfTableCollapses();
           wireSmartOutputRange();
+          wireBftBptRowSelection();
         });
       } else {
         wirePasswordGate();
         wirePfCardCollapses();
         wirePfTableCollapses();
         wireSmartOutputRange();
+        wireBftBptRowSelection();
       }
     })();
   </script>
