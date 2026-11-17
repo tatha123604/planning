@@ -1032,8 +1032,10 @@
                   {% else %}{{ bpt_score if bpt_score is not none else '—' }}{% endif %}
                 </td>
                 <td>
-                  BFT = {% if bft_score is not none and bft_score|float == 0 %}<span class="status-pill status-pill-offline">NOT DONE</span>{% elif bft_score is not none and bft_score|float == 15 %}<span class="status-pill status-pill-online">DONE</span>{% else %}—{% endif %},
-                  BPT = {% if bpt_score is not none and bpt_score|float == 0 %}<span class="status-pill status-pill-offline">NOT DONE</span>{% elif bpt_score is not none and bpt_score|float == 15 %}<span class="status-pill status-pill-online">DONE</span>{% else %}—{% endif %}
+                  <div class="bft-bpt-remarks">
+                    <div class="bft-bpt-remark-item"><strong>BFT</strong>{% if bft_score is not none and bft_score|float == 0 %}<span class="status-pill status-pill-offline">NOT DONE</span>{% elif bft_score is not none and bft_score|float == 15 %}<span class="status-pill status-pill-online">DONE</span>{% else %}<span class="bft-bpt-remark-empty">—</span>{% endif %}</div>
+                    <div class="bft-bpt-remark-item"><strong>BPT</strong>{% if bpt_score is not none and bpt_score|float == 0 %}<span class="status-pill status-pill-offline">NOT DONE</span>{% elif bpt_score is not none and bpt_score|float == 15 %}<span class="status-pill status-pill-online">DONE</span>{% else %}<span class="bft-bpt-remark-empty">—</span>{% endif %}</div>
+                  </div>
                 </td>
               </tr>
               {% else %}
