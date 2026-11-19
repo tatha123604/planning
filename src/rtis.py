@@ -835,7 +835,8 @@ def _build_rtis_report_pdf(report: RtisReport) -> bytes:
     try:
         writer = PdfWriter()
         page_width, page_height = 842.0, 595.0
-        for _, field in RTIS_REPORT_SOURCES:
+        output_page = writer.add_blank_page(width=page_width, height=page_height * len(RTIS_REPORT_SOURCES))
+        for report_index, (_, field) in enumerate(RTIS_REPORT_SOURCES):
             source_reader = _rtis_pdf_reader(getattr(report, field))
             source_pages = [
                 page for page in source_reader.pages
@@ -847,7 +848,7 @@ def _build_rtis_report_pdf(report: RtisReport) -> bytes:
             columns = 1 if len(source_pages) == 1 else 2
             rows = max(1, math.ceil(len(source_pages) / columns))
             cell_width, cell_height = page_width / columns, page_height / rows
-            output_page = writer.add_blank_page(width=page_width, height=page_height)
+            section_bottom = (len(RTIS_REPORT_SOURCES) - report_index - 1) * page_height
             for index, source_page in enumerate(source_pages):
                 source_width = float(source_page.mediabox.width)
                 source_height = float(source_page.mediabox.height)
@@ -855,7 +856,7 @@ def _build_rtis_report_pdf(report: RtisReport) -> bytes:
                 drawn_width, drawn_height = source_width * scale, source_height * scale
                 column, row = index % columns, index // columns
                 x = column * cell_width + (cell_width - drawn_width) / 2
-                y = (rows - row - 1) * cell_height + (cell_height - drawn_height) / 2
+                y = section_bottom + (rows - row - 1) * cell_height + (cell_height - drawn_height) / 2
                 output_page.merge_transformed_page(
                     source_page,
                     Transformation().scale(scale, scale).translate(x, y),
