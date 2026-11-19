@@ -778,16 +778,24 @@ RTIS_REPORT_SOURCES = (
 
 def _read_rtis_report_pdf(content: bytes, filename: str) -> tuple[int, str]:
     try:
-        from pypdf import PdfReader
-        reader = PdfReader(BytesIO(content))
+        reader = _rtis_pdf_reader(content)
         pages = len(reader.pages)
         extracted = "\n".join((page.extract_text() or "") for page in reader.pages)
     except Exception as exc:
-        raise HTTPException(400, f"{filename} is not a readable PDF.") from exc
+        raise HTTPException(400, f"{filename} is not a readable PDF ({type(exc).__name__}).") from exc
     if not pages:
         raise HTTPException(400, f"{filename} is empty.")
     summary = re.sub(r"\s+", " ", extracted).strip()
     return pages, summary
+
+
+def _rtis_pdf_reader(content: bytes):
+    """Read uploaded PDFs with a tolerant parser and a compatibility fallback."""
+    try:
+        from pypdf import PdfReader
+    except ImportError:
+        from PyPDF2 import PdfReader
+    return PdfReader(BytesIO(content), strict=False)
 
 
 def _rtis_report_metadata(report: RtisReport) -> list[dict[str, object]]:
@@ -834,10 +842,13 @@ def _build_rtis_report_pdf(report: RtisReport) -> bytes:
         compress=True,
     )
     try:
-        from pypdf import PdfReader, PdfWriter
+        from pypdf import PdfWriter
+    except ImportError:
+        from PyPDF2 import PdfWriter
+    try:
         writer = PdfWriter()
         for source in (summary_pdf, *(getattr(report, field) for _, field in RTIS_REPORT_SOURCES)):
-            source_reader = PdfReader(BytesIO(source))
+            source_reader = _rtis_pdf_reader(source)
             for page in source_reader.pages:
                 writer.add_page(page)
         output = BytesIO()
