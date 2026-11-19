@@ -828,29 +828,32 @@ def _build_rtis_report_excel(report: RtisReport) -> bytes:
 
 
 def _build_rtis_report_pdf(report: RtisReport) -> bytes:
-    metadata = _rtis_report_metadata(report)
-    summary_headers = ("Report", "Source file", "Pages", "Summary")
-    summary_rows = [[str(row["label"]), str(row["filename"]), str(row["pages"]), str(row["summary"])[:1800]] for row in metadata]
-    summary_pdf = _build_table_pdf_bytes(
-        "RTIS Report",
-        summary_headers,
-        summary_rows,
-        f"Report date: {report.report_date.strftime('%d-%m-%Y')} | Four source reports",
-        page_width=595.0,
-        page_height=842.0,
-        body_font_size=7.0,
-        compress=True,
-    )
     try:
-        from pypdf import PdfWriter
+        from pypdf import PdfWriter, Transformation
     except ImportError:
-        from PyPDF2 import PdfWriter
+        from PyPDF2 import PdfWriter, Transformation
     try:
         writer = PdfWriter()
-        for source in (summary_pdf, *(getattr(report, field) for _, field in RTIS_REPORT_SOURCES)):
-            source_reader = _rtis_pdf_reader(source)
-            for page in source_reader.pages:
-                writer.add_page(page)
+        page_width, page_height = 842.0, 595.0
+        for _, field in RTIS_REPORT_SOURCES:
+            source_reader = _rtis_pdf_reader(getattr(report, field))
+            source_pages = list(source_reader.pages)
+            columns = 1 if len(source_pages) == 1 else 2
+            rows = max(1, math.ceil(len(source_pages) / columns))
+            cell_width, cell_height = page_width / columns, page_height / rows
+            output_page = writer.add_blank_page(width=page_width, height=page_height)
+            for index, source_page in enumerate(source_pages):
+                source_width = float(source_page.mediabox.width)
+                source_height = float(source_page.mediabox.height)
+                scale = min((cell_width - 16) / source_width, (cell_height - 16) / source_height)
+                drawn_width, drawn_height = source_width * scale, source_height * scale
+                column, row = index % columns, index // columns
+                x = column * cell_width + (cell_width - drawn_width) / 2
+                y = (rows - row - 1) * cell_height + (cell_height - drawn_height) / 2
+                output_page.merge_transformed_page(
+                    source_page,
+                    Transformation().scale(scale, scale).translate(x, y),
+                )
         output = BytesIO()
         writer.write(output)
         return output.getvalue()
