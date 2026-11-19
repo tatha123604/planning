@@ -2438,15 +2438,21 @@ def _fetch_ssts_bft_bpt_zero_rows(report_day: date, token: str) -> list[dict[str
     raw_rows = response.get("detailedResults") if isinstance(response, dict) else None
     if not isinstance(raw_rows, list):
         return []
-    try:
-        train_rows = fetch_ssts_trains_report(report_day, token)
-    except (RuntimeError, urlerror.URLError, ValueError, json.JSONDecodeError):
-        train_rows = []
-    train_lookup = {
-        _normalize_pf_train_no(train.get("train_no")): train
-        for train in train_rows
-        if isinstance(train, dict) and _normalize_pf_train_no(train.get("train_no"))
-    }
+    train_rows_by_date: dict[str, list[dict[str, object]]] = {}
+    report_dates = {report_day}
+    for raw in raw_rows:
+        if not isinstance(raw, dict):
+            continue
+        train_date_text = str(raw.get("trainDate") or raw.get("train_date") or "").strip()
+        try:
+            report_dates.add(datetime.fromisoformat(train_date_text.replace("Z", "+00:00")).date())
+        except ValueError:
+            continue
+    for train_date in report_dates:
+        try:
+            train_rows_by_date[train_date.isoformat()] = fetch_ssts_trains_report(train_date, token)
+        except (RuntimeError, urlerror.URLError, ValueError, json.JSONDecodeError):
+            train_rows_by_date[train_date.isoformat()] = []
     try:
         crew_lookup = fetch_ssts_crew_lookup(token)
     except (RuntimeError, urlerror.URLError, ValueError, json.JSONDecodeError):
@@ -2487,7 +2493,25 @@ def _fetch_ssts_bft_bpt_zero_rows(report_day: date, token: str) -> list[dict[str
                     zero_fields.append(label)
         if zero_fields:
             row = dict(raw)
-            train_info = train_lookup.get(_normalize_pf_train_no(raw.get("trainNo") or raw.get("train_no") or raw.get("train")), {})
+            train_no = _normalize_pf_train_no(raw.get("trainNo") or raw.get("train_no") or raw.get("train"))
+            train_date_key = report_day.isoformat()
+            train_date_text = str(raw.get("trainDate") or raw.get("train_date") or "").strip()
+            try:
+                train_date_key = datetime.fromisoformat(train_date_text.replace("Z", "+00:00")).date().isoformat()
+            except ValueError:
+                pass
+            train_origin = _normalize_pf_station(raw.get("origin"))
+            train_destination = _normalize_pf_station(raw.get("destination"))
+            dated_trains = train_rows_by_date.get(train_date_key, [])
+            train_info = next(
+                (
+                    train for train in dated_trains
+                    if _normalize_pf_train_no(train.get("train_no")) == train_no
+                    and _normalize_pf_station(train.get("org")) == train_origin
+                    and _normalize_pf_station(train.get("dest")) == train_destination
+                ),
+                next((train for train in dated_trains if _normalize_pf_train_no(train.get("train_no")) == train_no), {}),
+            )
             row["_zero_bft_bpt_fields"] = ", ".join(zero_fields)
             row["_bft_score"] = bft_value
             row["_bpt_score"] = bpt_value
