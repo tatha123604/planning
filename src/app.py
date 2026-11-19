@@ -1868,6 +1868,17 @@ def _format_time_value(value: object) -> str:
     return str(value)
 
 
+def _format_ssts_schedule_time(value: object) -> str:
+    """Keep the schedule clock exactly as returned by the SSTS timetable API."""
+    if value in (None, ""):
+        return ""
+    text = str(value).strip()
+    if "T" in text:
+        clock = text.split("T", 1)[1].split(".", 1)[0].replace("Z", "")
+        return clock[:8]
+    return text
+
+
 def _coerce_int(value: object) -> int | None:
     if value in (None, ""):
         return None
@@ -2516,8 +2527,8 @@ def _fetch_ssts_bft_bpt_zero_rows(report_day: date, token: str) -> list[dict[str
             row["_bft_score"] = bft_value
             row["_bpt_score"] = bpt_value
             row["_rake_no"] = str(train_info.get("device_name") or raw.get("rakeNo") or raw.get("rake_no") or "—").strip()
-            row["_sch_dep"] = _format_time_value(train_info.get("dep") or raw.get("schDep") or raw.get("sch_dep")) or "—"
-            row["_sch_arr"] = _format_time_value(train_info.get("arr") or raw.get("schArr") or raw.get("sch_arr")) or "—"
+            row["_sch_dep"] = _format_ssts_schedule_time(train_info.get("dep") or raw.get("schDep") or raw.get("sch_dep")) or "—"
+            row["_sch_arr"] = _format_ssts_schedule_time(train_info.get("arr") or raw.get("schArr") or raw.get("sch_arr")) or "—"
             crew = raw.get("crew") if isinstance(raw.get("crew"), dict) else {}
             crew_name_value = (
                 raw.get("crewName")
