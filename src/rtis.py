@@ -837,7 +837,13 @@ def _build_rtis_report_pdf(report: RtisReport) -> bytes:
         page_width, page_height = 842.0, 595.0
         for _, field in RTIS_REPORT_SOURCES:
             source_reader = _rtis_pdf_reader(getattr(report, field))
-            source_pages = list(source_reader.pages)
+            source_pages = [
+                page for page in source_reader.pages
+                if (page.extract_text() or "").strip()
+                or bool((page.get("/Resources") or {}).get("/XObject"))
+            ]
+            if not source_pages:
+                source_pages = list(source_reader.pages[:1])
             columns = 1 if len(source_pages) == 1 else 2
             rows = max(1, math.ceil(len(source_pages) / columns))
             cell_width, cell_height = page_width / columns, page_height / rows
