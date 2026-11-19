@@ -27,6 +27,7 @@ from sqlmodel import Field, SQLModel, Session, select
 
 from .db import compact_database, get_session
 from .rtis_exports import build_rtis_excel, build_rtis_pdf
+from .table_pdf import _build_table_pdf_bytes
 from .rtis_train_models import (
     RtisTrainModel,
     ensure_required_train_entries,
@@ -45,6 +46,7 @@ MAX_UPLOAD_MB = 25
 MAX_BYTES = MAX_UPLOAD_MB * 1024 * 1024
 RTIS_RETENTION_DAYS = 3
 RTIS_ANALYSIS_RETENTION_COUNT = 10
+RTIS_REPORT_RETENTION_DAYS = 2
 NS = {"s": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
 HEADERS = ("Sr.No.", "Device Id", "Loco No.", "Latitude", "Longitude", "Station",
            "Event Time", "Event Type", "Speed", "Division Code", "Reporting Time",
@@ -138,6 +140,18 @@ class RtisAnalysisPrimaryUpload(SQLModel, table=True):
     analysis_upload_id: int = Field(index=True)
     filename: str
     content: bytes = Field(sa_column=Column(LargeBinary, nullable=False))
+
+
+class RtisReport(SQLModel, table=True):
+    """Four source PDFs uploaded for a single two-day RTIS report bundle."""
+    id: int | None = Field(default=None, primary_key=True)
+    report_date: date = Field(index=True)
+    uploaded_at: datetime = Field(default_factory=datetime.utcnow)
+    passenger_pdf: bytes = Field(sa_column=Column(LargeBinary, nullable=False))
+    goods_pdf: bytes = Field(sa_column=Column(LargeBinary, nullable=False))
+    bft_bpt_pdf: bytes = Field(sa_column=Column(LargeBinary, nullable=False))
+    pf_pdf: bytes = Field(sa_column=Column(LargeBinary, nullable=False))
+    filenames: str = "{}"
 
 
 def train_type_filters():
@@ -752,6 +766,166 @@ def rtis_event_analysis(event_id: int, request: Request, home_model_id: int = 0,
     upload = {"filename": f"RTIS event {event.id}", "analysis_date": event.event_time.strftime("%Y-%m-%d"), "train_type": "RTIS event", "train_no": event.train or "", "loco_no": event.loco or ""}
     home_models = session.exec(select(RtisHomeModel).order_by(RtisHomeModel.id.desc())).all()
     return templates.TemplateResponse(request=request, name="rtis_analysis_result.html", context={"request": request, "active_page": "rtis_analysis", "upload": upload, "points": route_points, "event_down": event_down, "signals": signals_for_result, "event_analysis": True, "event_id": event.id, "event_direction": event_code, "event_direction_known": event_code != "H" or previous_direction_found, "event_markers": [{"lat": event.latitude, "lon": event.longitude, "event": event_code, "label": f"RTIS {event_code} event", "station": event.station, "speed": event.speed or 0, "time": event.event_time.isoformat()}], "home_model": home_model, "home_models": home_models, "home_model_id": home_model.id})
+
+
+RTIS_REPORT_SOURCES = (
+    ("Passenger RTIS", "passenger_pdf"),
+    ("Goods RTIS", "goods_pdf"),
+    ("BFT/BPT", "bft_bpt_pdf"),
+    ("SSTS PF entering", "pf_pdf"),
+)
+
+
+def _read_rtis_report_pdf(content: bytes, filename: str) -> tuple[int, str]:
+    try:
+        from pypdf import PdfReader
+        reader = PdfReader(BytesIO(content))
+        pages = len(reader.pages)
+        extracted = "\n".join((page.extract_text() or "") for page in reader.pages)
+    except Exception as exc:
+        raise HTTPException(400, f"{filename} is not a readable PDF.") from exc
+    if not pages:
+        raise HTTPException(400, f"{filename} is empty.")
+    summary = re.sub(r"\s+", " ", extracted).strip()
+    return pages, summary
+
+
+def _rtis_report_metadata(report: RtisReport) -> list[dict[str, object]]:
+    try:
+        names = json.loads(report.filenames or "{}")
+    except (TypeError, ValueError):
+        names = {}
+    rows: list[dict[str, object]] = []
+    for label, field in RTIS_REPORT_SOURCES:
+        content = getattr(report, field) or b""
+        filename = str(names.get(field) or f"{label}.pdf")
+        pages, summary = _read_rtis_report_pdf(content, filename)
+        rows.append({
+            "label": label,
+            "field": field,
+            "filename": filename,
+            "pages": pages,
+            "summary": summary,
+        })
+    return rows
+
+
+def _build_rtis_report_excel(report: RtisReport) -> bytes:
+    headers = ("Report Date", "Report", "Source File", "Pages", "Extracted Summary")
+    rows = [
+        [report.report_date.isoformat(), str(row["label"]), str(row["filename"]), str(row["pages"]), str(row["summary"])]
+        for row in _rtis_report_metadata(report)
+    ]
+    return build_rtis_excel(headers, rows)
+
+
+def _build_rtis_report_pdf(report: RtisReport) -> bytes:
+    metadata = _rtis_report_metadata(report)
+    summary_headers = ("Report", "Source file", "Pages", "Summary")
+    summary_rows = [[str(row["label"]), str(row["filename"]), str(row["pages"]), str(row["summary"])[:1800]] for row in metadata]
+    summary_pdf = _build_table_pdf_bytes(
+        "RTIS Report",
+        summary_headers,
+        summary_rows,
+        f"Report date: {report.report_date.strftime('%d-%m-%Y')} | Four source reports",
+        page_width=595.0,
+        page_height=842.0,
+        body_font_size=7.0,
+        compress=True,
+    )
+    try:
+        from pypdf import PdfReader, PdfWriter
+        writer = PdfWriter()
+        for source in (summary_pdf, *(getattr(report, field) for _, field in RTIS_REPORT_SOURCES)):
+            source_reader = PdfReader(BytesIO(source))
+            for page in source_reader.pages:
+                writer.add_page(page)
+        output = BytesIO()
+        writer.write(output)
+        return output.getvalue()
+    except Exception as exc:
+        raise HTTPException(500, "Could not build the combined RTIS PDF report.") from exc
+
+
+def _prune_rtis_reports(session: Session) -> None:
+    reports = session.exec(select(RtisReport).order_by(RtisReport.report_date.desc(), RtisReport.id.desc())).all()
+    keep_dates = {report.report_date for report in reports[:RTIS_REPORT_RETENTION_DAYS]}
+    for report in reports:
+        if report.report_date not in keep_dates:
+            session.delete(report)
+    session.commit()
+
+
+@router.get("/rtis/report")
+def rtis_report_page(request: Request, session: Session = Depends(get_session)):
+    _prune_rtis_reports(session)
+    reports = session.exec(select(RtisReport).order_by(RtisReport.report_date.desc(), RtisReport.id.desc())).all()
+    return templates.TemplateResponse(request=request, name="rtis_report.html", context={
+        "active_page": "rtis_report",
+        "reports": reports,
+        "today": date.today().isoformat(),
+        "notice": request.query_params.get("notice", ""),
+    })
+
+
+@router.post("/rtis/report/upload")
+def rtis_report_upload(
+    report_date: str = Form(...),
+    passenger_pdf: UploadFile = File(...),
+    goods_pdf: UploadFile = File(...),
+    bft_bpt_pdf: UploadFile = File(...),
+    pf_pdf: UploadFile = File(...),
+    session: Session = Depends(get_session),
+):
+    try:
+        report_day = date.fromisoformat(report_date)
+    except ValueError as exc:
+        raise HTTPException(400, "Choose a valid report date.") from exc
+    uploads = (("passenger_pdf", passenger_pdf), ("goods_pdf", goods_pdf), ("bft_bpt_pdf", bft_bpt_pdf), ("pf_pdf", pf_pdf))
+    contents: dict[str, bytes] = {}
+    filenames: dict[str, str] = {}
+    for field, upload in uploads:
+        filename = upload.filename or f"{field}.pdf"
+        if not filename.lower().endswith(".pdf"):
+            raise HTTPException(400, f"{filename} must be a PDF file.")
+        content = upload.file.read(MAX_BYTES + 1)
+        if not content or len(content) > MAX_BYTES:
+            raise HTTPException(400, f"{filename} must be between 1 byte and {MAX_UPLOAD_MB} MB.")
+        _read_rtis_report_pdf(content, filename)
+        contents[field] = content
+        filenames[field] = filename
+    report = session.exec(select(RtisReport).where(RtisReport.report_date == report_day)).first()
+    if report is None:
+        report = RtisReport(report_date=report_day, **contents, filenames=json.dumps(filenames))
+        session.add(report)
+    else:
+        for field, content in contents.items():
+            setattr(report, field, content)
+        report.filenames = json.dumps(filenames)
+        report.uploaded_at = datetime.utcnow()
+    session.commit()
+    _prune_rtis_reports(session)
+    return RedirectResponse(f"/rtis/report?notice=Report uploaded for {report_day.strftime('%d-%m-%Y')}", status_code=303)
+
+
+@router.get("/rtis/report/{report_id}.pdf")
+def rtis_report_pdf(report_id: int, session: Session = Depends(get_session)):
+    report = session.get(RtisReport, report_id)
+    if report is None:
+        raise HTTPException(404, "RTIS report not found.")
+    return Response(content=_build_rtis_report_pdf(report), media_type="application/pdf", headers={
+        "Content-Disposition": f'attachment; filename="RTIS_Report_{report.report_date.strftime("%d-%m-%Y")}.pdf"'
+    })
+
+
+@router.get("/rtis/report/{report_id}.xlsx")
+def rtis_report_excel(report_id: int, session: Session = Depends(get_session)):
+    report = session.get(RtisReport, report_id)
+    if report is None:
+        raise HTTPException(404, "RTIS report not found.")
+    return Response(content=_build_rtis_report_excel(report), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={
+        "Content-Disposition": f'attachment; filename="RTIS_Report_{report.report_date.strftime("%d-%m-%Y")}.xlsx"'
+    })
 
 
 @router.get("/rtis/analysis")

@@ -1,0 +1,48 @@
+{% extends "rtis.html" %}
+{% block title %}RTIS Report{% endblock %}
+{% block content %}
+<header>
+  <div><h1>RTIS Report</h1><p>Upload four source reports and download one combined report.</p></div>
+  <div class="header-actions"><a class="ghost small" href="/rtis">RTIS MONITORING</a><a class="ghost small" href="/logout">Logout</a></div>
+</header>
+{% if notice %}<section class="card" role="status"><p>{{ notice }}</p></section>{% endif %}
+<section class="card">
+  <h2>Upload complete RTIS report</h2>
+  <p class="hint">Upload Passenger RTIS, Goods RTIS, BFT/BPT and SSTS PF entering reports for the selected report date. Only the latest two report dates are retained.</p>
+  <form method="post" action="/rtis/report/upload" enctype="multipart/form-data" class="rtis-report-upload-form">
+    <label>Report date<input type="date" name="report_date" value="{{ today }}" required /></label>
+    <label>Passenger RTIS PDF<input type="file" name="passenger_pdf" accept="application/pdf,.pdf" required /></label>
+    <label>Goods RTIS PDF<input type="file" name="goods_pdf" accept="application/pdf,.pdf" required /></label>
+    <label>BFT/BPT PDF<input type="file" name="bft_bpt_pdf" accept="application/pdf,.pdf" required /></label>
+    <label>SSTS PF entering PDF<input type="file" name="pf_pdf" accept="application/pdf,.pdf" required /></label>
+    <button type="submit">Upload and save report</button>
+  </form>
+</section>
+<section class="card">
+  <h2>Recent RTIS reports</h2>
+  {% if reports %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Report Date</th><th>Uploaded</th><th>Downloads</th></tr></thead>
+      <tbody>
+        {% for report in reports %}
+        <tr>
+          <td>{{ report.report_date.strftime('%d-%m-%Y') }}</td>
+          <td>{{ report.uploaded_at|ist }}</td>
+          <td class="rtis-report-downloads"><a class="ghost small" href="/rtis/report/{{ report.id }}.pdf">Download PDF</a><a class="ghost small" href="/rtis/report/{{ report.id }}.xlsx">Download Excel</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}<p class="hint">No RTIS report has been uploaded yet.</p>{% endif %}
+</section>
+<style>
+  .rtis-report-upload-form{display:grid;grid-template-columns:repeat(2,minmax(240px,1fr));gap:14px;align-items:end}
+  .rtis-report-upload-form label{display:flex;flex-direction:column;gap:6px;color:#dbeafe;font-weight:700}
+  .rtis-report-upload-form input{font-weight:400}
+  .rtis-report-upload-form button{justify-self:start}
+  .rtis-report-downloads{display:flex;gap:8px;flex-wrap:wrap}
+  @media (max-width:760px){.rtis-report-upload-form{grid-template-columns:1fr}}
+</style>
+{% endblock %}
