@@ -836,7 +836,7 @@ def _build_rtis_report_pdf(report: RtisReport) -> bytes:
         from PyPDF2.generic import DecodedStreamObject, NameObject
     try:
         writer = PdfWriter()
-        page_width, page_height = 842.0, 595.0
+        page_width, page_height = 960.0, 595.0
         output_page = writer.add_blank_page(width=page_width, height=page_height * len(RTIS_REPORT_SOURCES))
         for report_index, (_, field) in enumerate(RTIS_REPORT_SOURCES):
             source_reader = _rtis_pdf_reader(getattr(report, field))
@@ -865,10 +865,10 @@ def _build_rtis_report_pdf(report: RtisReport) -> bytes:
                 )
         # Keep the PF section clean and visually separate the four stacked reports.
         overlay = PageObject.create_blank_page(width=page_width, height=page_height * len(RTIS_REPORT_SOURCES))
-        commands = ["q", "1 1 1 rg", "0 0 842 40 re", "f", "Q", "0.72 0.78 0.86 RG", "0.8 w"]
+        commands = ["q", "1 1 1 rg", f"0 0 {page_width:.2f} 40 re", "f", "Q", "0.72 0.78 0.86 RG", "0.8 w"]
         for boundary in range(1, len(RTIS_REPORT_SOURCES)):
             y = boundary * page_height
-            commands.extend([f"0 {y:.2f} m", f"842 {y:.2f} l", "S"])
+            commands.extend([f"0 {y:.2f} m", f"{page_width:.2f} {y:.2f} l", "S"])
         stream = DecodedStreamObject()
         stream.set_data(("\n".join(commands) + "\n").encode("ascii"))
         overlay[NameObject("/Contents")] = stream
