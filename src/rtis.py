@@ -836,7 +836,7 @@ def _build_rtis_report_pdf(report: RtisReport) -> bytes:
         from PyPDF2.generic import DecodedStreamObject, NameObject
     try:
         writer = PdfWriter()
-        page_width, page_height = 960.0, 595.0
+        page_width, page_height = 1100.0, 595.0
         output_page = writer.add_blank_page(width=page_width, height=page_height * len(RTIS_REPORT_SOURCES))
         for report_index, (_, field) in enumerate(RTIS_REPORT_SOURCES):
             source_reader = _rtis_pdf_reader(getattr(report, field))
