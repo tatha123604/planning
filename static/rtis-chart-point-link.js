@@ -29,6 +29,7 @@
         selectionGesture = {
           startX: event.clientX,
           oldWidth: canvas.getBoundingClientRect().width,
+          oldScrollLeft: target.scrollLeft,
           oldZoom: window.__rtisGetChartState?.()?.chartZoom ?? 1,
         };
       } else {
@@ -46,7 +47,7 @@
       const state = window.__rtisGetChartState?.();
       if (!state?.chartViewport || typeof state.drawSpeedChart !== 'function') return;
       const viewportRect = state.chartViewport.getBoundingClientRect();
-      const left = Math.min(gesture.startX, event.clientX) - viewportRect.left + state.chartViewport.scrollLeft;
+      const left = Math.min(gesture.startX, event.clientX) - viewportRect.left + gesture.oldScrollLeft;
       const selectedCenter = left + width / 2;
       state.chartZoom = Math.min(32, requestedZoom);
       state.drawSpeedChart();
