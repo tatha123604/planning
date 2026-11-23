@@ -23,6 +23,37 @@
     document.getElementById('speed-chart-zoom-in')?.addEventListener('click', event => zoom(0.5, event), true);
     document.getElementById('speed-chart-zoom-out')?.addEventListener('click', event => zoom(-0.5, event), true);
 
+    let selectionGesture = null;
+    target.addEventListener('pointerdown', event => {
+      if (event.target === canvas && !event.shiftKey) {
+        selectionGesture = {
+          startX: event.clientX,
+          oldWidth: canvas.getBoundingClientRect().width,
+          oldZoom: window.__rtisGetChartState?.()?.chartZoom ?? 1,
+        };
+      } else {
+        selectionGesture = null;
+      }
+    }, true);
+    target.addEventListener('pointerup', event => {
+      if (!selectionGesture) return;
+      const gesture = selectionGesture;
+      selectionGesture = null;
+      const width = Math.abs(event.clientX - gesture.startX);
+      if (width <= 20 || !gesture.oldWidth) return;
+      const requestedZoom = gesture.oldZoom * (gesture.oldWidth / width);
+      if (requestedZoom <= 16) return;
+      const state = window.__rtisGetChartState?.();
+      if (!state?.chartViewport || typeof state.drawSpeedChart !== 'function') return;
+      const viewportRect = state.chartViewport.getBoundingClientRect();
+      const left = Math.min(gesture.startX, event.clientX) - viewportRect.left + state.chartViewport.scrollLeft;
+      const selectedCenter = left + width / 2;
+      state.chartZoom = Math.min(32, requestedZoom);
+      state.drawSpeedChart();
+      const newWidth = canvas.getBoundingClientRect().width || gesture.oldWidth;
+      state.chartViewport.scrollLeft = Math.max(0, selectedCenter / gesture.oldWidth * newWidth - state.chartViewport.clientWidth / 2);
+    });
+
     target.addEventListener('click', (event) => {
       const state = typeof window.__rtisGetChartState === 'function' ? window.__rtisGetChartState() : null;
       if (!state?.chartHotspots?.length || !state.map) return;
