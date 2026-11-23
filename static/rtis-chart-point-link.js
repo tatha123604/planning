@@ -4,6 +4,25 @@
     if (!canvas || canvas.dataset.mapPointLinkBound || typeof L === 'undefined') return;
     canvas.dataset.mapPointLinkBound = '1';
     const target = document.getElementById('speed-chart-viewport') || canvas;
+
+    // Keep the visible chart centre fixed while zooming and allow more zoom
+    // steps than the original button handler's limit.
+    const zoom = (delta, event) => {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const state = typeof window.__rtisGetChartState === 'function' ? window.__rtisGetChartState() : null;
+      if (!state?.chartViewport || typeof state.drawSpeedChart !== 'function') return;
+      const viewport = state.chartViewport;
+      const oldWidth = canvas.getBoundingClientRect().width || 1;
+      const center = viewport.scrollLeft + viewport.clientWidth / 2;
+      state.chartZoom = Math.max(1, Math.min(32, state.chartZoom + delta));
+      state.drawSpeedChart();
+      const newWidth = canvas.getBoundingClientRect().width || oldWidth;
+      viewport.scrollLeft = Math.max(0, center * newWidth / oldWidth - viewport.clientWidth / 2);
+    };
+    document.getElementById('speed-chart-zoom-in')?.addEventListener('click', event => zoom(0.5, event), true);
+    document.getElementById('speed-chart-zoom-out')?.addEventListener('click', event => zoom(-0.5, event), true);
+
     target.addEventListener('click', (event) => {
       const state = typeof window.__rtisGetChartState === 'function' ? window.__rtisGetChartState() : null;
       if (!state?.chartHotspots?.length || !state.map) return;

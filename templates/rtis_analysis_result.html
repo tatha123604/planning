@@ -18,6 +18,9 @@ const chartCanvas=document.getElementById('speed-chart'),chartTooltip=document.g
     chartHotspots,
     chartWasDragged,
     map,
+    drawSpeedChart,
+    get chartZoom() { return chartZoom; },
+    set chartZoom(value) { chartZoom = value; },
   });
 </script>
 <script src="/static/rtis-chart-point-link.js?v={{ asset_ver }}"></script>
